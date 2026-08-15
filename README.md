@@ -33,6 +33,7 @@ The runner uses the known local Godot 4.7.1 console executable when present, oth
 - [Navigation and reservation spike](./docs/spikes/NAVIGATION_RESERVATION_SPIKE.md)
 - [Bathroom danger-chain spike](./docs/spikes/BATHROOM_DANGER_CHAIN_SPIKE.md)
 - [Service Action Queue slice](./docs/slices/SERVICE_ACTION_QUEUE_SLICE.md)
+- [Ordinary Arrival Group slice](./docs/slices/ORDINARY_ARRIVAL_GROUP_SLICE.md)
 
 ## Scope gate
 

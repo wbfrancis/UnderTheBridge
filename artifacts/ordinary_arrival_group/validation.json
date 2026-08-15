@@ -1,0 +1,286 @@
+{
+  "final_snapshot": {
+    "bathroom_owner": "",
+    "debug_views": {
+      "patron_june": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_june",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 45.2000000000003,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_01",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_mara": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 45.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_mara",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [],
+        "reservation": "",
+        "seat": "seat_02",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      }
+    },
+    "events": [
+      {
+        "actor_id": "arrival_group_pair_01",
+        "at": 0.0,
+        "details": {},
+        "event": "arrival_group_arrived"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 1.1,
+        "details": {
+          "order_id": "order_001",
+          "seat": "seat_01"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 1.1,
+        "details": {
+          "order_id": "order_002",
+          "seat": "seat_02"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 10.2,
+        "details": {
+          "order_id": "order_001"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 14.2,
+        "details": {
+          "order_id": "order_002"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 40.2000000000003,
+        "details": {
+          "bladder": 75.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 44.2000000000004,
+        "details": {
+          "bladder": 45.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 45.2000000000004,
+        "details": {
+          "at": 45.2000000000003,
+          "probability": 45.5,
+          "roll": 43.6161193847656
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 45.2000000000004,
+        "details": {
+          "probability": 45.5,
+          "roll": 43.6161193847656
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 47.2000000000004,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 55.3000000000005,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 58.3000000000006,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 280.299999999995,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 284.299999999996,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 541.100000000054,
+        "details": {},
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 541.100000000054,
+        "details": {},
+        "event": "normal_departure"
+      }
+    ],
+    "group_id": "arrival_group_pair_01",
+    "normal_views": {
+      "patron_june": {
+        "arrival_group": "arrival_group_pair_01",
+        "companions": [
+          "patron_mara"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_june",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "June",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_mara": {
+        "arrival_group": "arrival_group_pair_01",
+        "companions": [
+          "patron_june"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_mara",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Mara",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      }
+    },
+    "orders": {
+      "orders": {
+        "order_001": {
+          "id": "order_001",
+          "patron_id": "patron_june",
+          "payment": 5,
+          "requested_at": 1.1,
+          "state": "served",
+          "terminal_at": 10.2,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_002": {
+          "id": "order_002",
+          "patron_id": "patron_mara",
+          "payment": 5,
+          "requested_at": 1.1,
+          "state": "served",
+          "terminal_at": 14.2,
+          "terminal_reason": "delivered",
+          "tip": 2
+        }
+      },
+      "recent_events": [
+        {
+          "details": {},
+          "order_id": "order_001",
+          "state": "created"
+        },
+        {
+          "details": {},
+          "order_id": "order_002",
+          "state": "created"
+        },
+        {
+          "details": {
+            "elapsed": 9.09999999999998,
+            "payment": 5,
+            "tip": 2
+          },
+          "order_id": "order_001",
+          "state": "served"
+        },
+        {
+          "details": {
+            "elapsed": 13.1,
+            "payment": 5,
+            "tip": 2
+          },
+          "order_id": "order_002",
+          "state": "served"
+        }
+      ],
+      "revenue": 10,
+      "tips": 4
+    },
+    "seat_owners": {
+      "seat_01": "",
+      "seat_02": ""
+    },
+    "seated_at": 1.1,
+    "seed": 707,
+    "simulated_seconds": 550.0
+  },
+  "passed": true,
+  "slice": "ordinary_arrival_group"
+}
