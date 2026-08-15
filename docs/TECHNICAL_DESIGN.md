@@ -299,7 +299,7 @@ Automate only:
 - results outcome for quota success, quota failure, and maximum-Suspicion escape
 - clean restart releasing runtime state
 
-Use GUT 9.7.1, pinned in the repository when implementation begins. Run tests headlessly and record random seeds. Do not add tests for animation timing, UI layout, tunable values in isolation, trivial accessors, every state permutation, or incidental implementation details unless a regression demonstrates value.
+GUT 9.7.1 is pinned in the repository. Run the lean suite through `tools/test_headless.ps1` and record random seeds. Do not add tests for animation timing, UI layout, tunable values in isolation, trivial accessors, every state permutation, or incidental implementation details unless a regression demonstrates value.
 
 The visual/import and 11-agent movement spikes remain measured scenarios rather than exhaustive automated tests.
 
