@@ -23,13 +23,13 @@ The command imports the project, runs the lean headless suite, writes `artifacts
 - Seed `41904` produces repeatable bathroom-choice rolls.
 - One bathroom occupant and two authored FIFO queue positions share the existing `InteractionRegistry` authority.
 - Standing entry, standing exit, and standing Investigation are Trapdoor-vulnerable.
-- Seated occupants are protected. Sober witnesses receive maximum Hard Evidence and begin Escape; Max Drunk witnesses receive recoverable `+25` Suspicion.
+- Seated occupants are protected. Sober witnesses receive maximum Hard Evidence, remain seated, and begin Escape after completing the bathroom exit phase; Max Drunk witnesses receive recoverable `+25` Suspicion.
 - A Trapdoor activation remembers only the occupant present at activation. Its two-second pulse cannot capture a newly promoted occupant, and its three-second cooldown returns to closed.
 - Missing-Companion milestones apply `+25` at 20 seconds, `+25` at 30 seconds, and maximum Suspicion with Investigation at 40 seconds.
 - Investigation waits for a current occupant, bypasses the ordinary queue, searches standing for five seconds, and becomes Escape if unresolved.
 - Escape requests 1x, permits one five-second Intercept, and records immediate defeat at the front exit.
 - Capture, cancellation, completed Intercept, defeat, and restart release their bathroom, queue, wait, intercept, and front-exit ownership.
-- The focused bathroom proof adds four scenarios. The complete headless suite passes 11 tests and 104 assertions.
+- The focused bathroom proof adds four scenarios. The complete headless suite passes 11 tests and 109 assertions.
 
 ## Verdict
 

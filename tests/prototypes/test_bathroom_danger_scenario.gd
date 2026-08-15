@@ -45,6 +45,7 @@ func test_trapdoor_captures_standing_but_seated_evidence_does_not_arm_next_patro
 	assert_true(scenario.snapshot()["ownership_clean"])
 
 	scenario.restart(10)
+	scenario.add_patron(&"hallway_patron", 0.0)
 	scenario.add_patron(&"seated_patron", 100.0)
 	scenario.add_patron(&"next_patron", 100.0)
 	scenario.force_bathroom_intent(&"seated_patron")
@@ -52,9 +53,13 @@ func test_trapdoor_captures_standing_but_seated_evidence_does_not_arm_next_patro
 	scenario.advance(2.05)
 	assert_eq(scenario.snapshot()["patrons"][&"seated_patron"]["activity"], &"seated_use")
 	assert_true(scenario.activate_trapdoor())
-	assert_eq(float(scenario.snapshot()["patrons"][&"seated_patron"]["suspicion"]), 100.0)
-	assert_eq(scenario.snapshot()["patrons"][&"seated_patron"]["lifecycle"], &"escaping")
-	assert_eq(scenario.snapshot()["occupant_id"], &"next_patron")
+	var misfire: Dictionary = scenario.snapshot()
+	assert_eq(float(misfire["patrons"][&"seated_patron"]["suspicion"]), 100.0)
+	assert_eq(misfire["patrons"][&"seated_patron"]["activity"], &"seated_use")
+	assert_eq(misfire["occupant_id"], &"seated_patron")
+	assert_eq(float(misfire["patrons"][&"hallway_patron"]["suspicion"]), 0.0)
+	assert_eq(misfire["patrons"][&"hallway_patron"]["activity"], &"normal")
+	assert_true(scenario.cancel_actor(&"seated_patron"))
 	scenario.advance(1.0)
 	assert_eq(scenario.snapshot()["patrons"][&"next_patron"]["lifecycle"], &"active")
 	assert_eq(scenario.snapshot()["occupant_id"], &"next_patron")
@@ -70,6 +75,16 @@ func test_trapdoor_captures_standing_but_seated_evidence_does_not_arm_next_patro
 	var max_drunk: Dictionary = scenario.snapshot()["patrons"][&"max_drunk_patron"]
 	assert_eq(float(max_drunk["suspicion"]), 25.0)
 	assert_eq(max_drunk["suspicion_cause"], &"soft")
+
+	scenario.restart(12)
+	scenario.add_patron(&"sober_witness", 100.0)
+	scenario.force_bathroom_intent(&"sober_witness")
+	scenario.advance(2.05)
+	scenario.activate_trapdoor()
+	scenario.advance(11.05)
+	var escaped_after_visit: Dictionary = scenario.snapshot()["patrons"][&"sober_witness"]
+	assert_eq(escaped_after_visit["lifecycle"], &"escaping")
+	assert_eq(escaped_after_visit["activity"], &"shock")
 
 
 func test_missing_companion_reaches_investigation_intercept_and_defeat_once() -> void:

@@ -94,6 +94,7 @@ func add_patron(
 		"defer_remaining": 0.0,
 		"escape_remaining": ESCAPE_TRAVEL_SECONDS,
 		"intercept_attempted": false,
+		"escape_after_bathroom": false,
 	}
 	return true
 
@@ -448,10 +449,14 @@ func _complete_bathroom_visit() -> void:
 	_registry.release_actor(completed_id)
 	_occupant_id = &""
 	var patron: Dictionary = _patrons[completed_id]
-	patron["activity"] = &"normal"
 	patron["phase_remaining"] = 0.0
 	_clear_missing_companion_clock(completed_id)
 	_record_event(&"bathroom_visit_completed", completed_id)
+	if patron["escape_after_bathroom"]:
+		patron["escape_after_bathroom"] = false
+		_begin_escape(completed_id)
+		return
+	patron["activity"] = &"normal"
 	_promote_next_bathroom_user()
 
 
@@ -515,8 +520,8 @@ func _apply_seated_hard_evidence(patron_id: StringName) -> void:
 	else:
 		patron["suspicion"] = 100.0
 		patron["suspicion_cause"] = &"hard_evidence"
+		patron["escape_after_bathroom"] = true
 		_record_event(&"hard_evidence", patron_id)
-		_begin_escape(patron_id)
 
 
 func _apply_suspicion(patron_id: StringName, amount: float, cause: StringName) -> void:
@@ -532,6 +537,7 @@ func _set_cancelled(actor_id: StringName) -> void:
 	patron["lifecycle"] = &"active"
 	patron["activity"] = &"cancelled"
 	patron["phase_remaining"] = 0.0
+	patron["escape_after_bathroom"] = false
 
 
 func _is_bathroom_choice_eligible(patron_id: StringName) -> bool:

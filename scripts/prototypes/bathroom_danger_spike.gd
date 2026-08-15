@@ -105,10 +105,8 @@ func _setup_standing_capture() -> void:
 
 func _setup_seated_misfire() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(&"Mara", 100.0, false, &"Elias")
-	_scenario.add_patron(&"Elias", 0.0, false, &"Mara")
-	_scenario.add_patron(&"June", 100.0, true)
-	_scenario.force_bathroom_intent(&"Mara")
+	_scenario.add_patron(&"Mara", 0.0)
+	_scenario.add_patron(&"June", 100.0)
 	_scenario.force_bathroom_intent(&"June")
 	_scenario.advance(2.05)
 	_scenario.activate_trapdoor()
@@ -198,6 +196,8 @@ func _draw_actors() -> void:
 		var color := BLUE
 		if patron_id == &"Elias":
 			color = PURPLE
+		elif patron_id == &"June":
+			color = AMBER
 		match activity:
 			&"standing_entry", &"seated_use", &"standing_exit", &"investigation_search":
 				position = Vector2(539, 256)
@@ -218,7 +218,12 @@ func _draw_actors() -> void:
 				color = RED
 		draw_circle(position, 15.0, color)
 		draw_string(_font, position + Vector2(22, 5), str(patron_id), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)
-		draw_string(_font, position + Vector2(22, 21), str(activity).replace("_", " "), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, MUTED)
+		var activity_text := str(activity).replace("_", " ")
+		if activity == &"shock":
+			activity_text = "Escape shock (2s)"
+		if float(patron["suspicion"]) > 0.0:
+			activity_text += " • Suspicion %.0f" % float(patron["suspicion"])
+		draw_string(_font, position + Vector2(22, 21), activity_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, MUTED)
 	if not snapshot["active_intercept"].is_empty():
 		draw_circle(Vector2(758, 408), 14.0, GREEN)
 		draw_string(_font, Vector2(724, 379), "Cultist 1", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, GREEN)
