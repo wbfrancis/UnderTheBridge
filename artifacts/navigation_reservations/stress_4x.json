@@ -1,0 +1,72 @@
+{
+  "actors": {
+    "cultist_01": {
+      "completed_interactions": 67,
+      "repaths": 3
+    },
+    "cultist_02": {
+      "completed_interactions": 66,
+      "repaths": 2
+    },
+    "cultist_03": {
+      "completed_interactions": 69,
+      "repaths": 1
+    },
+    "patron_01": {
+      "completed_interactions": 57,
+      "repaths": 3
+    },
+    "patron_02": {
+      "completed_interactions": 61,
+      "repaths": 2
+    },
+    "patron_03": {
+      "completed_interactions": 57,
+      "repaths": 1
+    },
+    "patron_04": {
+      "completed_interactions": 61,
+      "repaths": 4
+    },
+    "patron_05": {
+      "completed_interactions": 55,
+      "repaths": 2
+    },
+    "patron_06": {
+      "completed_interactions": 69,
+      "repaths": 2
+    },
+    "patron_07": {
+      "completed_interactions": 59,
+      "repaths": 4
+    },
+    "patron_08": {
+      "completed_interactions": 57,
+      "repaths": 1
+    }
+  },
+  "cancellations": 31,
+  "cleanup_failures": 0,
+  "close_encounters": 0,
+  "closest_agent_distance": 0.473063558340073,
+  "completed_interactions": 678,
+  "decisions_by_kind": {
+    "approach": 154,
+    "bar_position": 68,
+    "bathroom": 31,
+    "bathroom_queue": 92,
+    "exit": 40,
+    "seat": 339
+  },
+  "invariant_violations": [],
+  "passed": true,
+  "repaths": 25,
+  "reservation_rejections": 714,
+  "reservation_releases": 715,
+  "reservation_requests": 1438,
+  "seed": 41904,
+  "simulated_seconds": 600.000000000046,
+  "simulation_scale": 4.0,
+  "stuck_events": 0,
+  "terminal_transitions": 8
+}

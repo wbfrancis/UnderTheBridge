@@ -112,6 +112,8 @@ Each Night has one seed. Rescue Persuasion and staying-behind checks draw from t
 
 Actor movement is constrained to the floor plane. Animation state is selected from logical activity and movement; animation events never own gameplay consequences.
 
+The navigation spike validated flat-plane `NavigationAgent3D` path following with 2D RVO avoidance and physical actor collision as a fallback. Path updates occur once per physics frame. A four-simulated-second no-progress interval requests a fresh path; fifteen simulated seconds without progress is a measured stuck failure. Production geometry should use a pre-baked static navigation mesh; runtime collision-geometry baking exists only in the spike harness.
+
 ## 6. State models
 
 ### 6.1 Patron lifecycle
@@ -339,7 +341,6 @@ The following are deliberately not fixed before measurement:
 - exact Godot material/shadow settings for pixel sprites
 - final camera distance, field of view, and pixel scale
 - whether repeated high-poly props require reduction
-- navigation avoidance tuning at 4x
 - whether the simulation clock uses an engine time-scale adapter or shared scaled delta internally
 - exact line-of-sight range and cone angle
 

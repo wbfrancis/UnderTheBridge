@@ -30,6 +30,7 @@ The runner uses the known local Godot 4.7.1 console executable when present, oth
 - [Asset migration manifest](./docs/ASSET_MIGRATION_MANIFEST.md)
 - [Milestone backlog](./docs/MILESTONE_BACKLOG.md)
 - [Headless simulation spike](./docs/spikes/HEADLESS_SIMULATION_SPIKE.md)
+- [Navigation and reservation spike](./docs/spikes/NAVIGATION_RESERVATION_SPIKE.md)
 
 ## Scope gate
 
