@@ -34,6 +34,17 @@ func remove_pending(action_id: int) -> bool:
 	return false
 
 
+func set_target_valid(action_id: int, is_valid: bool) -> bool:
+	if not _active.is_empty() and _active["id"] == action_id:
+		_active["target_is_valid"] = is_valid
+		return true
+	for action in _pending:
+		if action["id"] == action_id:
+			action["target_is_valid"] = is_valid
+			return true
+	return false
+
+
 func do_now(
 		name: StringName,
 		target_id: StringName,

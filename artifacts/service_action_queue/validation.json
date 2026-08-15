@@ -1,0 +1,311 @@
+{
+  "happy_path": {
+    "cultist_queues": {
+      "cultist_01": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      },
+      "cultist_02": {
+        "active": {},
+        "pending": [],
+        "recent_events": [
+          {
+            "id": 1,
+            "name": "prepare_drink",
+            "reason": "",
+            "state": "completed"
+          },
+          {
+            "id": 2,
+            "name": "pickup_drink",
+            "reason": "",
+            "state": "completed"
+          },
+          {
+            "id": 3,
+            "name": "serve_order",
+            "reason": "",
+            "state": "completed"
+          },
+          {
+            "id": 4,
+            "name": "reset_at_bar",
+            "reason": "",
+            "state": "completed"
+          }
+        ]
+      },
+      "cultist_03": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      }
+    },
+    "order": {
+      "id": "order_001",
+      "patron_id": "patron_june",
+      "payment": 5,
+      "requested_at": 0.0,
+      "state": "served",
+      "terminal_at": 9.09999999999999,
+      "terminal_reason": "delivered",
+      "tip": 2
+    },
+    "order_id": "order_001",
+    "order_system": {
+      "orders": {
+        "order_001": {
+          "id": "order_001",
+          "patron_id": "patron_june",
+          "payment": 5,
+          "requested_at": 0.0,
+          "state": "served",
+          "terminal_at": 9.09999999999999,
+          "terminal_reason": "delivered",
+          "tip": 2
+        }
+      },
+      "recent_events": [
+        {
+          "details": {},
+          "order_id": "order_001",
+          "state": "created"
+        },
+        {
+          "details": {
+            "elapsed": 9.09999999999999,
+            "payment": 5,
+            "tip": 2
+          },
+          "order_id": "order_001",
+          "state": "served"
+        }
+      ],
+      "revenue": 5,
+      "tips": 2
+    },
+    "patron_available": true,
+    "patron_id": "patron_june",
+    "prepared_drinks": {
+      "drink_001": {
+        "carried_by": "",
+        "id": "drink_001",
+        "order_id": "order_001",
+        "state": "served"
+      }
+    },
+    "selected_cultist_id": "cultist_01",
+    "service_events": [
+      {
+        "actor_id": "",
+        "at": 0.0,
+        "details": {},
+        "event": "slice_started"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 0.0,
+        "details": {
+          "action_ids": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "event": "service_queued"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 5.04999999999999,
+        "details": {
+          "drink_id": "drink_001"
+        },
+        "event": "drink_prepared"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 6.04999999999999,
+        "details": {
+          "drink_id": "drink_001"
+        },
+        "event": "drink_picked_up"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 9.09999999999999,
+        "details": {
+          "drink_id": "drink_001",
+          "payment": 5,
+          "tip": 2
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 10.1,
+        "details": {},
+        "event": "queue_continued"
+      }
+    ],
+    "simulated_seconds": 10.25
+  },
+  "passed": true,
+  "slice": "service_action_queue",
+  "stale_target_path": {
+    "cultist_queues": {
+      "cultist_01": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      },
+      "cultist_02": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      },
+      "cultist_03": {
+        "active": {},
+        "pending": [],
+        "recent_events": [
+          {
+            "id": 1,
+            "name": "prepare_drink",
+            "reason": "invalid_target",
+            "state": "failed"
+          },
+          {
+            "id": 2,
+            "name": "pickup_drink",
+            "reason": "invalid_target",
+            "state": "failed"
+          },
+          {
+            "id": 3,
+            "name": "serve_order",
+            "reason": "invalid_target",
+            "state": "failed"
+          },
+          {
+            "id": 4,
+            "name": "reset_at_bar",
+            "reason": "",
+            "state": "completed"
+          }
+        ]
+      }
+    },
+    "order": {
+      "id": "order_001",
+      "patron_id": "patron_june",
+      "payment": 0,
+      "requested_at": 0.0,
+      "state": "cancelled",
+      "terminal_at": 0.0,
+      "terminal_reason": "patron_left",
+      "tip": 0
+    },
+    "order_id": "order_001",
+    "order_system": {
+      "orders": {
+        "order_001": {
+          "id": "order_001",
+          "patron_id": "patron_june",
+          "payment": 0,
+          "requested_at": 0.0,
+          "state": "cancelled",
+          "terminal_at": 0.0,
+          "terminal_reason": "patron_left",
+          "tip": 0
+        }
+      },
+      "recent_events": [
+        {
+          "details": {},
+          "order_id": "order_001",
+          "state": "created"
+        },
+        {
+          "details": {
+            "reason": "patron_left"
+          },
+          "order_id": "order_001",
+          "state": "cancelled"
+        }
+      ],
+      "revenue": 0,
+      "tips": 0
+    },
+    "patron_available": false,
+    "patron_id": "patron_june",
+    "prepared_drinks": {},
+    "selected_cultist_id": "cultist_01",
+    "service_events": [
+      {
+        "actor_id": "",
+        "at": 0.0,
+        "details": {},
+        "event": "slice_started"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 0.0,
+        "details": {
+          "action_ids": [
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "event": "service_queued"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 0.0,
+        "details": {
+          "payment": 0
+        },
+        "event": "patron_left"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 0.05,
+        "details": {
+          "action_id": 1,
+          "name": "prepare_drink",
+          "reason": "invalid_target"
+        },
+        "event": "action_failed"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 0.05,
+        "details": {
+          "action_id": 2,
+          "name": "pickup_drink",
+          "reason": "invalid_target"
+        },
+        "event": "action_failed"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 0.05,
+        "details": {
+          "action_id": 3,
+          "name": "serve_order",
+          "reason": "invalid_target"
+        },
+        "event": "action_failed"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 1.0,
+        "details": {},
+        "event": "queue_continued"
+      }
+    ],
+    "simulated_seconds": 2.0
+  }
+}
