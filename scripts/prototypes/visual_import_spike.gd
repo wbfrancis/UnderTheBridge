@@ -102,11 +102,6 @@ func _apply_material_overrides(environment_root: Node) -> void:
             if imported_material == null:
                 continue
             var material_name := imported_material.resource_name
-            print("VISUAL_SPIKE_MATERIAL node=%s surface=%d material=%s" % [
-                mesh_instance.name,
-                surface_index,
-                material_name,
-            ])
             match material_name:
                 "mirror":
                     mesh_instance.set_surface_override_material(
