@@ -229,6 +229,8 @@ The registry owns one occupant slot and two FIFO queue slots. The Patron activit
 
 The Trapdoor owns a 2-second open pulse and 3-second cooldown. It queries occupant posture at activation and opening ticks; it does not arm a future fall.
 
+The bathroom danger-chain spike fixes the implementation rule behind that invariant: each activation stores the occupant identifier present when the pulse begins. Only that Patron can be captured by that pulse. Capture, cancellation, or queue promotion never transfers eligibility to the next occupant. A maximum-Suspicion seated witness begins the direct Escape branch; the Max Drunk `+25` downgrade remains seated unless its accumulated Suspicion independently reaches maximum.
+
 An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice check every 5 simulated seconds. Probability interpolates linearly from 1% at 50% to 90% at 100%. Selecting the intent stops further checks until the bathroom visit resolves; completing use sets Bladder to zero.
 
 ## 7. Critical event flows

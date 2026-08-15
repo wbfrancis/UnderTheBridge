@@ -1,0 +1,176 @@
+{
+  "checks": [
+    "seeded bathroom choice and FIFO cleanup",
+    "standing capture and seated evidence response",
+    "trapdoor pulse/cooldown does not arm future occupant",
+    "missing Companion milestones through Investigation",
+    "Escape, one Intercept, front-exit defeat",
+    "capture, cancellation, defeat, and restart ownership cleanup"
+  ],
+  "focused_test_count": 4,
+  "passed": true,
+  "seed": 41904,
+  "snapshot": {
+    "active_intercept": {},
+    "defeat": false,
+    "occupant_id": "Elias",
+    "ownership_clean": false,
+    "patrons": {
+      "Elias": {
+        "activity": "investigation_search",
+        "bladder": 0.0,
+        "companion_id": "Mara",
+        "defer_remaining": 0.0,
+        "escape_remaining": 6.0,
+        "id": "Elias",
+        "intercept_attempted": false,
+        "lifecycle": "investigating",
+        "max_drunk": false,
+        "missing_20_applied": true,
+        "missing_30_applied": true,
+        "missing_40_applied": true,
+        "missing_seconds": 39.9999999999999,
+        "missing_target": "Mara",
+        "phase_remaining": 4.95,
+        "suspicion": 100.0,
+        "suspicion_cause": "missing_companion"
+      },
+      "Mara": {
+        "activity": "captured",
+        "bladder": 100.0,
+        "companion_id": "Elias",
+        "defer_remaining": 0.0,
+        "escape_remaining": 6.0,
+        "id": "Mara",
+        "intercept_attempted": false,
+        "lifecycle": "captured",
+        "max_drunk": false,
+        "missing_20_applied": false,
+        "missing_30_applied": false,
+        "missing_40_applied": false,
+        "missing_seconds": 0.0,
+        "missing_target": "",
+        "phase_remaining": 0.0,
+        "suspicion": 0.0,
+        "suspicion_cause": "none"
+      }
+    },
+    "pending_investigator_id": "",
+    "queue": [],
+    "recent_events": [
+      {
+        "actor_id": "Mara",
+        "at": 0.0,
+        "details": {},
+        "event": "bathroom_intent_forced"
+      },
+      {
+        "actor_id": "Elias",
+        "at": 0.0,
+        "details": {
+          "target_id": "Mara"
+        },
+        "event": "companion_missing_started"
+      },
+      {
+        "actor_id": "Mara",
+        "at": 0.0,
+        "details": {},
+        "event": "bathroom_entered"
+      },
+      {
+        "actor_id": "Mara",
+        "at": 0.0,
+        "details": {},
+        "event": "trapdoor_opened"
+      },
+      {
+        "actor_id": "Mara",
+        "at": 0.0,
+        "details": {
+          "cause": "trapdoor"
+        },
+        "event": "capture"
+      },
+      {
+        "actor_id": "",
+        "at": 2.0,
+        "details": {},
+        "event": "trapdoor_cooldown"
+      },
+      {
+        "actor_id": "",
+        "at": 4.99999999999999,
+        "details": {},
+        "event": "trapdoor_ready"
+      },
+      {
+        "actor_id": "Elias",
+        "at": 20.0000000000001,
+        "details": {},
+        "event": "missing_companion_20"
+      },
+      {
+        "actor_id": "Elias",
+        "at": 30.0000000000003,
+        "details": {},
+        "event": "missing_companion_30"
+      },
+      {
+        "actor_id": "Elias",
+        "at": 39.9999999999999,
+        "details": {},
+        "event": "missing_companion_40"
+      },
+      {
+        "actor_id": "Elias",
+        "at": 39.9999999999999,
+        "details": {},
+        "event": "investigation_started"
+      }
+    ],
+    "recent_rolls": [],
+    "registry": {
+      "actor_slots": {
+        "Elias": "bathroom_occupant"
+      },
+      "invariant_violations": [],
+      "rejections": 0,
+      "releases": 1,
+      "requests": 2,
+      "slots": {
+        "bathroom_investigation_wait": {
+          "kind": "investigation_wait",
+          "owner": ""
+        },
+        "bathroom_occupant": {
+          "kind": "bathroom",
+          "owner": "Elias"
+        },
+        "bathroom_queue_01": {
+          "kind": "bathroom_queue",
+          "owner": ""
+        },
+        "bathroom_queue_02": {
+          "kind": "bathroom_queue",
+          "owner": ""
+        },
+        "front_exit": {
+          "kind": "front_exit",
+          "owner": ""
+        },
+        "intercept_position": {
+          "kind": "intercept",
+          "owner": ""
+        }
+      }
+    },
+    "seed": 41904,
+    "simulated_seconds": 40.0499999999999,
+    "time_scale": 1.0,
+    "trapdoor_eligible_occupant": "",
+    "trapdoor_remaining": 0.0,
+    "trapdoor_state": "closed"
+  },
+  "spike": "bathroom_danger_chain"
+}
