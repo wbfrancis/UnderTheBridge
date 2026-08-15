@@ -89,15 +89,15 @@ Milestone definition of done:
 
 Backlog:
 
-- M2-01 Selection, Cultist switching, visible Action Queues, append, do-now, cancel, and failure reasons.
+- M2-01 Selection, Cultist switching, selected-Cultist HUD queue, per-row `x` removal/cancellation, append, do-now, Commitment Point disabling, and failure reasons.
 - M2-02 Camera pan/zoom and mouse/keyboard input map.
 - M2-03 `InteractionRegistry` for seats, bar positions, bathroom, queues, and front exit.
 - M2-04 Fixed Arrival Group schedule and seating.
-- M2-05 Patron normal loop: seat, Order, drink, socialize, Bladder, bathroom, Normal Departure.
+- M2-05 Patron normal loop: seat, Order, drink, socialize, Bladder, seeded 5-second bathroom-choice checks, bathroom, Intoxication decay, and Normal Departure.
 - M2-06 `OrderSystem`: automatic Orders, 5-second preparation, physical drinks, delivery, payment, tips, impatience, cancellation.
 - M2-07 Safe service autonomy for empty Cultist queues.
 - M2-08 Pause, 1x, 2x, 4x, Closing, results shell, and clean restart.
-- M2-09 Minimal selected-Patron and selected-Cultist UI.
+- M2-09 Separate normal/debug Patron data views and minimal selected-Patron/selected-Cultist UI; normal play must not expose Bladder or hidden numeric state.
 
 Key verification:
 
@@ -119,7 +119,7 @@ Definition of done:
 
 Backlog:
 
-- M3-01 Personal Suspicion bands, event values, cause classification, recovery, and visible status.
+- M3-01 Personal Suspicion bands, event values, cause classification, recovery, visible status, and Max Drunk Hard Evidence downgrade.
 - M3-02 Visual line of sight, room hearing, Unattended Body pressure, and companion influence.
 - M3-03 Trapdoor route integrated into the full Night.
 - M3-04 Drugged Drink: two doses, preparation, countdown, drowsiness, collapse.
@@ -132,7 +132,7 @@ Backlog:
 Key verification:
 
 - Representative formula bounds and seeded odds.
-- Seated/standing/Max Drunk Trapdoor scenario.
+- Seated/standing Trapdoor scenario plus Max Drunk Hard Evidence downgrade.
 - Missing Companion through Investigation/Escape/defeat scenario.
 - Drug collapse Helper success/failure scenario.
 - Action cancellation around knockout Commitment Point and drag drop.

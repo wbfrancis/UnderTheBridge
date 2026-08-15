@@ -28,11 +28,13 @@ The slice is followed by one week of observed evaluation. Expansion is condition
 
 ## 4. Night structure
 
-| Phase | Simulated time | Rules |
-|---|---:|---|
-| Preparation | 1 minute | Position Cultists and assign initial work; no Patrons yet. |
-| Active operation | 15 minutes | Arrivals, service, social play, capture, investigation, and escape. |
-| Closing | 2 minutes | No new Orders; remaining eligible Patrons prepare to leave. |
+The prototype uses a compressed diegetic clock. Preparation begins just before sunset and the doors open at approximately 7:00 PM.
+
+| Phase | Approximate clock | Duration | Rules |
+|---|---|---:|---|
+| Preparation | 6:59-7:00 PM | 1 minute | Position Cultists and assign initial work; no Patrons yet. |
+| Active operation | 7:00-7:15 PM | 15 minutes | Arrivals, service, social play, capture, investigation, and escape. |
+| Closing | 7:15-7:17 PM | 2 minutes | No new Orders; remaining eligible Patrons prepare to leave. |
 
 The player may pause and issue commands at any time. Available speeds are pause, 1x, 2x, and 4x. Starting an Escape forces the game back to 1x but does not pause it.
 
@@ -40,12 +42,12 @@ The player may pause and issue commands at any time. Available speeds are pause,
 
 The slice uses a fixed cast for reproducible tuning and bug reports.
 
-| Arrival | Group |
-|---:|---|
-| 1:30 | Pair |
-| 3:00 | Sad solo Patron |
-| 5:00 | Trio |
-| 7:00 | Pair |
+| Approximate arrival | Night offset | Group |
+|---|---:|---|
+| 7:00:30 PM | 1:30 | Pair |
+| 7:02 PM | 3:00 | Sad solo Patron |
+| 7:04 PM | 5:00 | Trio |
+| 7:06 PM | 7:00 | Pair |
 
 Each Arrival Group has authored companion relationships. Every Patron begins with zero Friendship toward every Cultist. The sad solo Patron guarantees access to the Friendship Capture route.
 
@@ -63,18 +65,25 @@ Clamp the chance to 0-90%. A maximum-suspicion Patron never stays. If several Cu
 
 Normal Patrons arrive, find a seat, order, drink, socialize, use the bathroom as Bladder fills, and eventually leave. Exceptional states add following, investigation, escape, unconsciousness, dragging, and capture.
 
-When selected, a Patron shows segmented indicators for:
+### Normal play
 
-- Bladder
-- service patience
-- mood
-- Suspicion band
-- Intoxication
-- drugged status and countdown
-- companion relationships
+The selected Patron panel shows only information the player can reasonably observe or has created:
+
+- current visible activity or intent
+- qualitative mood
+- Suspicion band, without an exact value
+- qualitative Intoxication level
+- Arrival Group and companion relationships
+- Friendship band with the selected Cultist
+- Order status
+- known Drugged Drink status and countdown
 - qualitative victim value and risk
 
-Overhead icons appear only for urgent intentions: ordering, bathroom need, Investigation, or Escape.
+Bladder level, bathroom probability, exact patience, exact Suspicion, hidden causes, and internal timers are not shown during normal play. Overhead icons appear only for urgent observable intentions: ordering, choosing or queueing for the bathroom, Investigation, or Escape.
+
+### Debug mode
+
+Debug mode may expose exact Bladder and bathroom probability, Intoxication and decay time, mood and patience, Suspicion value/cause/recovery, the complete Friendship matrix, lifecycle/activity state, drug timer, current target and reservation, navigation destination, Action progress, Night seed, and recent random rolls. Debug presentation exists for development and evaluation diagnosis, not as the intended player experience.
 
 ## 7. Drink service
 
@@ -91,7 +100,11 @@ After drinking for about 30 seconds, the Patron socializes for a variable interv
 
 ## 8. Bladder, bathroom, and Trapdoor
 
-Finishing drinks raises Bladder. A full Bladder compels a bathroom trip.
+Finishing drinks raises Bladder. Patrons do not wait for a full meter and are not compelled automatically at maximum. Every 5 simulated seconds, an otherwise eligible Patron with at least 50% Bladder makes a seeded bathroom decision check:
+
+`bathroom chance = 1% + 89% × ((Bladder − 50%) / 50%)`
+
+Clamp the result from 1% at 50% Bladder to 90% at 100%. Patrons below 50% do not roll. A Patron already committed to another terminal or bathroom-related state does not roll. Choosing the trip creates the bathroom intent and stops further checks until that visit resolves. Completing seated bathroom use empties Bladder to 0%.
 
 - One Patron may occupy the bathroom.
 - Two authored first-in/first-out queue positions sit outside.
@@ -106,13 +119,13 @@ Bathroom use lasts about 13 seconds:
 | Seated use | 8 seconds | Protected |
 | Stand and prepare to leave | 3 seconds | Vulnerable |
 
-The external control opens the Trapdoor for a 2-second pulse followed by a 3-second cooldown. A seated occupant does not fall, and the activation does not remain armed. A seated Patron who sees it open reaches maximum Suspicion unless they are Max Drunk. Every activation creates a nearby +10 sound event.
+The external control opens the Trapdoor for a 2-second pulse followed by a 3-second cooldown. A seated occupant does not fall, and the activation does not remain armed. Seeing it open while seated is Hard Evidence; a Max Drunk occupant therefore gains 25 soft Suspicion instead of permanent maximum Suspicion. Every activation creates a nearby +10 sound event.
 
 ## 9. Intoxication
 
-Intoxication has four visible levels: sober (0), buzzed (1), drunk (2), and Max Drunk (3). Finishing an ordinary or Drugged Drink raises Intoxication by one. It does not decay during the Night.
+Intoxication has four levels: sober (0), buzzed (1), drunk (2), and Max Drunk (3). Finishing an ordinary or Drugged Drink raises Intoxication by one, capped at 3, and resets its decay timer. After four simulated minutes without finishing another drink, Intoxication falls by one level; it continues falling by one level every four minutes until sober.
 
-Max Drunk suppresses only the seated Trapdoor observation. It does not suppress reactions to assault, dosing, unconscious bodies, dragging, or other Hard Evidence.
+While Max Drunk, every Hard Evidence event is downgraded to +25 soft Suspicion instead of setting Suspicion to 100 permanently. The downgrade is evaluated when the event is witnessed and is not upgraded retroactively when the Patron sobers. Separate Hard Evidence events may accumulate, and reaching 100 through those soft increases still causes the normal maximum-Suspicion behavior. Non-Hard-Evidence stimuli retain their listed values.
 
 ## 10. Capture routes
 
@@ -129,7 +142,7 @@ Time the 2-second opening pulse while a Patron or Investigator is standing. Fall
 - At 10 seconds the Patron becomes visibly drowsy.
 - At 20 seconds the Patron collapses and becomes unconscious.
 - The drink raises Bladder and Intoxication normally.
-- Seeing the dosing is Hard Evidence and sets the witness to 100 Suspicion.
+- Seeing the dosing is Hard Evidence and normally sets the witness to 100 Suspicion; Max Drunk applies the downgrade in section 9.
 
 If the victim has a conscious Companion, the strongest friend becomes the Helper after a 2-second reaction. The Helper spends 4 seconds supporting the victim, then moves toward the front exit at 60% speed. One Cultist may attempt a 6-second Rescue Persuasion before they cross the exit.
 
@@ -194,17 +207,19 @@ Suspicion is personal and tracked internally from 0-100.
 | Failed Rescue Persuasion | +25 |
 | First seeing a Cultist drag a body | +50 |
 | Continuing to see a body dragged | +10 every 5 seconds |
-| Seeing a drink dosed | Set to 100; Hard Evidence |
-| Witnessing knockout | Set to 100; Hard Evidence |
-| Witnessing Trapdoor Capture | Set to 100; Hard Evidence |
-| Seeing Trapdoor open while seated | Set to 100 unless Max Drunk |
+| Seeing a drink dosed | Hard Evidence rule |
+| Witnessing knockout | Hard Evidence rule |
+| Witnessing Trapdoor Capture | Hard Evidence rule |
+| Seeing Trapdoor open while seated | Hard Evidence rule |
 | Missing Companion at 20 seconds | +25 |
 | Missing Companion at 30 seconds | +25 |
 | Missing Companion at 40 seconds | Set to 100 |
 
 Visual evidence requires facing and unobstructed line of sight. Sounds use room-based hearing.
 
-Soft Suspicion begins recovering after 20 quiet seconds at 5 points per 10 seconds. Hard Evidence is permanent. Missing-friend Suspicion recovers at the same rate if the Companion safely returns.
+For a Patron below Max Drunk, Hard Evidence sets Suspicion to 100 permanently. For a Max Drunk Patron, the same event adds 25 soft Suspicion and does not create a permanent floor.
+
+Soft Suspicion begins recovering after 20 quiet seconds at 5 points per 10 seconds. Missing-friend Suspicion recovers at the same rate if the Companion safely returns.
 
 ### Unattended Bodies
 
@@ -226,7 +241,13 @@ Each escaping Patron permits one Intercept Action. A Cultist who reaches them st
 
 Each Cultist owns one active Action and three pending Actions. Normal commands append. A "do now" command clears pending Actions and interrupts the current Action only before its Commitment Point.
 
-Cancellation loses elapsed time but no abstract resource. Invalid targets fail with a visible reason and the Cultist continues to the next Action. Dragging can always be interrupted by dropping the body. Cultist switching is instantaneous.
+The HUD shows the complete ordered Action Queue for the selected Cultist: active Action first, followed by up to three pending Actions. Each row shows the Action name, target when relevant, and a small `x` control.
+
+- Clicking `x` on a pending Action removes it immediately.
+- Clicking `x` on the active Action requests cancellation under the normal Commitment Point rules.
+- Once the active Action has crossed its Commitment Point, its `x` is disabled because removal cannot undo the consequence.
+
+Cancellation loses elapsed time but no abstract resource. Invalid targets fail with a visible reason and the Cultist continues to the next Action. Dragging can always be interrupted by dropping the body. Cultist switching is instantaneous, and the queue panel updates to the newly selected Cultist.
 
 When the queue is empty, safe autonomy may continue assigned service work or idle. Autonomy never creates capture-related Actions.
 

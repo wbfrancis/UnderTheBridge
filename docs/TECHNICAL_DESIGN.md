@@ -46,7 +46,7 @@ flowchart TD
 
 **CultistAgent**
 
-- Interface: enqueue Action, do-now Action, cancel current Action, return visible snapshot.
+- Interface: enqueue Action, do-now Action, remove pending Action, cancel current Action, return normal/debug snapshots.
 - Hides: queue validation, Commitment Points, pathing, interaction execution, failure reasons, and safe autonomy.
 - Invariant: one active plus at most three pending Actions; autonomy never enqueues Capture Actions.
 
@@ -72,7 +72,7 @@ flowchart TD
 
 - Interface: report visual event, report sound event, advance ambient pressure.
 - Hides: facing and line-of-sight checks, room hearing, Unattended Body accumulation, and companion influence.
-- Invariant: Hard Evidence is never converted back into soft Suspicion.
+- Invariant: Hard Evidence normally creates permanent maximum Suspicion, but a Max Drunk observer downgrades each event to +25 soft Suspicion before it reaches the Patron state transition.
 
 **Rules modules**
 
@@ -85,6 +85,12 @@ Immutable Godot `Resource` definitions contain authored Patron profiles, timings
 Recommended identifiers are typed `StringName` values or small value objects rather than Node paths persisted as domain identity.
 
 No state is duplicated in UI. UI reads snapshots and submits commands.
+
+Normal Patron snapshots expose observable activity, qualitative mood, Suspicion band, Intoxication level, Arrival Group, relevant Friendship band, Order state, known drug countdown, and qualitative victim value/risk. They exclude Bladder, exact probability/value/timer data, hidden causes, reservations, navigation, and random state.
+
+Debug snapshots may additionally expose exact Bladder and next bathroom-check probability, Intoxication decay, patience/mood, Suspicion cause and recovery, complete Friendship values, lifecycle/activity, reservations, navigation, Action progress, seed, and recent rolls.
+
+The selected Cultist snapshot includes stable Action identifiers for the active and pending rows. The HUD removes a pending Action by identifier or requests cancellation of the active Action; a committed active Action reports cancellation unavailable.
 
 ## 4. Simulation time and randomness
 
@@ -147,7 +153,7 @@ Within `Active`, a Patron has one activity intent:
 - standing bathroom exit
 - supporting a collapsed Companion
 
-Needs and conditions such as Bladder, Intoxication, drug countdown, Friendship, and Suspicion are orthogonal data, not separate state machines.
+Needs and conditions such as Bladder, Intoxication, drug countdown, Friendship, and Suspicion are orthogonal data, not separate state machines. Bladder schedules a decision check every 5 simulated seconds only while the Patron is eligible; Intoxication stores its level and time until the next four-minute decay.
 
 ### 6.2 Suspicion bands
 
@@ -163,7 +169,7 @@ Suspicion keeps a cause classification:
 
 - `soft`: recoverable after quiet
 - `missing_companion`: drives Investigation at maximum
-- `hard_evidence`: permanent and drives Escape
+- `hard_evidence`: permanent and drives Escape after the Max Drunk observation-time downgrade has been considered
 - `general_danger`: drives Escape
 
 ### 6.3 Cultist Action lifecycle
@@ -172,6 +178,7 @@ Suspicion keeps a cause classification:
 stateDiagram-v2
     [*] --> Queued
     Queued --> Validating: reaches front of queue
+    Queued --> Cancelled: pending row removed
     Validating --> Failed: target invalid
     Validating --> Navigating: approach required
     Validating --> Executing: already in position
@@ -220,6 +227,8 @@ The registry owns one occupant slot and two FIFO queue slots. The Patron activit
 
 The Trapdoor owns a 2-second open pulse and 3-second cooldown. It queries occupant posture at activation and opening ticks; it does not arm a future fall.
 
+An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice check every 5 simulated seconds. Probability interpolates linearly from 1% at 50% to 90% at 100%. Selecting the intent stops further checks until the bathroom visit resolves; completing use sets Bladder to zero.
+
 ## 7. Critical event flows
 
 ### 7.1 Missing Companion to defeat
@@ -257,6 +266,9 @@ The Trapdoor owns a 2-second open pulse and 3-second cooldown. It queries occupa
 |---|---|
 | Rescue Persuasion | clamp(25 + 0.7 x (Friendship - Suspicion), 5, 95)% |
 | Stay behind | clamp(10 + 0.5 x Bartender Friendship + 15 x Intoxication - 0.6 x Suspicion, 0, 90)% |
+| Bathroom choice | every 5s when eligible: clamp(1 + 89 x ((Bladder - 50) / 50), 1, 90)% |
+| Intoxication decay | -1 level after each 4 minutes without completing a drink |
+| Hard Evidence | permanent 100 normally; +25 soft while observer is Max Drunk |
 | Soft recovery | after 20 quiet seconds, -5 per 10 seconds |
 | Unattended Body | after 3 seconds, +5 per body to all active Patrons every 5 seconds |
 | Companion influence | every 10 seconds, +up to 5 toward highest nearby group member |
@@ -277,10 +289,11 @@ Tests protect interfaces and high-risk chains, not every implementation path.
 Automate only:
 
 - formula bounds and representative Suspicion/Friendship/stay cases
-- Action Queue append, do-now, pre/post-Commitment cancellation, and invalid-target progression
+- representative bathroom-choice bounds and deterministic seeded roll
+- Action Queue append, pending-row removal, do-now, pre/post-Commitment cancellation, and invalid-target progression
 - exclusive reservation and bathroom FIFO invariants
 - Order served versus 60-second cancellation/payment behavior
-- seated versus standing Trapdoor result, including Max Drunk witness exception
+- seated versus standing Trapdoor result, including Max Drunk Hard Evidence downgrade
 - missing Companion to Investigation to Escape/defeat chain
 - Drugged Drink Helper success/failure chain
 - results outcome for quota success, quota failure, and maximum-Suspicion escape

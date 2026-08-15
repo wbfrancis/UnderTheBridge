@@ -47,11 +47,11 @@ A specially prepared drink that makes its consumer drowsy and then unconscious o
 _Avoid_: Poison
 
 **Bladder**:
-A patron need increased by drinking that eventually compels a bathroom trip.
+A patron need increased by drinking that creates a rising chance of choosing a bathroom trip once at least half full.
 _Avoid_: Bathroom meter
 
 **Intoxication**:
-A four-level condition increased by finishing drinks; its highest level is **Max Drunk**.
+A slowly decaying four-level condition increased by finishing drinks; its highest level is **Max Drunk**.
 _Avoid_: Drunkenness meter
 
 ## Danger and capture
@@ -65,7 +65,7 @@ Suspicion that can recover after its source resolves and the patron experiences 
 _Avoid_: Temporary suspicion
 
 **Hard Evidence**:
-Directly witnessed criminal evidence that fixes a patron at maximum suspicion.
+Directly witnessed criminal evidence that normally fixes a Patron at maximum Suspicion. A Max Drunk Patron instead interprets each Hard Evidence event as recoverable Suspicion.
 _Avoid_: Proof meter
 
 **Unattended Body**:
