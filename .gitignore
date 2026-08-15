@@ -1,0 +1,24 @@
+# Godot generated state
+.godot/
+.import/
+
+# Optional .NET output (project is GDScript, kept ignored defensively)
+.mono/
+
+# Builds and local exports
+builds/
+dist/
+exports/
+
+# Test and diagnostic output
+test_results/
+coverage/
+*.log
+*.tmp
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
