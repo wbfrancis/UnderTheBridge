@@ -77,7 +77,21 @@ In Blender 5.2:
 
 Place the cleaned `.blend` and its 12 referenced textures under the Godot project. Let Godot 4.7.1 use Blender's glTF import path. Do not create an independently maintained `.glb` copy unless direct import proves unreliable.
 
-### 5.2 Rebuild in Godot
+### 5.2 Validated visual-spike decisions
+
+Ticket #2 validated the direct-import route with a 21-object bar vignette and the existing Bartender sprite:
+
+- Keep one Blender unit equal to one Godot meter. The imported room section is approximately 3.6 by 5.4 meters; defer any rescaling until the 11-agent movement spike measures circulation.
+- Use Forward+ as the Windows prototype baseline. Compatibility also rendered successfully, but it offers no advantage for the planned mirror and lighting treatment.
+- Use a fixed perspective camera as the initial presentation: 34° vertical FOV, position `(4.0, 4.2, 5.2)`, aimed at `(0.15, 0.6, 0.2)` in the representative vignette.
+- Present pixel characters as fixed-Y `Sprite3D` billboards with nearest filtering, alpha discard, and an initial scale of 0.05 meters per source pixel.
+- Preserve imported material and node names. Replace the named `mirror`, `glass1`, and `glass_lamp` surfaces with Godot-native material resources; ordinary opaque materials may remain direct imports.
+- Treat `wall_stuccoSPEC.jpg` as non-color data when the production Blender copy is cleaned.
+- Keep texture references relative as `//Textures/<filename>` and save the derived Blender file without remapping those paths toward the pristine source directory.
+
+The reproducible settings, source hashes, reimport probe, and final evidence frame are recorded in `docs/spikes/VISUAL_IMPORT_SPIKE.md`.
+
+### 5.3 Rebuild in Godot
 
 - Fixed high-angle camera, pan, and zoom
 - Lighting and environment settings
