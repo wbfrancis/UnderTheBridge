@@ -77,9 +77,25 @@ In Blender 5.2:
 
 Place the cleaned `.blend` and its 12 referenced textures under the Godot project. Let Godot 4.7.1 use Blender's glTF import path. Do not create an independently maintained `.glb` copy unless direct import proves unreliable.
 
-### 5.2 Rebuild in Godot
+### 5.2 Validated visual-spike decisions
 
-- Fixed high-angle camera, pan, and zoom
+Ticket #2 validated the direct-import route with a 21-object bar vignette and the existing Bartender sprite:
+
+- Keep one Blender unit equal to one Godot meter. The imported room section is approximately 3.6 by 5.4 meters; defer any rescaling until the 11-agent movement spike measures circulation.
+- Use Forward+ as the Windows prototype baseline. Compatibility also rendered successfully, but it offers no advantage for the planned mirror and lighting treatment.
+- Use a fixed long-lens perspective camera square to the bar/backbar wall. In the representative vignette, a 10° vertical FOV, position `(-18.93, 2.31, 0.9)`, and target `(0.0, 0.65, 0.9)` produce a low, approximately 5° downward 2.5D view. The long lens partially approximates orthographic projection while retaining useful depth cues.
+- Present pixel characters as fixed-Y `Sprite3D` billboards with nearest filtering, alpha discard, and an initial scale of 0.025 meters per source pixel.
+- Raise each sprite origin from the floor according to its opaque image bounds; the 64×64 Bartender reference uses `Y = 0.4` and a small contact shadow so its feet are visible and grounded.
+- Treat the camera-facing wall as a cutaway rather than rotating around the room. The ticket #2 reference hides the foreground wall, unused hanging shades, annex, and occluded stool without altering the imported source.
+- Preserve imported material and node names. Replace the named `mirror`, `glass1`, and `glass_lamp` surfaces with Godot-native material resources; ordinary opaque materials may remain direct imports.
+- Treat `wall_stuccoSPEC.jpg` as non-color data when the production Blender copy is cleaned.
+- Keep texture references relative as `//Textures/<filename>` and save the derived Blender file without remapping those paths toward the pristine source directory.
+
+The reproducible settings, source hashes, reimport probe, and final evidence frame are recorded in `docs/spikes/VISUAL_IMPORT_SPIKE.md`.
+
+### 5.3 Rebuild in Godot
+
+- Fixed wall-flush long-lens perspective camera, pan, and zoom; no rotation
 - Lighting and environment settings
 - All used materials
 - Static collision and occluder decisions

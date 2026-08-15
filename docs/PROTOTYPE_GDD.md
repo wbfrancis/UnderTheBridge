@@ -13,7 +13,7 @@ The slice is followed by one week of observed evaluation. Expansion is condition
 - Engine: Godot 4.7.1
 - Scripting: statically typed GDScript
 - Presentation: pixel-art characters in a 3D speakeasy
-- Camera: fixed high-angle perspective with pan and zoom, no rotation
+- Camera: fixed low-elevated long-lens perspective 2.5D view, square to the bar/backbar wall, with pan and zoom but no rotation
 - Session: one restartable 18-minute Night
 - Cast: three Cultists and eight authored Patrons
 - Tone: stylized, systemic, non-graphic

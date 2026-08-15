@@ -15,13 +15,13 @@ All existing art is assumed CC0 by user instruction. The assumption is not indep
 
 | ID | Source | Evidence | Decision | Godot destination / action |
 |---|---|---|---|---|
-| ENV-001 | `Speakeasy.blend` | Blender 5.2; 39 meshes, 18 materials, one camera, one light; metric; no missing referenced images | Keep pristine | Preserve original outside active edits; hash before migration. |
+| ENV-001 | `Speakeasy.blend` | Blender 5.2; 39 meshes, 18 materials, one camera, one light; metric; no missing referenced images; SHA-256 `D014B9E00B75CA1BCB3C24A213ABA0A08F17DAF4F95540AC85434F56B3865302` | Keep pristine | Preserve original outside active edits; ticket #2 verified the source remained unchanged. |
 | ENV-002 | `Speakeasy_Godot.blend` | Does not yet exist | Re-export/clean | Create curated copy under `assets/environment/`; direct-import through Blender/glTF. |
 | ENV-003 | 12 referenced JPG textures | Valid external image references from `.blend` | Re-export/clean | Copy with portable relative paths under `assets/environment/textures/`. |
 | ENV-004 | Nine unused JPGs | Present in `Textures` but not referenced | Archive only | Keep with original source; migrate only if deliberately selected. |
 | ENV-005 | `color_121212.hdr` | Present but unused | Archive only | Do not import initially. |
 | ENV-006 | `Render Result` image datablock | Empty Blender runtime datablock | Discard | No migration action. |
-| ENV-007 | Blender camera | One source camera | Discard/rebuild | Rebuild fixed high-angle camera in Godot. |
+| ENV-007 | Blender camera | One source camera | Discard/rebuild | Rebuild a fixed wall-flush long-lens perspective camera in Godot, facing the bar/backbar wall with a foreground-wall cutaway. |
 | ENV-008 | Blender light | One source light | Discard/rebuild | Rebuild lighting and environment in Godot. |
 | ENV-009 | 18 Blender materials | 17 appear used; glass/specular behavior needs review | Rebuild | Recreate used materials in Godot and visually validate. |
 | ENV-010 | `wall_stuccoSPEC.jpg` | Tagged sRGB despite specular role | Rebuild/validate | Verify channel use and color-space import. |
@@ -32,6 +32,7 @@ All existing art is assumed CC0 by user instruction. The assumption is not indep
 | ENV-015 | `Speakeasy.fbx` | Legacy interchange copy | Archive only | Not a migration input. |
 | ENV-016 | `Speakeasy.usdc` | Legacy interchange copy | Archive only | Not a migration input. |
 | ENV-017 | `Speakeasy.blend1` | Older backup with different hash | Archive only | Preserve with source archive, never canonical. |
+| PROTO-ENV-001 | `Speakeasy_VisualSpike.blend` | Ticket #2 derived 21-object bar vignette with portable references to 12 copied textures | Prototype evidence | Keep on the prototype branch; direct `.blend` import and edit/reimport passed. |
 
 ### Environment cleanup selection
 
@@ -66,7 +67,7 @@ Exclude source camera/light and any unused staging objects. Apply transform clea
 
 | ID | Source | Evidence | Decision | Action |
 |---|---|---|---|---|
-| CHAR-001 | `Bartender.png` | 64x64 RGBA, one pose | Reference/temporary | Use only for 2.5D visual spike. |
+| CHAR-001 | `Bartender.png` | 64x64 RGBA, one pose; SHA-256 `8539FC5D9261114266EA371F595653AA5A9B16B8102EE69BDF4242D3E63D232F` | Reference/temporary | Ticket #2 validated 0.025 m/px, nearest filtering, alpha discard, and fixed-Y billboard; do not treat it as production animation art. |
 | CHAR-002 | `Bartender.aseprite` | 128x128, one frame | Keep pristine | Store as editable source through Git LFS. |
 | CHAR-003 | `bartender_model.psd` | 32x40, 8-bit RGB | Keep pristine | Store as editable/reference source through Git LFS. |
 | CHAR-004 | `brainstorm_board.aseprite` | Design/reference board | Keep pristine | Source reference, not runtime content. |

@@ -105,7 +105,7 @@ Each Night has one seed. Rescue Persuasion and staying-behind checks draw from t
 - Root gameplay world: `Node3D`
 - Actors: `CharacterBody3D` with upright `AnimatedSprite3D`
 - Movement: `NavigationAgent3D` over one baked `NavigationRegion3D`
-- Camera: fixed high-angle perspective; pan and zoom only
+- Camera: fixed low-elevated long-lens perspective view, square to the bar/backbar wall; pan and zoom only, with authored foreground-wall cutaways
 - Functional locations: authored interaction-point scenes with approach transforms
 - Queues: authored positions managed by `InteractionRegistry`
 - Tunnel: terminal threshold, not a playable scene
