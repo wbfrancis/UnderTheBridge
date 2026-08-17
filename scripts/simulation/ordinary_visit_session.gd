@@ -5,6 +5,7 @@ signal snapshot_changed(snapshot: Dictionary)
 
 const INTERACTION_REGISTRY_SCRIPT := preload("res://scripts/interactions/interaction_registry.gd")
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
+const PATRON_SUSPICION_SCRIPT := preload("res://scripts/patrons/patron_suspicion.gd")
 const STEP_SECONDS := 0.1
 const GROUP_ID := &"arrival_group_pair_01"
 const BATHROOM_SLOT := &"bathroom_occupant"
@@ -104,6 +105,7 @@ var _order_system = ORDER_SYSTEM_SCRIPT.new()
 var _events: Array[Dictionary] = []
 var _autonomy_events: Array[Dictionary] = []
 var _next_service_cultist_index: int = 0
+var _suspicion_states: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -129,6 +131,9 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_initialize_full_night_cast()
 	else:
 		_initialize_legacy_pair()
+	_suspicion_states.clear()
+	for patron_id: StringName in _patrons:
+		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
 	_emit_snapshot()
 
 
@@ -172,6 +177,25 @@ func restart(seed: int = _seed, full_night: bool = _full_night) -> void:
 	start(seed, full_night)
 
 
+func apply_suspicion_stimulus(
+		patron_id: StringName,
+		stimulus: StringName,
+		observer_is_max_drunk: bool = false
+) -> bool:
+	if not _patrons.has(patron_id) or _patrons[patron_id]["lifecycle"] != &"active":
+		return false
+	var suspicion = _suspicion_states[patron_id]
+	if not suspicion.apply_stimulus(stimulus, observer_is_max_drunk):
+		return false
+	_record(&"suspicion_stimulus", patron_id, {
+		"stimulus": stimulus,
+		"band": suspicion.normal_band(),
+		"max_drunk_observation": observer_is_max_drunk,
+	})
+	_emit_snapshot()
+	return true
+
+
 func normal_patron_view(
 		patron_id: StringName,
 		selected_cultist_id: StringName = &"cultist_01"
@@ -179,12 +203,14 @@ func normal_patron_view(
 	if not _patrons.has(patron_id):
 		return {}
 	var patron: Dictionary = _patrons[patron_id]
+	var suspicion = _suspicion_states[patron_id]
 	return {
 		"id": patron_id,
 		"name": patron["name"],
 		"visible_activity": _visible_activity(patron["activity"]),
 		"mood": "content",
-		"suspicion_band": "Calm",
+		"suspicion_band": suspicion.normal_band(),
+		"suspicion_cue": suspicion.normal_cue(),
 		"intoxication": _intoxication_label(patron["intoxication"]),
 		"arrival_group": patron["group_id"],
 		"companions": patron["companions"].duplicate(),
@@ -200,6 +226,7 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 	if not _patrons.has(patron_id):
 		return {}
 	var patron: Dictionary = _patrons[patron_id]
+	var suspicion: Dictionary = _suspicion_states[patron_id].snapshot()
 	var probability := bathroom_probability(float(patron["bladder"]))
 	return {
 		"id": patron_id,
@@ -209,8 +236,14 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"intoxication_level": patron["intoxication"],
 		"intoxication_decay_in": patron["intoxication_decay_in"],
 		"mood_value": 75,
-		"suspicion": 0,
-		"suspicion_cause": &"none",
+		"suspicion": suspicion["score"],
+		"suspicion_cause": suspicion["cause"],
+		"latest_suspicion_stimulus": suspicion["latest_stimulus"],
+		"suspicion_recoverable": suspicion["recoverable"],
+		"suspicion_quiet_seconds": suspicion["quiet_seconds"],
+		"suspicion_next_recovery_in": suspicion["next_recovery_in"],
+		"suspicion_maximum_response": suspicion["maximum_response"],
+		"hard_evidence_downgrade_count": suspicion["hard_evidence_downgrade_count"],
 		"friendship": patron["friendship"].duplicate(true),
 		"lifecycle": patron["lifecycle"],
 		"activity": patron["activity"],
@@ -360,6 +393,9 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["lifecycle"] != &"active":
 		return
+	var recovered: float = _suspicion_states[patron_id].advance(delta)
+	if recovered > 0.0:
+		_record(&"suspicion_recovered", patron_id, {"amount": recovered})
 	patron["activity_elapsed"] += delta
 	_advance_intoxication(patron_id, patron, delta)
 	match patron["activity"]:

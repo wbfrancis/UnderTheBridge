@@ -60,6 +60,24 @@ func set_time_scale(value: float) -> bool:
 	return true
 
 
+func report_patron_stimulus(
+		patron_id: StringName,
+		stimulus: StringName,
+		observer_is_max_drunk: bool = false
+) -> bool:
+	var applied: bool = _ordinary_visits.apply_suspicion_stimulus(
+		patron_id, stimulus, observer_is_max_drunk
+	)
+	if applied:
+		_record(&"patron_stimulus_reported", {
+			"patron_id": patron_id,
+			"stimulus": stimulus,
+			"max_drunk_observation": observer_is_max_drunk,
+		})
+		_emit_snapshot()
+	return applied
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return

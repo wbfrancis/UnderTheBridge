@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "approved_soft_recovery": true,
+    "hard_evidence_permanent": true,
+    "independent_bands": true,
+    "max_drunk_downgrades_each_event": true,
+    "maximum_response_selection": true,
+    "normal_hides_exact_value": true
+  },
+  "observed": {
+    "hard_evidence_after_120_quiet_seconds": 100.0,
+    "max_drunk_final_suspicion": 45.0,
+    "soft_recovery": [
+      30.0,
+      25.0,
+      20.0
+    ]
+  },
+  "passed": true,
+  "slice": "personal_suspicion"
+}

@@ -147,3 +147,114 @@ func test_restart_constructs_a_clean_second_night() -> void:
 	assert_eq(restarted["runtime"]["timers"], 0)
 	assert_true(restarted["visit_events"].is_empty())
 	assert_false(restarted["results"]["visible"])
+
+
+func test_personal_suspicion_is_independent_and_hidden_behind_normal_bands() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	assert_true(session.report_patron_stimulus(&"patron_june", &"cancelled_order"))
+	assert_true(session.report_patron_stimulus(&"patron_june", &"cancelled_order"))
+	var state: Dictionary = session.snapshot()
+	var june_normal: Dictionary = state["normal_patron_views"][&"patron_june"]
+	var mara_normal: Dictionary = state["normal_patron_views"][&"patron_mara"]
+	var june_debug: Dictionary = state["debug_patron_views"][&"patron_june"]
+
+	assert_eq(june_normal["suspicion_band"], "Uneasy")
+	assert_eq(june_normal["suspicion_cue"], "Cancelled Order")
+	assert_eq(mara_normal["suspicion_band"], "Calm")
+	assert_eq(mara_normal["suspicion_cue"], "No concern")
+	assert_false(june_normal.has("suspicion"), "Normal play must not expose exact Suspicion.")
+	assert_eq(june_debug["suspicion"], 30.0)
+	assert_eq(june_debug["suspicion_cause"], &"soft")
+	assert_eq(june_debug["latest_suspicion_stimulus"], &"cancelled_order")
+
+
+func test_soft_suspicion_recovers_only_after_quiet_period_at_approved_rate() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
+	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
+
+	session.advance(29.9)
+	var waiting: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(waiting["suspicion"], 30.0)
+	assert_almost_eq(waiting["suspicion_next_recovery_in"], 0.1, 0.001)
+	session.advance(0.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 25.0)
+	session.advance(10.0)
+	var debug: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(debug["suspicion"], 20.0)
+	assert_eq(debug["suspicion_cause"], &"soft")
+	assert_true(debug["suspicion_recoverable"])
+
+	session.advance(40.0)
+	var recovered: Dictionary = session.snapshot()
+	assert_eq(recovered["debug_patron_views"][&"patron_june"]["suspicion"], 0.0)
+	assert_false(recovered["debug_patron_views"][&"patron_june"]["suspicion_recoverable"])
+	assert_eq(recovered["normal_patron_views"][&"patron_june"]["suspicion_band"], "Calm")
+	assert_eq(recovered["normal_patron_views"][&"patron_june"]["suspicion_cue"], "No concern")
+
+
+func test_hard_evidence_creates_permanent_maximum_suspicion_and_escape_response() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	assert_true(session.report_patron_stimulus(&"patron_mara", &"drink_dosed_seen"))
+	var observed: Dictionary = session.snapshot()
+	assert_eq(observed["normal_patron_views"][&"patron_mara"]["suspicion_band"], "Maximum")
+	var debug: Dictionary = observed["debug_patron_views"][&"patron_mara"]
+	assert_eq(debug["suspicion"], 100.0)
+	assert_eq(debug["suspicion_cause"], &"hard_evidence")
+	assert_eq(debug["suspicion_maximum_response"], &"escape")
+	assert_false(debug["suspicion_recoverable"])
+
+	session.advance(120.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"], 100.0)
+
+
+func test_max_drunk_observer_converts_each_hard_evidence_event_to_recoverable_twenty_five() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	assert_true(session.report_patron_stimulus(&"patron_june", &"knockout_witnessed", true))
+	var first: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(first["suspicion"], 25.0)
+	assert_eq(first["suspicion_cause"], &"soft")
+	assert_true(first["suspicion_recoverable"])
+	assert_eq(first["hard_evidence_downgrade_count"], 1)
+
+	session.advance(30.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 20.0)
+	assert_true(session.report_patron_stimulus(&"patron_june", &"trapdoor_capture_witnessed", true))
+	var second: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(second["suspicion"], 45.0)
+	assert_eq(second["hard_evidence_downgrade_count"], 2)
+	assert_eq(second["suspicion_maximum_response"], &"none")
+
+
+func test_approved_danger_and_missing_companion_causes_select_their_responses() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	assert_true(session.report_patron_stimulus(&"patron_june", &"knockout_heard"))
+	var june: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(june["suspicion"], 25.0)
+	assert_eq(june["suspicion_cause"], &"general_danger")
+	assert_true(june["suspicion_recoverable"])
+
+	assert_true(session.report_patron_stimulus(&"patron_mara", &"missing_companion_40"))
+	var mara: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(mara["suspicion"], 100.0)
+	assert_eq(mara["suspicion_cause"], &"missing_companion")
+	assert_eq(mara["suspicion_maximum_response"], &"investigation")
