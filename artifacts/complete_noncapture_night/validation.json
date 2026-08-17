@@ -1,0 +1,2496 @@
+{
+  "final_snapshot": {
+    "arrival_groups": {
+      "arrival_group_pair_01": {
+        "arrival_at": 90.0,
+        "arrived": true,
+        "departed": true,
+        "id": "arrival_group_pair_01",
+        "label": "June + Mara",
+        "patrons": [
+          "patron_june",
+          "patron_mara"
+        ],
+        "seated_at": 90.9999999999985
+      },
+      "arrival_group_pair_02": {
+        "arrival_at": 420.0,
+        "arrived": true,
+        "departed": true,
+        "id": "arrival_group_pair_02",
+        "label": "Vincent + Clara",
+        "patrons": [
+          "patron_vincent",
+          "patron_clara"
+        ],
+        "seated_at": 421.000000000027
+      },
+      "arrival_group_solo_01": {
+        "arrival_at": 180.0,
+        "arrived": true,
+        "departed": true,
+        "id": "arrival_group_solo_01",
+        "label": "Elias",
+        "patrons": [
+          "patron_elias"
+        ],
+        "seated_at": 180.999999999993
+      },
+      "arrival_group_trio_01": {
+        "arrival_at": 300.0,
+        "arrived": true,
+        "departed": true,
+        "id": "arrival_group_trio_01",
+        "label": "Ruth + Walter + Nell",
+        "patrons": [
+          "patron_ruth",
+          "patron_walter",
+          "patron_nell"
+        ],
+        "seated_at": 300.999999999999
+      }
+    },
+    "bathroom_owner": "",
+    "captures": 0,
+    "clock_label": "7:17 PM",
+    "cultist_queues": {
+      "cultist_01": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      },
+      "cultist_02": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      },
+      "cultist_03": {
+        "active": {},
+        "pending": [],
+        "recent_events": []
+      }
+    },
+    "cultists": {
+      "cultist_01": {
+        "activity": "idle",
+        "last_action": "serve_order",
+        "last_target_id": "patron_vincent"
+      },
+      "cultist_02": {
+        "activity": "idle",
+        "last_action": "serve_order",
+        "last_target_id": "patron_clara"
+      },
+      "cultist_03": {
+        "activity": "idle",
+        "last_action": "serve_order",
+        "last_target_id": "patron_nell"
+      }
+    },
+    "debug_patron_views": {
+      "patron_clara": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_clara",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 470.100000000037,
+            "probability": 1.0,
+            "roll": 59.0535087585449
+          },
+          {
+            "at": 475.100000000037,
+            "probability": 1.0,
+            "roll": 63.6283531188965
+          },
+          {
+            "at": 480.100000000037,
+            "probability": 1.0,
+            "roll": 30.0217399597168
+          },
+          {
+            "at": 485.100000000037,
+            "probability": 1.0,
+            "roll": 37.7921104431152
+          },
+          {
+            "at": 490.100000000037,
+            "probability": 1.0,
+            "roll": 94.8022003173828
+          },
+          {
+            "at": 495.100000000037,
+            "probability": 1.0,
+            "roll": 4.2149224281311
+          },
+          {
+            "at": 500.100000000037,
+            "probability": 1.0,
+            "roll": 55.3331489562988
+          },
+          {
+            "at": 505.100000000037,
+            "probability": 1.0,
+            "roll": 75.1155700683594
+          },
+          {
+            "at": 510.100000000037,
+            "probability": 1.0,
+            "roll": 53.3167495727539
+          },
+          {
+            "at": 515.100000000037,
+            "probability": 1.0,
+            "roll": 11.6994132995605
+          },
+          {
+            "at": 520.100000000037,
+            "probability": 1.0,
+            "roll": 9.87305641174316
+          },
+          {
+            "at": 525.100000000037,
+            "probability": 1.0,
+            "roll": 50.2960319519043
+          },
+          {
+            "at": 530.100000000037,
+            "probability": 1.0,
+            "roll": 75.4118347167969
+          },
+          {
+            "at": 535.100000000037,
+            "probability": 1.0,
+            "roll": 2.42752718925476
+          },
+          {
+            "at": 540.100000000037,
+            "probability": 1.0,
+            "roll": 49.341609954834
+          },
+          {
+            "at": 545.100000000037,
+            "probability": 1.0,
+            "roll": 93.6582641601563
+          },
+          {
+            "at": 550.100000000037,
+            "probability": 1.0,
+            "roll": 91.5394515991211
+          },
+          {
+            "at": 555.100000000037,
+            "probability": 1.0,
+            "roll": 49.8847312927246
+          },
+          {
+            "at": 560.100000000037,
+            "probability": 1.0,
+            "roll": 59.6534652709961
+          },
+          {
+            "at": 565.100000000037,
+            "probability": 1.0,
+            "roll": 75.3286209106445
+          },
+          {
+            "at": 570.100000000037,
+            "probability": 1.0,
+            "roll": 56.5056800842285
+          },
+          {
+            "at": 575.100000000037,
+            "probability": 1.0,
+            "roll": 14.325493812561
+          },
+          {
+            "at": 580.100000000037,
+            "probability": 1.0,
+            "roll": 1.34938836097717
+          },
+          {
+            "at": 585.100000000037,
+            "probability": 1.0,
+            "roll": 51.3175354003906
+          },
+          {
+            "at": 590.100000000037,
+            "probability": 1.0,
+            "roll": 84.6942825317383
+          },
+          {
+            "at": 595.100000000037,
+            "probability": 1.0,
+            "roll": 51.5266761779785
+          },
+          {
+            "at": 600.100000000037,
+            "probability": 1.0,
+            "roll": 64.9182891845703
+          },
+          {
+            "at": 605.100000000037,
+            "probability": 1.0,
+            "roll": 75.3983764648438
+          },
+          {
+            "at": 610.100000000037,
+            "probability": 1.0,
+            "roll": 66.1385879516602
+          },
+          {
+            "at": 615.100000000037,
+            "probability": 1.0,
+            "roll": 75.3112945556641
+          },
+          {
+            "at": 620.100000000037,
+            "probability": 1.0,
+            "roll": 49.1688842773438
+          },
+          {
+            "at": 625.100000000037,
+            "probability": 1.0,
+            "roll": 0.26861247420311
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_08",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_elias": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_elias",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 226.099999999991,
+            "probability": 18.8,
+            "roll": 78.7331466674805
+          },
+          {
+            "at": 231.099999999991,
+            "probability": 18.8,
+            "roll": 43.3103446960449
+          },
+          {
+            "at": 236.099999999991,
+            "probability": 18.8,
+            "roll": 68.852409362793
+          },
+          {
+            "at": 241.099999999991,
+            "probability": 18.8,
+            "roll": 10.8480663299561
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_03",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_june": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_june",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 135.099999999996,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_01",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_mara": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 45.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_mara",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [],
+        "reservation": "",
+        "seat": "seat_02",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_nell": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 40.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_nell",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [],
+        "reservation": "",
+        "seat": "seat_06",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_ruth": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_ruth",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 345.100000000008,
+            "probability": 9.9,
+            "roll": 43.4145622253418
+          },
+          {
+            "at": 350.100000000008,
+            "probability": 9.9,
+            "roll": 17.1709175109863
+          },
+          {
+            "at": 355.100000000008,
+            "probability": 9.9,
+            "roll": 30.45334815979
+          },
+          {
+            "at": 360.100000000008,
+            "probability": 9.9,
+            "roll": 3.57230305671692
+          },
+          {
+            "at": 365.100000000008,
+            "probability": 9.9,
+            "roll": 66.1977386474609
+          },
+          {
+            "at": 370.100000000008,
+            "probability": 9.9,
+            "roll": 59.6319389343262
+          },
+          {
+            "at": 375.100000000008,
+            "probability": 9.9,
+            "roll": 62.2262077331543
+          },
+          {
+            "at": 380.100000000008,
+            "probability": 9.9,
+            "roll": 46.9983863830566
+          },
+          {
+            "at": 385.100000000008,
+            "probability": 9.9,
+            "roll": 90.8591537475586
+          },
+          {
+            "at": 390.100000000008,
+            "probability": 9.9,
+            "roll": 39.5497512817383
+          },
+          {
+            "at": 395.100000000008,
+            "probability": 9.9,
+            "roll": 68.1235504150391
+          },
+          {
+            "at": 400.100000000008,
+            "probability": 9.9,
+            "roll": 12.1794481277466
+          },
+          {
+            "at": 405.100000000008,
+            "probability": 9.9,
+            "roll": 94.0114288330078
+          },
+          {
+            "at": 410.100000000008,
+            "probability": 9.9,
+            "roll": 90.2870025634766
+          },
+          {
+            "at": 415.100000000008,
+            "probability": 9.9,
+            "roll": 74.5003128051758
+          },
+          {
+            "at": 420.100000000008,
+            "probability": 9.9,
+            "roll": 46.1969795227051
+          },
+          {
+            "at": 425.100000000008,
+            "probability": 9.9,
+            "roll": 74.1439208984375
+          },
+          {
+            "at": 430.100000000008,
+            "probability": 9.9,
+            "roll": 18.4740581512451
+          },
+          {
+            "at": 435.100000000008,
+            "probability": 9.9,
+            "roll": 1.15902662277222
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_04",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_vincent": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_vincent",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 467.100000000036,
+            "probability": 27.7,
+            "roll": 89.2314605712891
+          },
+          {
+            "at": 472.100000000036,
+            "probability": 27.7,
+            "roll": 94.5066299438477
+          },
+          {
+            "at": 477.100000000036,
+            "probability": 27.7,
+            "roll": 73.3139266967773
+          },
+          {
+            "at": 482.100000000036,
+            "probability": 27.7,
+            "roll": 27.6039333343506
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_07",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      },
+      "patron_walter": {
+        "activity": "normal_departure",
+        "bathroom_probability": 0.0,
+        "bladder": 0.0,
+        "friendship": {
+          "cultist_01": 0,
+          "cultist_02": 0,
+          "cultist_03": 0
+        },
+        "id": "patron_walter",
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "mood_value": 75,
+        "navigation_destination": "front_exit",
+        "next_bathroom_check_in": -1.0,
+        "night_seed": 707,
+        "recent_bathroom_rolls": [
+          {
+            "at": 348.100000000009,
+            "probability": 36.6,
+            "roll": 48.2127952575684
+          },
+          {
+            "at": 353.100000000009,
+            "probability": 36.6,
+            "roll": 62.2404098510742
+          },
+          {
+            "at": 358.100000000009,
+            "probability": 36.6,
+            "roll": 18.5732612609863
+          }
+        ],
+        "reservation": "",
+        "seat": "seat_05",
+        "suspicion": 0,
+        "suspicion_cause": "none"
+      }
+    },
+    "events": [
+      {
+        "at": 0.0,
+        "details": {
+          "seed": 707
+        },
+        "event": "night_started"
+      },
+      {
+        "at": 60.0,
+        "details": {},
+        "event": "doors_opened"
+      },
+      {
+        "at": 960.0,
+        "details": {},
+        "event": "closing_started"
+      },
+      {
+        "at": 1080.0,
+        "details": {
+          "outcome": "failed_operation"
+        },
+        "event": "results_reached"
+      }
+    ],
+    "night_seed": 707,
+    "normal_patron_views": {
+      "patron_clara": {
+        "arrival_group": "arrival_group_pair_02",
+        "companions": [
+          "patron_vincent"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_clara",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Clara",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_elias": {
+        "arrival_group": "arrival_group_solo_01",
+        "companions": [],
+        "friendship": "Unknown",
+        "id": "patron_elias",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Elias",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Promising",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_june": {
+        "arrival_group": "arrival_group_pair_01",
+        "companions": [
+          "patron_mara"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_june",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "June",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_mara": {
+        "arrival_group": "arrival_group_pair_01",
+        "companions": [
+          "patron_june"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_mara",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Mara",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_nell": {
+        "arrival_group": "arrival_group_trio_01",
+        "companions": [
+          "patron_ruth",
+          "patron_walter"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_nell",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Nell",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Medium",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_ruth": {
+        "arrival_group": "arrival_group_trio_01",
+        "companions": [
+          "patron_walter",
+          "patron_nell"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_ruth",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Ruth",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Medium",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_vincent": {
+        "arrival_group": "arrival_group_pair_02",
+        "companions": [
+          "patron_clara"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_vincent",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Vincent",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Low",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      },
+      "patron_walter": {
+        "arrival_group": "arrival_group_trio_01",
+        "companions": [
+          "patron_ruth",
+          "patron_nell"
+        ],
+        "friendship": "Unknown",
+        "id": "patron_walter",
+        "intoxication": "Sober",
+        "known_drugged_drink": "None",
+        "mood": "content",
+        "name": "Walter",
+        "order_state": "served",
+        "suspicion_band": "Calm",
+        "victim_risk": "Medium",
+        "victim_value": "Ordinary",
+        "visible_activity": "Normal Departure"
+      }
+    },
+    "orders": {
+      "all": {
+        "order_001": {
+          "id": "order_001",
+          "patron_id": "patron_june",
+          "payment": 5,
+          "requested_at": 90.9999999999985,
+          "state": "served",
+          "terminal_at": 100.099999999998,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_002": {
+          "id": "order_002",
+          "patron_id": "patron_mara",
+          "payment": 5,
+          "requested_at": 90.9999999999985,
+          "state": "served",
+          "terminal_at": 104.099999999998,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_003": {
+          "id": "order_003",
+          "patron_id": "patron_elias",
+          "payment": 5,
+          "requested_at": 180.999999999993,
+          "state": "served",
+          "terminal_at": 191.099999999993,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_004": {
+          "id": "order_004",
+          "patron_id": "patron_ruth",
+          "payment": 5,
+          "requested_at": 300.999999999999,
+          "state": "served",
+          "terminal_at": 310.100000000001,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_005": {
+          "id": "order_005",
+          "patron_id": "patron_walter",
+          "payment": 5,
+          "requested_at": 300.999999999999,
+          "state": "served",
+          "terminal_at": 313.100000000002,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_006": {
+          "id": "order_006",
+          "patron_id": "patron_nell",
+          "payment": 5,
+          "requested_at": 300.999999999999,
+          "state": "served",
+          "terminal_at": 316.100000000003,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_007": {
+          "id": "order_007",
+          "patron_id": "patron_vincent",
+          "payment": 5,
+          "requested_at": 421.000000000027,
+          "state": "served",
+          "terminal_at": 432.100000000029,
+          "terminal_reason": "delivered",
+          "tip": 2
+        },
+        "order_008": {
+          "id": "order_008",
+          "patron_id": "patron_clara",
+          "payment": 5,
+          "requested_at": 421.000000000027,
+          "state": "served",
+          "terminal_at": 435.10000000003,
+          "terminal_reason": "delivered",
+          "tip": 2
+        }
+      },
+      "cancelled_count": 0,
+      "revenue": 40,
+      "served_count": 8,
+      "tips": 16
+    },
+    "outcome": "failed_operation",
+    "patrons": {
+      "active_count": 0,
+      "arrival_groups": {
+        "arrival_group_pair_01": {
+          "arrival_at": 90.0,
+          "arrived": true,
+          "departed": true,
+          "id": "arrival_group_pair_01",
+          "label": "June + Mara",
+          "patrons": [
+            "patron_june",
+            "patron_mara"
+          ],
+          "seated_at": 90.9999999999985
+        },
+        "arrival_group_pair_02": {
+          "arrival_at": 420.0,
+          "arrived": true,
+          "departed": true,
+          "id": "arrival_group_pair_02",
+          "label": "Vincent + Clara",
+          "patrons": [
+            "patron_vincent",
+            "patron_clara"
+          ],
+          "seated_at": 421.000000000027
+        },
+        "arrival_group_solo_01": {
+          "arrival_at": 180.0,
+          "arrived": true,
+          "departed": true,
+          "id": "arrival_group_solo_01",
+          "label": "Elias",
+          "patrons": [
+            "patron_elias"
+          ],
+          "seated_at": 180.999999999993
+        },
+        "arrival_group_trio_01": {
+          "arrival_at": 300.0,
+          "arrived": true,
+          "departed": true,
+          "id": "arrival_group_trio_01",
+          "label": "Ruth + Walter + Nell",
+          "patrons": [
+            "patron_ruth",
+            "patron_walter",
+            "patron_nell"
+          ],
+          "seated_at": 300.999999999999
+        }
+      },
+      "arrived_count": 8,
+      "authored_count": 8,
+      "normal_departure_count": 8
+    },
+    "phase": "results",
+    "phase_label": "Results",
+    "representative_outcome": "success",
+    "representative_rolls": [
+      19,
+      75,
+      21,
+      63,
+      81,
+      16,
+      11,
+      50,
+      55,
+      16,
+      55,
+      18,
+      38,
+      65,
+      82,
+      58,
+      10,
+      89,
+      80,
+      5,
+      87,
+      39,
+      75,
+      25,
+      100,
+      76,
+      48,
+      37,
+      10,
+      47,
+      16,
+      67,
+      56,
+      23,
+      40,
+      8,
+      61,
+      100,
+      9,
+      73,
+      43,
+      27,
+      47,
+      66,
+      10,
+      88,
+      81,
+      96,
+      76,
+      96,
+      40,
+      5,
+      48,
+      10,
+      99,
+      53,
+      38,
+      13,
+      25,
+      30,
+      37,
+      67,
+      25,
+      94,
+      100,
+      24,
+      42,
+      35,
+      6,
+      33,
+      37,
+      27,
+      91,
+      55,
+      38,
+      65,
+      74,
+      100,
+      66,
+      56,
+      57,
+      21,
+      7,
+      31,
+      44,
+      81,
+      80,
+      45,
+      46,
+      6,
+      25,
+      35,
+      92,
+      31,
+      15,
+      9,
+      41,
+      42,
+      16,
+      86,
+      8,
+      63,
+      88,
+      2,
+      59,
+      93,
+      32,
+      57,
+      84,
+      66,
+      96,
+      14,
+      42,
+      3,
+      52,
+      44,
+      67,
+      20,
+      24,
+      28,
+      45,
+      29,
+      19,
+      23,
+      35,
+      14,
+      51,
+      1,
+      69,
+      13,
+      33,
+      91,
+      51,
+      7,
+      32,
+      82,
+      26,
+      49,
+      3,
+      82,
+      26,
+      26,
+      26,
+      16,
+      35,
+      98,
+      67,
+      73,
+      30,
+      26,
+      76,
+      16,
+      64,
+      58,
+      8,
+      100,
+      19,
+      44,
+      49,
+      2,
+      49,
+      19,
+      20,
+      91,
+      13,
+      71,
+      6,
+      12,
+      88,
+      99,
+      69,
+      47,
+      70,
+      59,
+      15,
+      7,
+      36,
+      27,
+      80,
+      82,
+      98,
+      56,
+      38,
+      14,
+      43,
+      68,
+      17,
+      85,
+      19,
+      79,
+      20,
+      84,
+      88,
+      9,
+      4,
+      35,
+      70,
+      24,
+      56,
+      38,
+      32,
+      14,
+      53,
+      44,
+      84,
+      54,
+      43,
+      68,
+      65,
+      67,
+      15,
+      22,
+      59,
+      33,
+      50,
+      90
+    ],
+    "results": {
+      "capture_quota": 3,
+      "captures": 0,
+      "night_seed": 707,
+      "normal_departures": 8,
+      "orders_cancelled": 0,
+      "orders_served": 8,
+      "outcome": "failed_operation",
+      "revenue": 40,
+      "tips": 16,
+      "visible": true
+    },
+    "runtime": {
+      "actions": 0,
+      "prepared_drinks": 0,
+      "reservations": 0,
+      "spawned_patrons": 0,
+      "timers": 0
+    },
+    "safe_autonomy": {
+      "capture_actions_started": 0,
+      "events": [
+        {
+          "action": "serve_order",
+          "at": 100.099999999998,
+          "capture_related": false,
+          "cultist_id": "cultist_01",
+          "target_id": "patron_june"
+        },
+        {
+          "action": "serve_order",
+          "at": 104.099999999998,
+          "capture_related": false,
+          "cultist_id": "cultist_02",
+          "target_id": "patron_mara"
+        },
+        {
+          "action": "serve_order",
+          "at": 191.099999999993,
+          "capture_related": false,
+          "cultist_id": "cultist_03",
+          "target_id": "patron_elias"
+        },
+        {
+          "action": "serve_order",
+          "at": 310.100000000001,
+          "capture_related": false,
+          "cultist_id": "cultist_01",
+          "target_id": "patron_ruth"
+        },
+        {
+          "action": "serve_order",
+          "at": 313.100000000002,
+          "capture_related": false,
+          "cultist_id": "cultist_02",
+          "target_id": "patron_walter"
+        },
+        {
+          "action": "serve_order",
+          "at": 316.100000000003,
+          "capture_related": false,
+          "cultist_id": "cultist_03",
+          "target_id": "patron_nell"
+        },
+        {
+          "action": "serve_order",
+          "at": 432.100000000029,
+          "capture_related": false,
+          "cultist_id": "cultist_01",
+          "target_id": "patron_vincent"
+        },
+        {
+          "action": "serve_order",
+          "at": 435.10000000003,
+          "capture_related": false,
+          "cultist_id": "cultist_02",
+          "target_id": "patron_clara"
+        }
+      ]
+    },
+    "seat_owners": {
+      "seat_01": "",
+      "seat_02": "",
+      "seat_03": "",
+      "seat_04": "",
+      "seat_05": "",
+      "seat_06": "",
+      "seat_07": "",
+      "seat_08": ""
+    },
+    "simulated_seconds": 1080.0,
+    "time_scale": 0.0,
+    "visit_events": [
+      {
+        "actor_id": "arrival_group_pair_01",
+        "at": 89.9999999999986,
+        "details": {},
+        "event": "arrival_group_arrived"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 90.9999999999985,
+        "details": {
+          "order_id": "order_001",
+          "seat": "seat_01"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 90.9999999999985,
+        "details": {
+          "order_id": "order_002",
+          "seat": "seat_02"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "arrival_group_pair_01",
+        "at": 90.9999999999985,
+        "details": {},
+        "event": "arrival_group_seated"
+      },
+      {
+        "actor_id": "cultist_01",
+        "at": 100.099999999998,
+        "details": {
+          "patron_id": "patron_june"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 100.099999999998,
+        "details": {
+          "order_id": "order_001"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 104.099999999998,
+        "details": {
+          "patron_id": "patron_mara"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 104.099999999998,
+        "details": {
+          "order_id": "order_002"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 130.099999999996,
+        "details": {
+          "bladder": 75.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 134.099999999996,
+        "details": {
+          "bladder": 45.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 135.099999999996,
+        "details": {
+          "at": 135.099999999996,
+          "probability": 45.5,
+          "roll": 43.6161193847656
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 135.099999999996,
+        "details": {
+          "probability": 45.5,
+          "roll": 43.6161193847656
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 137.099999999996,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 145.199999999995,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 148.199999999995,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "arrival_group_solo_01",
+        "at": 179.999999999993,
+        "details": {},
+        "event": "arrival_group_arrived"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 180.999999999993,
+        "details": {
+          "order_id": "order_003",
+          "seat": "seat_03"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "arrival_group_solo_01",
+        "at": 180.999999999993,
+        "details": {},
+        "event": "arrival_group_seated"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 191.099999999993,
+        "details": {
+          "patron_id": "patron_elias"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 191.099999999993,
+        "details": {
+          "order_id": "order_003"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 221.099999999991,
+        "details": {
+          "bladder": 60.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 226.099999999991,
+        "details": {
+          "at": 226.099999999991,
+          "probability": 18.8,
+          "roll": 78.7331466674805
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 231.099999999991,
+        "details": {
+          "at": 231.099999999991,
+          "probability": 18.8,
+          "roll": 43.3103446960449
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 236.09999999999,
+        "details": {
+          "at": 236.099999999991,
+          "probability": 18.8,
+          "roll": 68.852409362793
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 241.09999999999,
+        "details": {
+          "at": 241.099999999991,
+          "probability": 18.8,
+          "roll": 10.8480663299561
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 241.09999999999,
+        "details": {
+          "probability": 18.8,
+          "roll": 10.8480663299561
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 243.09999999999,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 251.199999999989,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 254.199999999989,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "arrival_group_trio_01",
+        "at": 299.999999999999,
+        "details": {},
+        "event": "arrival_group_arrived"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 300.999999999999,
+        "details": {
+          "order_id": "order_004",
+          "seat": "seat_04"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 300.999999999999,
+        "details": {
+          "order_id": "order_005",
+          "seat": "seat_05"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_nell",
+        "at": 300.999999999999,
+        "details": {
+          "order_id": "order_006",
+          "seat": "seat_06"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "arrival_group_trio_01",
+        "at": 300.999999999999,
+        "details": {},
+        "event": "arrival_group_seated"
+      },
+      {
+        "actor_id": "cultist_01",
+        "at": 310.100000000001,
+        "details": {
+          "patron_id": "patron_ruth"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 310.100000000001,
+        "details": {
+          "order_id": "order_004"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 313.100000000002,
+        "details": {
+          "patron_id": "patron_walter"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 313.100000000002,
+        "details": {
+          "order_id": "order_005"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "cultist_03",
+        "at": 316.100000000003,
+        "details": {
+          "patron_id": "patron_nell"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_nell",
+        "at": 316.100000000003,
+        "details": {
+          "order_id": "order_006"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 340.100000000008,
+        "details": {
+          "bladder": 55.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 343.100000000009,
+        "details": {
+          "bladder": 70.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 345.100000000009,
+        "details": {
+          "at": 345.100000000008,
+          "probability": 9.9,
+          "roll": 43.4145622253418
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_nell",
+        "at": 346.10000000001,
+        "details": {
+          "bladder": 40.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 348.10000000001,
+        "details": {
+          "at": 348.100000000009,
+          "probability": 36.6,
+          "roll": 48.2127952575684
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 350.100000000011,
+        "details": {
+          "at": 350.100000000008,
+          "probability": 9.9,
+          "roll": 17.1709175109863
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 353.100000000011,
+        "details": {
+          "at": 353.100000000009,
+          "probability": 36.6,
+          "roll": 62.2404098510742
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 355.100000000012,
+        "details": {
+          "at": 355.100000000008,
+          "probability": 9.9,
+          "roll": 30.45334815979
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 358.100000000012,
+        "details": {
+          "at": 358.100000000009,
+          "probability": 36.6,
+          "roll": 18.5732612609863
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 358.100000000012,
+        "details": {
+          "probability": 36.6,
+          "roll": 18.5732612609863
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 360.100000000013,
+        "details": {
+          "at": 360.100000000008,
+          "probability": 9.9,
+          "roll": 3.57230305671692
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 360.100000000013,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 365.100000000014,
+        "details": {
+          "at": 365.100000000008,
+          "probability": 9.9,
+          "roll": 66.1977386474609
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 368.200000000015,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 370.100000000015,
+        "details": {
+          "at": 370.100000000008,
+          "probability": 9.9,
+          "roll": 59.6319389343262
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 370.200000000015,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 371.200000000015,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 374.200000000016,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 375.100000000016,
+        "details": {
+          "at": 375.100000000008,
+          "probability": 9.9,
+          "roll": 62.2262077331543
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 380.100000000017,
+        "details": {
+          "at": 380.100000000008,
+          "probability": 9.9,
+          "roll": 46.9983863830566
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 385.100000000019,
+        "details": {
+          "at": 385.100000000008,
+          "probability": 9.9,
+          "roll": 90.8591537475586
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 390.10000000002,
+        "details": {
+          "at": 390.100000000008,
+          "probability": 9.9,
+          "roll": 39.5497512817383
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 395.100000000021,
+        "details": {
+          "at": 395.100000000008,
+          "probability": 9.9,
+          "roll": 68.1235504150391
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 400.100000000022,
+        "details": {
+          "at": 400.100000000008,
+          "probability": 9.9,
+          "roll": 12.1794481277466
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 405.100000000023,
+        "details": {
+          "at": 405.100000000008,
+          "probability": 9.9,
+          "roll": 94.0114288330078
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 410.100000000024,
+        "details": {
+          "at": 410.100000000008,
+          "probability": 9.9,
+          "roll": 90.2870025634766
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 415.100000000025,
+        "details": {
+          "at": 415.100000000008,
+          "probability": 9.9,
+          "roll": 74.5003128051758
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "arrival_group_pair_02",
+        "at": 420.000000000026,
+        "details": {},
+        "event": "arrival_group_arrived"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 420.100000000026,
+        "details": {
+          "at": 420.100000000008,
+          "probability": 9.9,
+          "roll": 46.1969795227051
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 421.000000000027,
+        "details": {
+          "order_id": "order_007",
+          "seat": "seat_07"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 421.000000000027,
+        "details": {
+          "order_id": "order_008",
+          "seat": "seat_08"
+        },
+        "event": "seat_acquired"
+      },
+      {
+        "actor_id": "arrival_group_pair_02",
+        "at": 421.000000000027,
+        "details": {},
+        "event": "arrival_group_seated"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 425.100000000028,
+        "details": {
+          "at": 425.100000000008,
+          "probability": 9.9,
+          "roll": 74.1439208984375
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 430.100000000029,
+        "details": {
+          "at": 430.100000000008,
+          "probability": 9.9,
+          "roll": 18.4740581512451
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "cultist_01",
+        "at": 432.100000000029,
+        "details": {
+          "patron_id": "patron_vincent"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 432.100000000029,
+        "details": {
+          "order_id": "order_007"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 435.10000000003,
+        "details": {
+          "at": 435.100000000008,
+          "probability": 9.9,
+          "roll": 1.15902662277222
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 435.10000000003,
+        "details": {
+          "probability": 9.9,
+          "roll": 1.15902662277222
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "cultist_02",
+        "at": 435.10000000003,
+        "details": {
+          "patron_id": "patron_clara"
+        },
+        "event": "safe_autonomy_service"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 435.10000000003,
+        "details": {
+          "order_id": "order_008"
+        },
+        "event": "order_served"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 437.10000000003,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 445.200000000032,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 448.200000000033,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 461.200000000036,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 462.100000000036,
+        "details": {
+          "bladder": 65.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 465.100000000037,
+        "details": {
+          "bladder": 50.0,
+          "intoxication": 1
+        },
+        "event": "drink_completed"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 467.100000000037,
+        "details": {
+          "at": 467.100000000036,
+          "probability": 27.7,
+          "roll": 89.2314605712891
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 470.100000000038,
+        "details": {
+          "at": 470.100000000037,
+          "probability": 1.0,
+          "roll": 59.0535087585449
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 472.100000000038,
+        "details": {
+          "at": 472.100000000036,
+          "probability": 27.7,
+          "roll": 94.5066299438477
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 475.100000000039,
+        "details": {
+          "at": 475.100000000037,
+          "probability": 1.0,
+          "roll": 63.6283531188965
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 477.100000000039,
+        "details": {
+          "at": 477.100000000036,
+          "probability": 27.7,
+          "roll": 73.3139266967773
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 480.10000000004,
+        "details": {
+          "at": 480.100000000037,
+          "probability": 1.0,
+          "roll": 30.0217399597168
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 482.100000000041,
+        "details": {
+          "at": 482.100000000036,
+          "probability": 27.7,
+          "roll": 27.6039333343506
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 482.100000000041,
+        "details": {
+          "probability": 27.7,
+          "roll": 27.6039333343506
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 484.100000000041,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 485.100000000041,
+        "details": {
+          "at": 485.100000000037,
+          "probability": 1.0,
+          "roll": 37.7921104431152
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 490.100000000042,
+        "details": {
+          "at": 490.100000000037,
+          "probability": 1.0,
+          "roll": 94.8022003173828
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 492.200000000043,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 495.100000000044,
+        "details": {
+          "at": 495.100000000037,
+          "probability": 1.0,
+          "roll": 4.2149224281311
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 495.200000000044,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 500.100000000045,
+        "details": {
+          "at": 500.100000000037,
+          "probability": 1.0,
+          "roll": 55.3331489562988
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 505.100000000046,
+        "details": {
+          "at": 505.100000000037,
+          "probability": 1.0,
+          "roll": 75.1155700683594
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 510.100000000047,
+        "details": {
+          "at": 510.100000000037,
+          "probability": 1.0,
+          "roll": 53.3167495727539
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 515.100000000048,
+        "details": {
+          "at": 515.100000000037,
+          "probability": 1.0,
+          "roll": 11.6994132995605
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 520.100000000049,
+        "details": {
+          "at": 520.100000000037,
+          "probability": 1.0,
+          "roll": 9.87305641174316
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 525.10000000005,
+        "details": {
+          "at": 525.100000000037,
+          "probability": 1.0,
+          "roll": 50.2960319519043
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 530.100000000051,
+        "details": {
+          "at": 530.100000000037,
+          "probability": 1.0,
+          "roll": 75.4118347167969
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 535.100000000053,
+        "details": {
+          "at": 535.100000000037,
+          "probability": 1.0,
+          "roll": 2.42752718925476
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 540.100000000054,
+        "details": {
+          "at": 540.100000000037,
+          "probability": 1.0,
+          "roll": 49.341609954834
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 545.100000000055,
+        "details": {
+          "at": 545.100000000037,
+          "probability": 1.0,
+          "roll": 93.6582641601563
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 550.100000000056,
+        "details": {
+          "at": 550.100000000037,
+          "probability": 1.0,
+          "roll": 91.5394515991211
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 555.100000000057,
+        "details": {
+          "at": 555.100000000037,
+          "probability": 1.0,
+          "roll": 49.8847312927246
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 560.100000000058,
+        "details": {
+          "at": 560.100000000037,
+          "probability": 1.0,
+          "roll": 59.6534652709961
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 565.100000000059,
+        "details": {
+          "at": 565.100000000037,
+          "probability": 1.0,
+          "roll": 75.3286209106445
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 570.100000000061,
+        "details": {
+          "at": 570.100000000037,
+          "probability": 1.0,
+          "roll": 56.5056800842285
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 575.100000000062,
+        "details": {
+          "at": 575.100000000037,
+          "probability": 1.0,
+          "roll": 14.325493812561
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 580.100000000063,
+        "details": {
+          "at": 580.100000000037,
+          "probability": 1.0,
+          "roll": 1.34938836097717
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 580.200000000063,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 583.200000000063,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 585.100000000064,
+        "details": {
+          "at": 585.100000000037,
+          "probability": 1.0,
+          "roll": 51.3175354003906
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_nell",
+        "at": 586.200000000064,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 590.100000000065,
+        "details": {
+          "at": 590.100000000037,
+          "probability": 1.0,
+          "roll": 84.6942825317383
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 595.100000000066,
+        "details": {
+          "at": 595.100000000037,
+          "probability": 1.0,
+          "roll": 51.5266761779785
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 600.100000000067,
+        "details": {
+          "at": 600.100000000037,
+          "probability": 1.0,
+          "roll": 64.9182891845703
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 605.100000000068,
+        "details": {
+          "at": 605.100000000037,
+          "probability": 1.0,
+          "roll": 75.3983764648438
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 610.10000000007,
+        "details": {
+          "at": 610.100000000037,
+          "probability": 1.0,
+          "roll": 66.1385879516602
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 615.100000000071,
+        "details": {
+          "at": 615.100000000037,
+          "probability": 1.0,
+          "roll": 75.3112945556641
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 620.100000000072,
+        "details": {
+          "at": 620.100000000037,
+          "probability": 1.0,
+          "roll": 49.1688842773438
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 625.100000000073,
+        "details": {
+          "at": 625.100000000037,
+          "probability": 1.0,
+          "roll": 0.26861247420311
+        },
+        "event": "bathroom_check"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 625.100000000073,
+        "details": {
+          "probability": 1.0,
+          "roll": 0.26861247420311
+        },
+        "event": "bathroom_chosen"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 627.100000000073,
+        "details": {},
+        "event": "bathroom_seated"
+      },
+      {
+        "actor_id": "patron_june",
+        "at": 631.000000000074,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "patron_mara",
+        "at": 631.000000000074,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "arrival_group_pair_01",
+        "at": 631.000000000074,
+        "details": {},
+        "event": "arrival_group_departed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 635.200000000075,
+        "details": {},
+        "event": "bladder_emptied"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 638.200000000076,
+        "details": {},
+        "event": "bathroom_visit_completed"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 702.200000000091,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 705.200000000091,
+        "details": {
+          "level": 0
+        },
+        "event": "intoxication_decayed"
+      },
+      {
+        "actor_id": "patron_elias",
+        "at": 721.000000000095,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "arrival_group_solo_01",
+        "at": 721.000000000095,
+        "details": {},
+        "event": "arrival_group_departed"
+      },
+      {
+        "actor_id": "patron_ruth",
+        "at": 841.000000000122,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "patron_walter",
+        "at": 841.000000000122,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "patron_nell",
+        "at": 841.000000000122,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "arrival_group_trio_01",
+        "at": 841.000000000122,
+        "details": {},
+        "event": "arrival_group_departed"
+      },
+      {
+        "actor_id": "night",
+        "at": 960.000000000013,
+        "details": {},
+        "event": "closing_started"
+      },
+      {
+        "actor_id": "patron_vincent",
+        "at": 960.000000000013,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "patron_clara",
+        "at": 960.000000000013,
+        "details": {
+          "reason": "visit_complete"
+        },
+        "event": "normal_departure"
+      },
+      {
+        "actor_id": "arrival_group_pair_02",
+        "at": 960.000000000013,
+        "details": {},
+        "event": "arrival_group_departed"
+      }
+    ]
+  },
+  "passed": true,
+  "slice": "complete_noncapture_night"
+}
