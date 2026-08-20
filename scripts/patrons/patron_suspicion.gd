@@ -66,6 +66,24 @@ func apply_stimulus(stimulus: StringName, observer_is_max_drunk: bool = false) -
 	return true
 
 
+# Gradual Companion influence: drift up toward a nearby group member's higher
+# Suspicion by at most RECOVERY_AMOUNT, upward only, stopping on equality.
+# Reaching 100 this way selects Escape rather than Investigation.
+func apply_companion_influence(neighbor_score: float) -> bool:
+	if _score >= 100.0 or neighbor_score <= _score:
+		return false
+	var delta := minf(RECOVERY_AMOUNT, neighbor_score - _score)
+	_score = minf(100.0, _score + delta)
+	_cause = &"companion_influence"
+	_latest_stimulus = &"companion_influence"
+	_recoverable = _score < 100.0
+	_quiet_seconds = 0.0
+	_recovery_ticks_applied = 0
+	if _score >= 100.0:
+		_maximum_response = &"escape"
+	return true
+
+
 func advance(simulated_seconds: float) -> float:
 	if simulated_seconds <= 0.0 or not _recoverable or _score <= 0.0 or _score >= 100.0:
 		return 0.0
@@ -103,6 +121,8 @@ func normal_cue() -> String:
 		return "Hard Evidence"
 	if _cause == &"missing_companion":
 		return "Missing Companion"
+	if _cause == &"companion_influence":
+		return "Nervous Company"
 	match _latest_stimulus:
 		&"cancelled_order":
 			return "Cancelled Order"
@@ -116,6 +136,8 @@ func normal_cue() -> String:
 			return "Failed Persuasion"
 		&"body_drag_seen_first", &"body_drag_seen_continuing":
 			return "Saw Body Drag"
+		&"unattended_body_pressure":
+			return "Unattended Body"
 		&"drink_dosed_seen", &"knockout_witnessed", &"trapdoor_capture_witnessed", &"trapdoor_open_seen_seated":
 			return "Hard Evidence"
 	return "No concern"
@@ -144,6 +166,8 @@ func _stimulus_effect(stimulus: StringName) -> Dictionary:
 			return {"amount": 50.0, "cause": &"general_danger", "recoverable": true}
 		&"body_drag_seen_continuing":
 			return {"amount": 10.0, "cause": &"general_danger", "recoverable": true}
+		&"unattended_body_pressure":
+			return {"amount": 5.0, "cause": &"general_danger", "recoverable": true}
 		&"missing_companion_20", &"missing_companion_30":
 			return {"amount": 25.0, "cause": &"missing_companion", "recoverable": false}
 	return {}

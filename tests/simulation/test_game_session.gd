@@ -258,3 +258,144 @@ func test_approved_danger_and_missing_companion_causes_select_their_responses() 
 	assert_eq(mara["suspicion"], 100.0)
 	assert_eq(mara["suspicion_cause"], &"missing_companion")
 	assert_eq(mara["suspicion_maximum_response"], &"investigation")
+
+
+func test_auditory_danger_reaches_only_rooms_in_the_hearing_relationship() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	var same_room: Array = session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_01")
+	assert_true(&"patron_june" in same_room, "Patrons in the source room hear the knockout.")
+	assert_true(&"patron_mara" in same_room)
+	var june: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(june["suspicion"], 25.0)
+	assert_eq(june["suspicion_cause"], &"general_danger")
+
+	var adjacent: Array = session.report_danger_event(&"knockout_heard", &"auditory", &"hallway", &"cultist_01")
+	assert_true(&"patron_june" in adjacent, "The hallway is adjacent to the main hall, so its sounds carry.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
+
+	var non_adjacent: Array = session.report_danger_event(&"knockout_heard", &"auditory", &"bathroom", &"cultist_01")
+	assert_true(non_adjacent.is_empty(), "The bathroom is not adjacent to the main hall, so it is unheard.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
+
+
+func test_visual_danger_requires_facing_and_same_room_line_of_sight() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	# The seated pair faces the bar counter at the origin; an event there is in
+	# front of them, in the same room, and within range.
+	var seen: Array = session.report_danger_event(
+		&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(0.0, 0.0)
+	)
+	assert_true(&"patron_june" in seen, "A danger in the facing cone and same room is seen.")
+	assert_true(&"patron_mara" in seen)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
+
+	# Behind the seated pair, outside the facing cone, so unseen even in the room.
+	var behind: Array = session.report_danger_event(
+		&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(-18.0, 6.0)
+	)
+	assert_true(behind.is_empty(), "A danger behind the Patron falls outside the facing cone.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
+
+	# A different room blocks vision entirely, whatever the position.
+	var cross_room: Array = session.report_danger_event(
+		&"drink_dosed_seen", &"visual", &"bathroom", &"cultist_01", Vector2(0.0, 0.0)
+	)
+	assert_true(cross_room.is_empty(), "Cross-room vision is blocked by the room boundary.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
+
+
+func test_unattended_body_pressure_after_grace_stacks_globally_and_pauses_when_supported() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	session.add_unattended_body(&"body_a", &"hallway", Vector2(14.0, 6.0))
+	session.add_unattended_body(&"body_b", &"main_hall", Vector2(0.0, 8.0))
+	session.advance(3.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 0.0,
+		"No pressure during the 3-second grace period.")
+
+	session.advance(5.0)
+	var after_tick: Dictionary = session.snapshot()["debug_patron_views"]
+	assert_eq(after_tick[&"patron_june"]["suspicion"], 10.0, "Two bodies stack to +10 per interval.")
+	assert_eq(after_tick[&"patron_mara"]["suspicion"], 10.0, "Pressure is global to every active Patron.")
+
+	session.set_unattended_body_state(&"body_a", &"supported")
+	session.advance(5.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 15.0,
+		"A supported body applies no pressure; only body_b ticks.")
+
+	session.drop_unattended_body(&"body_a", &"main_hall", Vector2(0.0, 8.0))
+	session.advance(3.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 15.0,
+		"Dropping the body starts a fresh grace period, so it does not tick yet.")
+	session.advance(5.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 25.0,
+		"After its new grace, body_a resumes pressure alongside body_b.")
+
+
+func test_companion_influence_drifts_up_toward_highest_nearby_group_member() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	# June and Mara share a table (within 5 m, same room, same Arrival Group).
+	# Pin June at Maximum with Hard Evidence so Mara has a fixed target to chase.
+	assert_true(session.report_patron_stimulus(&"patron_june", &"drink_dosed_seen"))
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 100.0)
+
+	session.advance(10.0)
+	var first: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(first["suspicion"], 5.0, "Mara drifts up at most 5 per 10-second interval.")
+	assert_eq(first["suspicion_cause"], &"companion_influence")
+	assert_true(first["suspicion_recoverable"], "Companion influence is soft.")
+
+	session.advance(10.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"], 10.0,
+		"Each interval adds another step.")
+
+	# Drive to Maximum; influence never overshoots the target and June is not
+	# dragged downward by his lower-Suspicion companion.
+	session.advance(200.0)
+	var maxed: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(maxed["suspicion"], 100.0, "Influence stops on equality, so Mara settles at the target.")
+	assert_eq(maxed["suspicion_maximum_response"], &"escape",
+		"Reaching Maximum through Companion influence selects Escape, not Investigation.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 100.0,
+		"Influence only moves upward; June is unaffected by Mara.")
+
+
+func test_debug_view_identifies_perception_source_recipient_cause_and_timing() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
+	var state: Dictionary = session.snapshot()
+	var debug: Dictionary = state["debug_patron_views"][&"patron_june"]
+	var normal: Dictionary = state["normal_patron_views"][&"patron_june"]
+
+	assert_true(debug.has("recent_perceptions"), "Debug view exposes the perception trace.")
+	assert_false(normal.has("recent_perceptions"), "Normal play hides the perception trace.")
+	assert_eq(debug["room"], &"main_hall", "Debug view exposes the perceiving room.")
+	assert_false(normal.has("room"), "Normal play hides the room model.")
+
+	var trace: Array = debug["recent_perceptions"]
+	assert_gt(trace.size(), 0)
+	var latest: Dictionary = trace[-1]
+	assert_eq(latest["source"], &"cultist_02", "The trace names the stimulus source.")
+	assert_eq(latest["recipient"], &"patron_june", "The trace names the recipient.")
+	assert_eq(latest["stimulus"], &"knockout_heard")
+	assert_eq(latest["cause"], &"general_danger", "The trace names the resulting cause.")
+	assert_almost_eq(float(latest["at"]), 100.0, 0.001, "The trace records recent timing.")

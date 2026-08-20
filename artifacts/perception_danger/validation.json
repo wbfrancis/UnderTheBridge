@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "body_pressure_after_grace_is_global": true,
+    "body_pressure_pauses_when_supported": true,
+    "companion_drifts_up_and_escapes": true,
+    "debug_trace_is_complete": true,
+    "sound_uses_room_relationship": true,
+    "visual_requires_facing_and_same_room": true
+  },
+  "observed": {
+    "body_pressure_stages": [
+      0.0,
+      10.0,
+      15.0
+    ],
+    "companion_first_step": 5.0,
+    "companion_settled": 100.0
+  },
+  "passed": true,
+  "slice": "perception_danger"
+}

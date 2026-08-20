@@ -6,6 +6,27 @@ signal snapshot_changed(snapshot: Dictionary)
 const INTERACTION_REGISTRY_SCRIPT := preload("res://scripts/interactions/interaction_registry.gd")
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
 const PATRON_SUSPICION_SCRIPT := preload("res://scripts/patrons/patron_suspicion.gd")
+const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
+# Which room each activity places a Patron in, for line of sight and room hearing.
+const ACTIVITY_ROOMS := {
+	&"not_arrived": &"front",
+	&"entering": &"front",
+	&"normal_departure": &"front",
+	&"awaiting_drink": &"main_hall",
+	&"drinking": &"main_hall",
+	&"socializing": &"main_hall",
+	&"entering_bathroom": &"hallway",
+	&"seated_bathroom_use": &"bathroom",
+	&"standing_bathroom_exit": &"hallway",
+}
+const PERCEPTION_LOG_LIMIT := 8
+const BAR_POSITION := Vector2(0.0, 0.0)
+const SEAT_POSITIONS := {
+	&"seat_01": Vector2(-12.0, 6.0), &"seat_02": Vector2(-10.5, 6.0),
+	&"seat_03": Vector2(-6.0, 6.0), &"seat_04": Vector2(-4.5, 6.0),
+	&"seat_05": Vector2(4.5, 6.0), &"seat_06": Vector2(6.0, 6.0),
+	&"seat_07": Vector2(10.5, 6.0), &"seat_08": Vector2(12.0, 6.0),
+}
 const STEP_SECONDS := 0.1
 const GROUP_ID := &"arrival_group_pair_01"
 const BATHROOM_SLOT := &"bathroom_occupant"
@@ -106,6 +127,8 @@ var _events: Array[Dictionary] = []
 var _autonomy_events: Array[Dictionary] = []
 var _next_service_cultist_index: int = 0
 var _suspicion_states: Dictionary = {}
+var _perception = PATRON_PERCEPTION_SCRIPT.new()
+var _perception_log: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -134,6 +157,8 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_suspicion_states.clear()
 	for patron_id: StringName in _patrons:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
+	_perception = PATRON_PERCEPTION_SCRIPT.new()
+	_perception_log.clear()
 	_emit_snapshot()
 
 
@@ -147,6 +172,8 @@ func advance(simulated_seconds: float) -> void:
 		_activate_due_groups()
 		for patron_id: StringName in _patrons:
 			_advance_patron(patron_id, step)
+		_apply_body_pressure(step)
+		_apply_companion_influence(step)
 		_try_group_departures()
 		remaining -= step
 	_emit_snapshot()
@@ -194,6 +221,186 @@ func apply_suspicion_stimulus(
 	})
 	_emit_snapshot()
 	return true
+
+
+# Fans a danger event out to the Patrons that perceive it. Visual events use
+# facing and line of sight; auditory events use the room-hearing relationship.
+# Each recipient routes the stimulus into its own PatronSuspicion. Returns the
+# ids that perceived the event.
+func report_danger_event(
+		stimulus: StringName,
+		channel: StringName,
+		source_room: StringName,
+		source_id: StringName = &"",
+		source_position := Vector2.ZERO
+) -> Array:
+	var perceivers := _active_perceivers()
+	var recipients: Array = []
+	match channel:
+		&"visual":
+			recipients = _perception.visual_recipients(source_room, source_position, perceivers)
+		&"auditory":
+			recipients = _perception.auditory_recipients(source_room, perceivers)
+		_:
+			recipients = []
+	var effective_source: StringName = source_id if not source_id.is_empty() else source_room
+	var perceived: Array[StringName] = []
+	for patron_id: StringName in recipients:
+		if _route_stimulus(patron_id, stimulus, channel, effective_source):
+			perceived.append(patron_id)
+	_emit_snapshot()
+	return perceived
+
+
+func add_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+	_perception.add_body(body_id, room, position)
+
+
+func set_unattended_body_state(body_id: StringName, state: StringName) -> void:
+	_perception.set_body_state(body_id, state)
+
+
+func drop_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+	_perception.drop_body(body_id, room, position)
+
+
+func remove_unattended_body(body_id: StringName) -> void:
+	_perception.remove_body(body_id)
+
+
+func _apply_body_pressure(step: float) -> void:
+	var ticks: Array = _perception.advance_bodies(step)
+	for body_id: StringName in ticks:
+		for patron_id: StringName in _patrons:
+			if _patrons[patron_id]["lifecycle"] != &"active":
+				continue
+			_route_stimulus(patron_id, &"unattended_body_pressure", &"unattended_body", body_id)
+
+
+func _apply_companion_influence(step: float) -> void:
+	var rounds := _perception.advance_companion_timer(step)
+	for _round in range(rounds):
+		_run_companion_round()
+
+
+func _run_companion_round() -> void:
+	# Read every Suspicion before applying, so a round resolves from one shared
+	# snapshot and the drift order does not bias the result.
+	var scores: Dictionary = {}
+	for patron_id: StringName in _patrons:
+		if _patrons[patron_id]["lifecycle"] == &"active":
+			scores[patron_id] = _suspicion_states[patron_id].snapshot()["score"]
+	for patron_id: StringName in scores:
+		var patron: Dictionary = _patrons[patron_id]
+		var candidates: Array = []
+		for companion_id: StringName in patron["companions"]:
+			if not scores.has(companion_id):
+				continue
+			var companion: Dictionary = _patrons[companion_id]
+			candidates.append({
+				"id": companion_id,
+				"room": _patron_room(companion),
+				"position": _patron_position(companion),
+				"score": scores[companion_id],
+			})
+		var winner := _perception.highest_nearby_influence(
+			_patron_room(patron), _patron_position(patron), candidates
+		)
+		if winner.is_empty() or float(winner["score"]) <= float(scores[patron_id]):
+			continue
+		if _suspicion_states[patron_id].apply_companion_influence(float(winner["score"])):
+			var cause: StringName = _suspicion_states[patron_id].snapshot()["cause"]
+			_record(&"companion_influence", patron_id, {
+				"source": winner["id"],
+				"neighbor_suspicion": winner["score"],
+				"cause": cause,
+			})
+			_log_perception(patron_id, winner["id"], &"companion", &"companion_influence", cause)
+
+
+func _route_stimulus(
+		patron_id: StringName,
+		stimulus: StringName,
+		channel: StringName,
+		source_id: StringName
+) -> bool:
+	var patron: Dictionary = _patrons[patron_id]
+	var observer_is_max_drunk := int(patron["intoxication"]) >= 3
+	var suspicion = _suspicion_states[patron_id]
+	if not suspicion.apply_stimulus(stimulus, observer_is_max_drunk):
+		return false
+	var cause: StringName = suspicion.snapshot()["cause"]
+	_record(&"danger_perceived", patron_id, {
+		"stimulus": stimulus,
+		"channel": channel,
+		"source": source_id,
+		"cause": cause,
+	})
+	_log_perception(patron_id, source_id, channel, stimulus, cause)
+	return true
+
+
+func _log_perception(
+		patron_id: StringName,
+		source_id: StringName,
+		channel: StringName,
+		stimulus: StringName,
+		cause: StringName
+) -> void:
+	if not _perception_log.has(patron_id):
+		_perception_log[patron_id] = []
+	var trace: Array = _perception_log[patron_id]
+	trace.append({
+		"at": _simulated_seconds,
+		"source": source_id,
+		"recipient": patron_id,
+		"channel": channel,
+		"stimulus": stimulus,
+		"cause": cause,
+	})
+	while trace.size() > PERCEPTION_LOG_LIMIT:
+		trace.pop_front()
+
+
+func _active_perceivers() -> Array:
+	var perceivers: Array = []
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if patron["lifecycle"] != &"active":
+			continue
+		perceivers.append({
+			"id": patron_id,
+			"room": _patron_room(patron),
+			"position": _patron_position(patron),
+			"facing": _patron_facing(patron),
+		})
+	return perceivers
+
+
+func _patron_room(patron: Dictionary) -> StringName:
+	return ACTIVITY_ROOMS.get(patron["activity"], &"main_hall")
+
+
+# Deterministic 2-D layout in metres. Seated Patrons sit at fixed table seats and
+# face the bar counter; unseated Patrons take a representative spot for their room.
+# Tables hold two seats 1.5 m apart and stand well over 5 m from each other, so a
+# seated pair shares a table (Companion range) while other tables do not.
+func _patron_position(patron: Dictionary) -> Vector2:
+	var seat: StringName = patron["seat"]
+	if SEAT_POSITIONS.has(seat):
+		return SEAT_POSITIONS[seat]
+	match _patron_room(patron):
+		&"front": return Vector2(0.0, 14.0)
+		&"hallway": return Vector2(14.0, 6.0)
+		&"bathroom": return Vector2(18.0, 6.0)
+	return Vector2(0.0, 8.0)
+
+
+func _patron_facing(patron: Dictionary) -> Vector2:
+	var to_bar := BAR_POSITION - _patron_position(patron)
+	if to_bar.length() <= 0.0001:
+		return Vector2(0.0, -1.0)
+	return to_bar.normalized()
 
 
 func normal_patron_view(
@@ -250,6 +457,10 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"seat": patron["seat"],
 		"reservation": _interaction_registry.actor_slot(patron_id),
 		"navigation_destination": patron["navigation_destination"],
+		"room": _patron_room(patron),
+		"position": _patron_position(patron),
+		"facing": _patron_facing(patron),
+		"recent_perceptions": _perception_log.get(patron_id, []).duplicate(true),
 		"night_seed": _seed,
 		"recent_bathroom_rolls": patron["recent_bathroom_rolls"].duplicate(true),
 	}

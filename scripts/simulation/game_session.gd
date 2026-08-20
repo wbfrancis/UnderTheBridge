@@ -78,6 +78,51 @@ func report_patron_stimulus(
 	return applied
 
 
+func report_danger_event(
+		stimulus: StringName,
+		channel: StringName,
+		source_room: StringName,
+		source_id: StringName = &"",
+		source_position := Vector2.ZERO
+) -> Array:
+	var perceived: Array = _ordinary_visits.report_danger_event(
+		stimulus, channel, source_room, source_id, source_position
+	)
+	if not perceived.is_empty():
+		_record(&"danger_event_perceived", {
+			"stimulus": stimulus,
+			"channel": channel,
+			"source": source_id if not source_id.is_empty() else source_room,
+			"recipients": perceived,
+		})
+		_emit_snapshot()
+	return perceived
+
+
+func add_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+	_ordinary_visits.add_unattended_body(body_id, room, position)
+	_record(&"unattended_body_added", {"body_id": body_id, "room": room})
+	_emit_snapshot()
+
+
+func set_unattended_body_state(body_id: StringName, state: StringName) -> void:
+	_ordinary_visits.set_unattended_body_state(body_id, state)
+	_record(&"unattended_body_state_changed", {"body_id": body_id, "state": state})
+	_emit_snapshot()
+
+
+func drop_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+	_ordinary_visits.drop_unattended_body(body_id, room, position)
+	_record(&"unattended_body_dropped", {"body_id": body_id, "room": room})
+	_emit_snapshot()
+
+
+func remove_unattended_body(body_id: StringName) -> void:
+	_ordinary_visits.remove_unattended_body(body_id)
+	_record(&"unattended_body_removed", {"body_id": body_id})
+	_emit_snapshot()
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
