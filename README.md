@@ -21,6 +21,20 @@ powershell -ExecutionPolicy Bypass -File .\tools\test_headless.ps1
 
 The runner uses the known local Godot 4.7.1 console executable when present, otherwise it uses `godot` from `PATH`. Pass `-GodotBin "C:\path\to\godot_console.exe"` to override it. Automated runs use an isolated profile under the ignored `.godot` folder and do not modify the interactive editor profile.
 
+On macOS or Linux, run the shell equivalent instead:
+
+```bash
+./tools/test_headless.sh
+```
+
+Every PowerShell runner under `tools/` has a matching `.sh` script beside it
+(`run_slice.sh`, `run_spike.sh`, `run_stress.sh`). The shell runners find Godot
+from `$GODOT_BIN`, then `PATH`, then the usual `/Applications/Godot*.app`
+locations; pass `--godot-bin /path/to/Godot` to override. They isolate the
+automated Godot profile under the ignored `.godot` folder, exactly like the
+PowerShell versions. The visual spike runner also accepts `--blender-bin`
+(default `/Applications/Blender.app/Contents/MacOS/Blender`).
+
 ## Project documents
 
 - [Domain glossary](./CONTEXT.md)
