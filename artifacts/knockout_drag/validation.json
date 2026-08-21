@@ -1,0 +1,29 @@
+{
+  "checks": {
+    "dragging_occupies_and_reduces_movement": true,
+    "dropping_always_interrupts": true,
+    "dropping_restarts_unattended_pressure": true,
+    "hearing_only_witness_gets_soft": true,
+    "impact_commits_unconscious": true,
+    "intake_crossing_captures_once": true,
+    "visual_witness_gets_hard_evidence": true,
+    "windup_is_interruptible": true
+  },
+  "observed": {
+    "captures_final": 1,
+    "drag_movement_scale": 0.5,
+    "gauge_held_then_resumed": [
+      0.0,
+      0.0,
+      5.0
+    ],
+    "hearer_suspicion": 25.0,
+    "seer_suspicion": 100.0,
+    "windup_lifecycles": [
+      "active",
+      "unconscious"
+    ]
+  },
+  "passed": true,
+  "slice": "knockout_drag"
+}

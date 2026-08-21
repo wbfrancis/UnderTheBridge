@@ -652,3 +652,131 @@ func test_rescue_success_captures_both_and_failure_raises_suspicion_and_resumes(
 	assert_eq(left["debug_patron_views"][&"patron_mara"]["lifecycle"], &"exited", "Both Patrons leave.")
 	assert_eq(left["debug_patron_views"][&"patron_june"]["lifecycle"], &"exited")
 	assert_false(left["defeat"], "A sub-maximum Helper leaving the front is not defeat.")
+
+
+func test_knockout_windup_is_interruptible_and_impact_is_the_commitment_point() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)  # June, Mara, and solo Elias are seated and active.
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"active")
+
+	# The wind-up is a committed Action in progress but not yet the Commitment Point.
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"),
+		"A Cultist can begin a knockout wind-up against an active Patron.")
+	assert_false(session.snapshot()["windup"].is_empty(), "The wind-up is in progress.")
+	session.advance(1.0)  # partway through the 2-second wind-up
+
+	# Cancelling before impact interrupts the wind-up and leaves the victim unharmed.
+	assert_true(session.cancel_knockout(&"cultist_01"), "The wind-up is interruptible before impact.")
+	assert_true(session.snapshot()["windup"].is_empty())
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"active",
+		"A cancelled wind-up does not knock the victim out.")
+
+	# Impact is the Commitment Point: after the full wind-up the victim is Unconscious for the Night.
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
+	session.advance(2.05)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"unconscious",
+		"Completing the wind-up commits the knockout.")
+	assert_true(session.snapshot()["windup"].is_empty())
+	assert_false(session.cancel_knockout(&"cultist_01"),
+		"After impact there is no wind-up left to cancel; the knockout is committed.")
+
+
+func test_knockout_visual_witnesses_get_hard_evidence_and_hearing_only_get_soft() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(470.0)  # The full cast is seated in the main hall, all facing the bar.
+
+	# Knock out Mara: her neighbour June has her in line of sight, while the far-side
+	# Patrons are in the same room but beyond view range, so they only hear it.
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_mara"))
+	session.advance(2.05)
+	var views: Dictionary = session.snapshot()["debug_patron_views"]
+
+	var seer: Dictionary = views[&"patron_june"]
+	assert_eq(float(seer["suspicion"]), 100.0, "A visual witness receives Hard Evidence.")
+	assert_eq(seer["suspicion_cause"], &"hard_evidence")
+	assert_false(seer["suspicion_recoverable"], "Hard Evidence is permanent maximum Suspicion.")
+
+	var hearer: Dictionary = views[&"patron_clara"]
+	assert_eq(float(hearer["suspicion"]), 25.0, "A hearing-only witness receives the +25 soft increase.")
+	assert_eq(hearer["suspicion_cause"], &"general_danger")
+	assert_true(hearer["suspicion_recoverable"], "The soft hearing increase is recoverable.")
+
+
+func test_dragging_occupies_the_cultist_and_can_always_be_interrupted_by_dropping() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	# Knock out solo Elias, then pick up and begin dragging his unconscious body.
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
+	session.advance(2.05)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"unconscious")
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"),
+		"An unconscious, unattended body can be picked up.")
+	session.advance(1.05)  # the 1-second pickup completes into dragging
+
+	# Dragging occupies the Cultist and reduces movement to 50%.
+	var dragging: Dictionary = session.snapshot()
+	assert_true(session.is_cultist_busy(&"cultist_01"), "Dragging occupies the Cultist.")
+	assert_eq(dragging["drags"][&"patron_elias"]["phase"], &"dragging")
+	assert_almost_eq(float(dragging["drags"][&"patron_elias"]["movement_scale"]), 0.5, 0.001,
+		"Dragging reduces movement to 50%.")
+	assert_false(session.begin_knockout(&"cultist_01", &"patron_june"),
+		"An occupied Cultist cannot start another Action while dragging.")
+
+	# Dropping always interrupts the drag and frees the Cultist mid-haul.
+	assert_true(session.drop_body(&"cultist_01"), "A drag can always be interrupted by dropping.")
+	var dropped: Dictionary = session.snapshot()
+	assert_false(dropped["drags"].has(&"patron_elias"), "The drag ends when the body is dropped.")
+	assert_false(session.is_cultist_busy(&"cultist_01"), "Dropping frees the Cultist.")
+	assert_eq(dropped["debug_patron_views"][&"patron_elias"]["lifecycle"], &"unconscious",
+		"A dropped body is still an unconscious Patron, not a Capture.")
+	assert_eq(dropped["captures"], 0)
+
+
+func test_dropping_restarts_unattended_pressure_and_intake_crossing_captures_once() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	# Isolate solo Elias in the bathroom and knock him out there: the main hall neither
+	# sees nor hears it, so main-hall June is a clean pressure gauge that starts at zero.
+	assert_true(session.debug_force_bathroom(&"patron_elias"))
+	session.advance(2.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["activity"], &"seated_bathroom_use")
+
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
+	session.advance(2.05)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"unconscious")
+	assert_eq(float(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]), 0.0,
+		"The main-hall gauge neither sees nor hears the bathroom knockout.")
+
+	# While the body is held and dragged there is no Unattended Body pressure.
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	session.advance(11.0)
+	assert_eq(float(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]), 0.0,
+		"A supported or dragged body applies no Unattended Body pressure.")
+
+	# Dropping restarts a fresh grace period; pressure resumes only after it elapses.
+	assert_true(session.drop_body(&"cultist_01"))
+	session.advance(2.9)
+	assert_eq(float(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]), 0.0,
+		"Within the fresh 3-second grace the dropped body applies no pressure yet.")
+	session.advance(6.0)  # grace (3s) plus one 5s interval crossed exactly once
+	assert_eq(float(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]), 5.0,
+		"After its restarted grace the Unattended Body resumes +5 pressure.")
+
+	# Picking the body back up and dragging it across the Tunnel Intake captures it once.
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	session.advance(1.05 + 14.0 + 0.1)  # pickup plus the full drag to the intake
+	var captured: Dictionary = session.snapshot()
+	assert_eq(captured["captures"], 1, "Crossing the Tunnel Intake completes the Capture.")
+	assert_eq(captured["debug_patron_views"][&"patron_elias"]["lifecycle"], &"captured")
+	session.advance(10.0)
+	assert_eq(session.snapshot()["captures"], 1, "The crossing completes the Capture exactly once.")

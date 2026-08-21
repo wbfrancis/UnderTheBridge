@@ -176,6 +176,46 @@ func rescue_persuasion_chance(cultist_id: StringName) -> float:
 	return _ordinary_visits.rescue_persuasion_chance(cultist_id)
 
 
+func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var started: bool = _ordinary_visits.begin_knockout(cultist_id, victim_id)
+	if started:
+		_record(&"knockout_windup_started", {"cultist_id": cultist_id, "victim_id": victim_id})
+		_emit_snapshot()
+	return started
+
+
+func cancel_knockout(cultist_id: StringName) -> bool:
+	var cancelled: bool = _ordinary_visits.cancel_knockout(cultist_id)
+	if cancelled:
+		_record(&"knockout_windup_cancelled", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return cancelled
+
+
+func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var picked: bool = _ordinary_visits.pick_up_body(cultist_id, victim_id)
+	if picked:
+		_record(&"body_pickup_started", {"cultist_id": cultist_id, "victim_id": victim_id})
+		_emit_snapshot()
+	return picked
+
+
+func drop_body(cultist_id: StringName) -> bool:
+	var dropped: bool = _ordinary_visits.drop_body(cultist_id)
+	if dropped:
+		_record(&"body_dropped", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return dropped
+
+
+func is_cultist_busy(cultist_id: StringName) -> bool:
+	return _ordinary_visits.is_cultist_busy(cultist_id)
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
@@ -244,6 +284,8 @@ func snapshot() -> Dictionary:
 		"doses_remaining": visit["doses_remaining"],
 		"drug_prep": visit["drug_prep"],
 		"collapses": visit["collapses"],
+		"windup": visit["windup"],
+		"drags": visit["drags"],
 		"patrons": patrons,
 		"orders": orders,
 		"safe_autonomy": visit["safe_autonomy"],

@@ -29,6 +29,7 @@ const ACTIVITY_ROOMS := {
 	&"helper_lifting": &"main_hall",
 	&"helper_carrying": &"front",
 	&"helper_persuading": &"front",
+	&"being_dragged": &"main_hall",
 }
 const PERCEPTION_LOG_LIMIT := 8
 const BAR_POSITION := Vector2(0.0, 0.0)
@@ -67,6 +68,12 @@ const HELPER_LIFT_SECONDS := 4.0
 const HELPER_CARRY_SECONDS := 14.0
 const RESCUE_PERSUASION_SECONDS := 6.0
 const RESCUE_FAILURE_SUSPICION := 25.0
+# Manual knockout and dragging, from the GDD §10.3 and TECHNICAL_DESIGN §6.3.
+const KNOCKOUT_WINDUP_SECONDS := 2.0
+const BODY_PICKUP_SECONDS := 1.0
+# 50%-speed drag to the Tunnel Intake; the same abstract front path as the Helper carry.
+const DRAG_TO_INTAKE_SECONDS := 14.0
+const DRAG_MOVEMENT_SCALE := 0.5
 const TIME_EPSILON := 0.0001
 # Bathroom activities where the occupant stands (capturable by the Trapdoor pulse).
 const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
@@ -185,6 +192,8 @@ var _defeat: bool = false
 var _doses_remaining: int = DRUG_DOSES_AT_START
 var _drug_prep: Dictionary = {}
 var _collapses: Dictionary = {}
+var _windup: Dictionary = {}
+var _drags: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -225,6 +234,8 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_doses_remaining = DRUG_DOSES_AT_START
 	_drug_prep.clear()
 	_collapses.clear()
+	_windup.clear()
+	_drags.clear()
 	_emit_snapshot()
 
 
@@ -245,6 +256,8 @@ func advance(simulated_seconds: float) -> void:
 		_advance_drug_prep(step)
 		_advance_drug(step)
 		_advance_collapses(step)
+		_advance_windup(step)
+		_advance_drags(step)
 		_apply_body_pressure(step)
 		_apply_companion_influence(step)
 		_dispatch_maximum_responses()
@@ -586,6 +599,8 @@ func snapshot() -> Dictionary:
 		"doses_remaining": _doses_remaining,
 		"drug_prep": _drug_prep.duplicate(true),
 		"collapses": _collapses.duplicate(true),
+		"windup": _windup.duplicate(true),
+		"drags": _drags.duplicate(true),
 	}
 
 
@@ -1447,6 +1462,183 @@ func _active_collapse_with_helper() -> StringName:
 		if phase in [&"carrying", &"persuading"] and not StringName(_collapses[victim_id]["helper_id"]).is_empty():
 			return victim_id
 	return &""
+
+
+# --- Manual knockout and dragging (GDD §10.3) --------------------------------
+
+# Begins the 2-second interruptible wind-up. Valid against an active Patron when
+# the acting Cultist is free and no other wind-up is in progress.
+func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _patrons.has(victim_id):
+		return false
+	if _patrons[victim_id]["lifecycle"] != &"active":
+		return false
+	if not _windup.is_empty() or is_cultist_busy(cultist_id):
+		return false
+	_windup = {
+		"cultist_id": cultist_id,
+		"victim_id": victim_id,
+		"remaining": KNOCKOUT_WINDUP_SECONDS,
+	}
+	_record(&"knockout_windup_started", victim_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+# Interrupts the wind-up before impact. The Commitment Point has not passed, so
+# the victim is unharmed. Only the Cultist who started the wind-up can cancel it.
+func cancel_knockout(cultist_id: StringName) -> bool:
+	if _windup.is_empty() or _windup["cultist_id"] != cultist_id:
+		return false
+	var victim_id: StringName = _windup["victim_id"]
+	_windup.clear()
+	_record(&"knockout_windup_cancelled", victim_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+# Starts the 1-second pickup of an Unconscious, unattended body. Pickup pauses the
+# Unattended Body pressure and occupies the Cultist through the drag that follows.
+func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _patrons.has(victim_id):
+		return false
+	if _patrons[victim_id]["lifecycle"] != &"unconscious" or _drags.has(victim_id):
+		return false
+	if is_cultist_busy(cultist_id):
+		return false
+	_perception.set_body_state(victim_id, &"held")
+	_drags[victim_id] = {
+		"victim_id": victim_id,
+		"cultist_id": cultist_id,
+		"phase": &"pickup",
+		"remaining": BODY_PICKUP_SECONDS,
+		"movement_scale": DRAG_MOVEMENT_SCALE,
+	}
+	_record(&"body_pickup_started", victim_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+# Drops the body the Cultist is holding or dragging. Dragging can always be
+# interrupted this way; dropping restarts the victim's Unattended Body grace.
+func drop_body(cultist_id: StringName) -> bool:
+	var victim_id := _drag_victim_for_cultist(cultist_id)
+	if victim_id.is_empty():
+		return false
+	_drags.erase(victim_id)
+	var patron: Dictionary = _patrons[victim_id]
+	_set_activity(patron, &"unconscious", &"collapsed")
+	_patrons[victim_id] = patron
+	# A fresh grace period: the abandoned body is Unattended again.
+	_perception.drop_body(victim_id, _patron_room(patron), _patron_position(patron))
+	_record(&"body_dropped", victim_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+func is_cultist_busy(cultist_id: StringName) -> bool:
+	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
+		return true
+	return not _drag_victim_for_cultist(cultist_id).is_empty()
+
+
+func _drag_victim_for_cultist(cultist_id: StringName) -> StringName:
+	for victim_id: StringName in _drags:
+		if _drags[victim_id]["cultist_id"] == cultist_id:
+			return victim_id
+	return &""
+
+
+func _advance_windup(step: float) -> void:
+	if _windup.is_empty():
+		return
+	var victim_id: StringName = _windup["victim_id"]
+	# A victim who left or fell before impact aborts the wind-up harmlessly.
+	if not _patrons.has(victim_id) or _patrons[victim_id]["lifecycle"] != &"active":
+		_windup.clear()
+		return
+	_windup["remaining"] = float(_windup["remaining"]) - step
+	if float(_windup["remaining"]) > TIME_EPSILON:
+		return
+	var cultist_id: StringName = _windup["cultist_id"]
+	_windup.clear()
+	_knockout_patron(victim_id, cultist_id)
+
+
+# The knockout impact. This is the Commitment Point: witnesses perceive it and the
+# victim goes Unconscious for the Night, becoming an Unattended Body on the spot.
+func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
+	var patron: Dictionary = _patrons[victim_id]
+	var source_room := _patron_room(patron)
+	var source_position := _patron_position(patron)
+	_witness_knockout(victim_id, source_room, source_position)
+	patron["bathroom_checks_active"] = false
+	patron["lifecycle"] = &"unconscious"
+	_set_activity(patron, &"unconscious", &"collapsed")
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	_interaction_registry.release_actor(victim_id)
+	var order_id: StringName = patron["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"knockout")
+	_patrons[victim_id] = patron
+	_perception.add_body(victim_id, source_room, source_position)
+	_record(&"knockout", victim_id, {"cultist_id": cultist_id})
+
+
+# Fans the impact out: a Patron who sees it receives Hard Evidence, a Patron who
+# only hears it receives the +25 soft increase, and the victim never witnesses it.
+func _witness_knockout(victim_id: StringName, source_room: StringName, source_position: Vector2) -> void:
+	var perceivers := _active_perceivers()
+	var seen: Dictionary = {}
+	for patron_id: StringName in _perception.visual_recipients(source_room, source_position, perceivers):
+		if patron_id == victim_id:
+			continue
+		if _route_stimulus(patron_id, &"knockout_witnessed", &"visual", victim_id):
+			seen[patron_id] = true
+	for patron_id: StringName in _perception.auditory_recipients(source_room, perceivers):
+		if patron_id == victim_id or seen.has(patron_id):
+			continue
+		_route_stimulus(patron_id, &"knockout_heard", &"auditory", victim_id)
+
+
+func _advance_drags(step: float) -> void:
+	for victim_id: StringName in _drags.keys():
+		var drag: Dictionary = _drags[victim_id]
+		match drag["phase"]:
+			&"pickup":
+				drag["remaining"] = float(drag["remaining"]) - step
+				if float(drag["remaining"]) <= TIME_EPSILON:
+					drag["phase"] = &"dragging"
+					drag["remaining"] = DRAG_TO_INTAKE_SECONDS
+					var patron: Dictionary = _patrons[victim_id]
+					_set_activity(patron, &"being_dragged", &"tunnel")
+					_patrons[victim_id] = patron
+					_record(&"body_drag_started", victim_id, {"cultist_id": drag["cultist_id"]})
+			&"dragging":
+				drag["remaining"] = float(drag["remaining"]) - step
+				if float(drag["remaining"]) <= TIME_EPSILON:
+					_drags[victim_id] = drag
+					_capture_dragged_body(victim_id)
+					continue
+		if _drags.has(victim_id):
+			_drags[victim_id] = drag
+
+
+# Crossing the Tunnel Intake completes the Capture exactly once: the record is
+# erased and the body removed, so a finished drag cannot capture the victim again.
+func _capture_dragged_body(victim_id: StringName) -> void:
+	var drag: Dictionary = _drags[victim_id]
+	_drags.erase(victim_id)
+	_perception.remove_body(victim_id)
+	var patron: Dictionary = _patrons[victim_id]
+	_interaction_registry.release_actor(victim_id)
+	patron["lifecycle"] = &"captured"
+	_set_activity(patron, &"captured", &"tunnel")
+	_patrons[victim_id] = patron
+	_captures.append({"id": victim_id, "cause": &"knockout", "at": _simulated_seconds})
+	_record(&"capture", victim_id, {"cause": &"knockout", "cultist_id": drag["cultist_id"]})
 
 
 func _advance_intoxication(patron_id: StringName, patron: Dictionary, delta: float) -> void:
