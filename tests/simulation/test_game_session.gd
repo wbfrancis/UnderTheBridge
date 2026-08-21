@@ -350,9 +350,12 @@ func test_companion_influence_drifts_up_toward_highest_nearby_group_member() -> 
 	session.advance(100.0)
 
 	# June and Mara share a table (within 5 m, same room, same Arrival Group).
-	# Pin June at Maximum with Hard Evidence so Mara has a fixed target to chase.
-	assert_true(session.report_patron_stimulus(&"patron_june", &"drink_dosed_seen"))
-	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 100.0)
+	# Pin June at a stable sub-maximum with two non-recoverable stimuli so he is a fixed
+	# target to chase and does not act on his Suspicion (a Maximum-Suspicion Patron now
+	# Escapes, which is covered by the Escape test).
+	assert_true(session.report_patron_stimulus(&"patron_june", &"missing_companion_20"))
+	assert_true(session.report_patron_stimulus(&"patron_june", &"missing_companion_30"))
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0)
 
 	session.advance(10.0)
 	var first: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
@@ -364,14 +367,12 @@ func test_companion_influence_drifts_up_toward_highest_nearby_group_member() -> 
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"], 10.0,
 		"Each interval adds another step.")
 
-	# Drive to Maximum; influence never overshoots the target and June is not
-	# dragged downward by his lower-Suspicion companion.
+	# Influence never overshoots the target and June is not dragged downward by his
+	# lower-Suspicion companion.
 	session.advance(200.0)
-	var maxed: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
-	assert_eq(maxed["suspicion"], 100.0, "Influence stops on equality, so Mara settles at the target.")
-	assert_eq(maxed["suspicion_maximum_response"], &"escape",
-		"Reaching Maximum through Companion influence selects Escape, not Investigation.")
-	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 100.0,
+	var settled: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(settled["suspicion"], 50.0, "Influence stops on equality, so Mara settles at the target.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 50.0,
 		"Influence only moves upward; June is unaffected by Mara.")
 
 
@@ -399,3 +400,132 @@ func test_debug_view_identifies_perception_source_recipient_cause_and_timing() -
 	assert_eq(latest["stimulus"], &"knockout_heard")
 	assert_eq(latest["cause"], &"general_danger", "The trace names the resulting cause.")
 	assert_almost_eq(float(latest["at"]), 100.0, 0.001, "The trace records recent timing.")
+
+
+func test_full_night_trapdoor_capture_creates_witness_and_companion_consequences() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(100.0)
+
+	# A standing occupant is captured by the Trapdoor pulse in the live Night.
+	assert_true(
+		session.debug_force_bathroom(&"patron_june"),
+		"An arrived Patron can be placed in the bathroom for the scenario."
+	)
+	assert_true(session.activate_trapdoor(), "The Trapdoor arms against the current occupant.")
+	var after_capture: Dictionary = session.snapshot()
+	assert_eq(after_capture["debug_patron_views"][&"patron_june"]["lifecycle"], &"captured")
+	assert_eq(after_capture["captures"], 1)
+
+	# The captured Patron's Companion grows suspicious of the unexplained absence.
+	session.advance(20.0)
+	var mara: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_almost_eq(float(mara["suspicion"]), 25.0, 0.001)
+	assert_eq(mara["suspicion_cause"], &"missing_companion")
+
+	# A seated occupant is not captured; the pulse leaves Hard Evidence and the witness stays.
+	var witness_session = game_session_script.new()
+	witness_session.start_night(707)
+	witness_session.advance(100.0)
+	assert_true(witness_session.debug_force_bathroom(&"patron_mara"))
+	witness_session.advance(2.05)
+	var seated: Dictionary = witness_session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(seated["activity"], &"seated_bathroom_use", "The witness has sat down to use the bathroom.")
+	assert_true(witness_session.activate_trapdoor())
+	var witness: Dictionary = witness_session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(float(witness["suspicion"]), 100.0)
+	assert_eq(witness["suspicion_cause"], &"hard_evidence")
+	assert_eq(witness["activity"], &"seated_bathroom_use", "The seated witness is not captured and stays put.")
+	assert_eq(witness_session.snapshot()["captures"], 0)
+
+
+func test_missing_companion_max_drives_investigation_while_proof_drives_escape() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+
+	# Missing-Companion path: capturing June leaves Mara's absence clock running to Maximum,
+	# and a missing-Companion Maximum drives Investigation.
+	var missing_session = game_session_script.new()
+	missing_session.start_night(707)
+	missing_session.advance(100.0)
+	assert_true(missing_session.debug_force_bathroom(&"patron_june"))
+	assert_true(missing_session.activate_trapdoor())
+	missing_session.advance(40.0)
+	var mara: Dictionary = missing_session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_eq(float(mara["suspicion"]), 100.0)
+	assert_eq(mara["suspicion_cause"], &"missing_companion")
+	assert_eq(mara["suspicion_maximum_response"], &"investigation")
+	assert_eq(mara["lifecycle"], &"investigating", "Missing-Companion Maximum sends Mara to investigate.")
+
+	# Proof path: seeing his own drink dosed is Hard Evidence, and Hard Evidence at Maximum
+	# drives Escape rather than Investigation.
+	var proof_session = game_session_script.new()
+	proof_session.start_night(707)
+	proof_session.advance(200.0)
+	assert_true(proof_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
+	proof_session.advance(0.2)
+	var elias: Dictionary = proof_session.snapshot()["debug_patron_views"][&"patron_elias"]
+	assert_eq(float(elias["suspicion"]), 100.0)
+	assert_eq(elias["suspicion_cause"], &"hard_evidence")
+	assert_eq(elias["lifecycle"], &"escaping", "Proof at Maximum drives Escape.")
+
+
+func test_escape_forces_single_speed_and_permits_one_five_second_intercept() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	# Run at 4x, then trigger an Escape; Escape forces the Night back to 1x.
+	assert_true(session.set_time_scale(4.0))
+	assert_true(session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
+	session.advance(1.0)
+	assert_almost_eq(float(session.snapshot()["time_scale"]), 1.0, 0.0001,
+		"Starting an Escape forces the Night to 1x.")
+	assert_false(session.set_time_scale(4.0), "Faster than 1x is refused while a Patron is escaping.")
+	assert_false(session.set_time_scale(2.0))
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"escaping")
+
+	# Exactly one 5-second Intercept is permitted per escaping Patron.
+	assert_true(session.begin_intercept(&"patron_elias", &"cultist_01"))
+	assert_false(session.begin_intercept(&"patron_elias", &"cultist_02"),
+		"A second Intercept on the same escaping Patron is refused.")
+	assert_false(session.snapshot()["active_intercept"].is_empty())
+
+	session.advance(5.0)
+	var after: Dictionary = session.snapshot()
+	assert_true(after["active_intercept"].is_empty(), "The 5-second Intercept resolves and releases its slot.")
+	assert_eq(after["debug_patron_views"][&"patron_elias"]["lifecycle"], &"escaping",
+		"The Patron resumes escaping after a completed Intercept.")
+	assert_true(after["debug_patron_views"][&"patron_elias"]["intercept_attempted"])
+
+
+func test_only_max_suspicion_front_exit_crossing_causes_immediate_defeat() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+
+	# A clean Night: eight Patrons complete visits and leave through the front exit as
+	# Normal Departures. Crossing the exit at calm Suspicion never causes defeat.
+	var clean_session = game_session_script.new()
+	clean_session.start_night(707)
+	clean_session.set_time_scale(4.0)
+	clean_session.advance(300.0)
+	var clean: Dictionary = clean_session.snapshot()
+	assert_eq(clean["phase"], &"results", "The clean Night reaches its results phase.")
+	assert_false(clean["defeat"], "Normal Departures across the front exit never cause defeat.")
+	assert_ne(clean["outcome"], &"defeat")
+	assert_gt(clean["patrons"]["normal_departure_count"], 0, "Patrons did cross the exit normally.")
+
+	# A maximum-Suspicion escaper crossing the same exit causes immediate defeat.
+	var loss_session = game_session_script.new()
+	loss_session.start_night(707)
+	loss_session.advance(200.0)
+	assert_true(loss_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
+	loss_session.advance(0.2)
+	assert_eq(loss_session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"escaping")
+	loss_session.advance(10.0)
+	var loss: Dictionary = loss_session.snapshot()
+	assert_true(loss["defeat"], "A maximum-Suspicion escaper reaching the front exit is defeat.")
+	assert_eq(loss["outcome"], &"defeat")
+	assert_eq(loss["phase"], &"results", "Defeat ends the Night immediately.")
+	assert_eq(loss["debug_patron_views"][&"patron_elias"]["lifecycle"], &"exited")
+	assert_almost_eq(float(loss["time_scale"]), 0.0, 0.0001, "The results phase pauses the clock.")

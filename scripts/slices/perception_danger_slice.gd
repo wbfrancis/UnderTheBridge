@@ -293,13 +293,14 @@ func _set_scenario(scenario_id: String) -> void:
 			_scenario_trace = "Grace 3.0 s: %.0f (no pressure yet)\n+5.0 s: %.0f (first +5)\n+5.0 s: %.0f (global to every active Patron)" % [before_tick, first_tick, second_tick]
 		"companion":
 			_selected_patron_id = &"patron_mara"
-			_session.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
+			_session.report_patron_stimulus(&"patron_june", &"missing_companion_20")
+			_session.report_patron_stimulus(&"patron_june", &"missing_companion_30")
 			_session.advance(10.0)
 			var step_one: float = _debug_for(&"patron_mara")["suspicion"]
 			_session.advance(200.0)
 			var settled: Dictionary = _debug_for(&"patron_mara")
-			_scenario_trace = "June pinned at 100 by Hard Evidence.\nMara after 10 s: %.0f (up to +5 toward the target)\nMara settled: %.0f → %s" % [
-				step_one, settled["suspicion"], _humanize(settled["suspicion_maximum_response"]),
+			_scenario_trace = "June pinned at 50 (stable, non-recoverable).\nMara after 10 s: %.0f (up to +5 toward the target)\nMara settled: %.0f (drift stops on equality)" % [
+				step_one, settled["suspicion"],
 			]
 		"debug_trace":
 			_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
@@ -448,11 +449,13 @@ func _validation_report() -> Dictionary:
 	body.advance(5.0)
 	var body_supported: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
 
-	# Companion influence: drift up toward the pinned neighbour, settle at 100 → Escape.
+	# Companion influence: drift up toward a stable sub-maximum neighbour, stopping on
+	# equality. (Reaching 100 sends a Patron to Escape, which the capture-chain slice covers.)
 	var companion = GAME_SESSION_SCRIPT.new()
 	companion.start_night(707)
 	companion.advance(100.0)
-	companion.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
+	companion.report_patron_stimulus(&"patron_june", &"missing_companion_20")
+	companion.report_patron_stimulus(&"patron_june", &"missing_companion_30")
 	companion.advance(10.0)
 	var companion_first: float = companion.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"]
 	companion.advance(200.0)
@@ -472,7 +475,7 @@ func _validation_report() -> Dictionary:
 		"sound_uses_room_relationship": (&"patron_june" in heard) and unheard.is_empty(),
 		"body_pressure_after_grace_is_global": body_grace == 0.0 and body_first == 10.0 and body_mara == 10.0,
 		"body_pressure_pauses_when_supported": body_supported == 15.0,
-		"companion_drifts_up_and_escapes": companion_first == 5.0 and companion_debug["suspicion"] == 100.0 and companion_debug["suspicion_maximum_response"] == &"escape",
+		"companion_drifts_up_and_settles": companion_first == 5.0 and companion_debug["suspicion"] == 50.0 and companion_debug["suspicion_cause"] == &"companion_influence",
 		"debug_trace_is_complete": not trace_entry.is_empty()
 			and trace_entry["source"] == &"cultist_02"
 			and trace_entry["recipient"] == &"patron_june"

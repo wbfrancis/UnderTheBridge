@@ -18,6 +18,12 @@ const ACTIVITY_ROOMS := {
 	&"entering_bathroom": &"hallway",
 	&"seated_bathroom_use": &"bathroom",
 	&"standing_bathroom_exit": &"hallway",
+	&"investigation_search": &"bathroom",
+	&"waiting_investigation": &"bathroom",
+	&"captured": &"bathroom",
+	&"shock": &"front",
+	&"escaping": &"front",
+	&"intercepted": &"front",
 }
 const PERCEPTION_LOG_LIMIT := 8
 const BAR_POSITION := Vector2(0.0, 0.0)
@@ -30,10 +36,35 @@ const SEAT_POSITIONS := {
 const STEP_SECONDS := 0.1
 const GROUP_ID := &"arrival_group_pair_01"
 const BATHROOM_SLOT := &"bathroom_occupant"
+const INTERCEPT_SLOT := &"intercept_position"
 const DEPARTURE_AFTER_SEATED_SECONDS := 540.0
 const DRINK_SECONDS := 30.0
 const INTOXICATION_DECAY_SECONDS := 240.0
 const BATHROOM_CHECK_SECONDS := 5.0
+# Danger-chain timings, ported from the bathroom danger spike and TECHNICAL_DESIGN §6/§7.1.
+const TRAPDOOR_OPEN_SECONDS := 2.0
+const TRAPDOOR_COOLDOWN_SECONDS := 3.0
+const INVESTIGATION_SECONDS := 5.0
+const ESCAPE_SHOCK_SECONDS := 2.0
+const ESCAPE_TRAVEL_SECONDS := 6.0
+const INTERCEPT_SECONDS := 5.0
+const MISSING_COMPANION_20_SECONDS := 20.0
+const MISSING_COMPANION_30_SECONDS := 30.0
+const MISSING_COMPANION_40_SECONDS := 40.0
+const TIME_EPSILON := 0.0001
+# Bathroom activities where the occupant stands (capturable by the Trapdoor pulse).
+const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
+	&"entering_bathroom",
+	&"standing_bathroom_exit",
+	&"investigation_search",
+]
+# A Patron using the bathroom finishes that visit before a maximum-Suspicion response
+# fires (a seated Hard-Evidence witness escapes through `escape_after_bathroom` instead).
+const DISPATCH_EXCLUDED_ACTIVITIES: Array[StringName] = [
+	&"entering_bathroom",
+	&"seated_bathroom_use",
+	&"standing_bathroom_exit",
+]
 const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
 const CAPTURE_ACTIONS: Array[StringName] = [
 	&"activate_trapdoor",
@@ -129,6 +160,12 @@ var _next_service_cultist_index: int = 0
 var _suspicion_states: Dictionary = {}
 var _perception = PATRON_PERCEPTION_SCRIPT.new()
 var _perception_log: Dictionary = {}
+var _trapdoor_state: StringName = &"closed"
+var _trapdoor_remaining: float = 0.0
+var _trapdoor_eligible_occupant: StringName = &""
+var _captures: Array[Dictionary] = []
+var _active_intercept: Dictionary = {}
+var _defeat: bool = false
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -147,6 +184,7 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_seat_owners[StringName("seat_%02d" % (index + 1))] = &""
 	_interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_interaction_registry.register_slot(BATHROOM_SLOT, &"bathroom")
+	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_order_system = ORDER_SYSTEM_SCRIPT.new()
 	_patrons.clear()
 	_groups.clear()
@@ -159,6 +197,12 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
 	_perception = PATRON_PERCEPTION_SCRIPT.new()
 	_perception_log.clear()
+	_trapdoor_state = &"closed"
+	_trapdoor_remaining = 0.0
+	_trapdoor_eligible_occupant = &""
+	_captures.clear()
+	_active_intercept.clear()
+	_defeat = false
 	_emit_snapshot()
 
 
@@ -172,8 +216,13 @@ func advance(simulated_seconds: float) -> void:
 		_activate_due_groups()
 		for patron_id: StringName in _patrons:
 			_advance_patron(patron_id, step)
+		_advance_trapdoor(step)
+		_advance_missing_companions(step)
+		_advance_investigations(step)
+		_advance_escape(step)
 		_apply_body_pressure(step)
 		_apply_companion_influence(step)
+		_dispatch_maximum_responses()
 		_try_group_departures()
 		remaining -= step
 	_emit_snapshot()
@@ -197,6 +246,7 @@ func finish_night() -> void:
 		_depart_patron(patron_id, patron, &"night_ended")
 	_interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_interaction_registry.register_slot(BATHROOM_SLOT, &"bathroom")
+	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_emit_snapshot()
 
 
@@ -463,6 +513,11 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"recent_perceptions": _perception_log.get(patron_id, []).duplicate(true),
 		"night_seed": _seed,
 		"recent_bathroom_rolls": patron["recent_bathroom_rolls"].duplicate(true),
+		"missing_target": patron["missing_target"],
+		"missing_seconds": patron["missing_seconds"],
+		"escape_remaining": patron["escape_remaining"],
+		"escape_after_bathroom": patron["escape_after_bathroom"],
+		"intercept_attempted": patron["intercept_attempted"],
 	}
 
 
@@ -490,7 +545,24 @@ func snapshot() -> Dictionary:
 			"events": _autonomy_events.duplicate(true),
 			"capture_actions_started": _count_capture_autonomy_actions(),
 		},
+		"trapdoor": {
+			"state": _trapdoor_state,
+			"remaining": _trapdoor_remaining,
+			"eligible_occupant": _trapdoor_eligible_occupant,
+		},
+		"captures": _captures.duplicate(true),
+		"defeat": _defeat,
+		"active_intercept": _active_intercept.duplicate(true),
+		"escaping_patrons": _escaping_patron_ids(),
 	}
+
+
+func _escaping_patron_ids() -> Array[StringName]:
+	var ids: Array[StringName] = []
+	for patron_id: StringName in _patrons:
+		if _patrons[patron_id]["lifecycle"] == &"escaping":
+			ids.append(patron_id)
+	return ids
 
 
 static func bathroom_probability(bladder: float) -> float:
@@ -580,6 +652,14 @@ func _new_patron(
 		"friendship": {&"cultist_01": 0, &"cultist_02": 0, &"cultist_03": 0},
 		"victim_value": victim_value,
 		"victim_risk": victim_risk,
+		"missing_target": &"",
+		"missing_seconds": 0.0,
+		"missing_20_applied": false,
+		"missing_30_applied": false,
+		"missing_40_applied": false,
+		"escape_remaining": ESCAPE_TRAVEL_SECONDS,
+		"escape_after_bathroom": false,
+		"intercept_attempted": false,
 	}
 
 
@@ -633,8 +713,14 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 		&"standing_bathroom_exit":
 			if patron["activity_elapsed"] >= 3.0:
 				_interaction_registry.release_actor(patron_id)
-				_set_activity(patron, &"socializing", &"seat")
+				_clear_missing_companion_clock(patron_id)
 				_record(&"bathroom_visit_completed", patron_id)
+				if patron["escape_after_bathroom"]:
+					patron["escape_after_bathroom"] = false
+					_patrons[patron_id] = patron
+					_begin_escape(patron_id)
+					return
+				_set_activity(patron, &"socializing", &"seat")
 	_patrons[patron_id] = patron
 
 
@@ -707,8 +793,332 @@ func _advance_bathroom_checks(patron_id: StringName, patron: Dictionary) -> void
 		if roll <= probability and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 			patron["bathroom_checks_active"] = false
 			_set_activity(patron, &"entering_bathroom", &"bathroom")
+			_start_missing_companion_clock(patron_id)
 			_record(&"bathroom_chosen", patron_id, {"roll": roll, "probability": probability})
 			return
+
+
+# --- Danger chain (Trapdoor, missing Companion, Investigation, Escape, Intercept) ---
+# Ported from the isolated BathroomDangerScenario spike and adapted to the live Night's
+# bathroom vocabulary. The Trapdoor, Investigation and Escape act on the single authoritative
+# Patron model; maximum-Suspicion behaviour is driven by PatronSuspicion.maximum_response.
+
+
+func activate_trapdoor() -> bool:
+	if _trapdoor_state != &"closed":
+		return false
+	_trapdoor_state = &"open"
+	_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
+	var occupant := _bathroom_occupant()
+	_trapdoor_eligible_occupant = occupant
+	_record(&"trapdoor_opened", occupant)
+	if not occupant.is_empty():
+		var activity: StringName = _patrons[occupant]["activity"]
+		if _is_standing_bathroom_activity(activity):
+			_capture_occupant(&"trapdoor")
+		elif activity == &"seated_bathroom_use":
+			_apply_seated_hard_evidence(occupant)
+	_emit_snapshot()
+	return true
+
+
+func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
+	if not _patrons.has(patron_id) or cultist_id.is_empty() or not _active_intercept.is_empty():
+		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] != &"escaping" or patron["activity"] != &"escaping":
+		return false
+	if patron["intercept_attempted"] or not _interaction_registry.request_slot(cultist_id, INTERCEPT_SLOT):
+		return false
+	patron["intercept_attempted"] = true
+	_set_activity(patron, &"intercepted", &"front_exit")
+	_patrons[patron_id] = patron
+	_active_intercept = {
+		"patron_id": patron_id,
+		"cultist_id": cultist_id,
+		"remaining": INTERCEPT_SECONDS,
+	}
+	_record(&"intercept_started", patron_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+func cancel_intercept() -> bool:
+	if _active_intercept.is_empty():
+		return false
+	var patron_id: StringName = _active_intercept["patron_id"]
+	var cultist_id: StringName = _active_intercept["cultist_id"]
+	_interaction_registry.release_actor(cultist_id)
+	_active_intercept.clear()
+	if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"escaping":
+		var patron: Dictionary = _patrons[patron_id]
+		_set_activity(patron, &"escaping", &"front_exit")
+		_patrons[patron_id] = patron
+	_record(&"intercept_cancelled", patron_id)
+	_emit_snapshot()
+	return true
+
+
+func has_active_escape() -> bool:
+	for patron_id: StringName in _patrons:
+		if _patrons[patron_id]["lifecycle"] == &"escaping":
+			return true
+	return false
+
+
+func has_defeat() -> bool:
+	return _defeat
+
+
+# Debug-only seam: place an arrived Patron in the bathroom deterministically instead of
+# waiting on seeded bladder rolls. Used by tests and the capture-chain validation slice.
+func debug_force_bathroom(patron_id: StringName) -> bool:
+	if not _patrons.has(patron_id):
+		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] != &"active" or not _bathroom_occupant().is_empty():
+		return false
+	_interaction_registry.release_actor(patron_id)
+	if not _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+		return false
+	patron["bathroom_checks_active"] = false
+	_set_activity(patron, &"entering_bathroom", &"bathroom")
+	_patrons[patron_id] = patron
+	_start_missing_companion_clock(patron_id)
+	_record(&"debug_bathroom_forced", patron_id)
+	_emit_snapshot()
+	return true
+
+
+func _advance_trapdoor(step: float) -> void:
+	if _trapdoor_state == &"closed":
+		return
+	_trapdoor_remaining = maxf(0.0, _trapdoor_remaining - step)
+	var occupant := _bathroom_occupant()
+	if (
+			_trapdoor_state == &"open"
+			and not occupant.is_empty()
+			and occupant == _trapdoor_eligible_occupant
+			and _is_standing_bathroom_activity(_patrons[occupant]["activity"])
+	):
+		_capture_occupant(&"trapdoor")
+	if _trapdoor_remaining > TIME_EPSILON:
+		return
+	if _trapdoor_state == &"open":
+		_trapdoor_state = &"cooldown"
+		_trapdoor_remaining = TRAPDOOR_COOLDOWN_SECONDS
+		_trapdoor_eligible_occupant = &""
+		_record(&"trapdoor_cooldown", &"trapdoor")
+	else:
+		_trapdoor_state = &"closed"
+		_trapdoor_remaining = 0.0
+		_record(&"trapdoor_ready", &"trapdoor")
+
+
+func _advance_missing_companions(step: float) -> void:
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if StringName(patron["missing_target"]).is_empty() or patron["missing_40_applied"]:
+			continue
+		if patron["lifecycle"] != &"active":
+			continue
+		patron["missing_seconds"] = float(patron["missing_seconds"]) + step
+		var elapsed: float = patron["missing_seconds"]
+		if elapsed >= MISSING_COMPANION_20_SECONDS - TIME_EPSILON and not patron["missing_20_applied"]:
+			patron["missing_20_applied"] = true
+			_suspicion_states[patron_id].apply_stimulus(&"missing_companion_20")
+			_record(&"missing_companion_20", patron_id)
+		if elapsed >= MISSING_COMPANION_30_SECONDS - TIME_EPSILON and not patron["missing_30_applied"]:
+			patron["missing_30_applied"] = true
+			_suspicion_states[patron_id].apply_stimulus(&"missing_companion_30")
+			_record(&"missing_companion_30", patron_id)
+		if elapsed >= MISSING_COMPANION_40_SECONDS - TIME_EPSILON and not patron["missing_40_applied"]:
+			patron["missing_40_applied"] = true
+			_suspicion_states[patron_id].apply_stimulus(&"missing_companion_40")
+			_record(&"missing_companion_40", patron_id)
+		_patrons[patron_id] = patron
+
+
+func _advance_investigations(step: float) -> void:
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if patron["lifecycle"] != &"investigating":
+			continue
+		if patron["activity"] == &"waiting_investigation":
+			if _bathroom_occupant().is_empty() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+				_set_activity(patron, &"investigation_search", &"bathroom")
+				_patrons[patron_id] = patron
+				_record(&"investigation_started", patron_id)
+			continue
+		if patron["activity"] != &"investigation_search":
+			continue
+		patron["activity_elapsed"] = float(patron["activity_elapsed"]) + step
+		_patrons[patron_id] = patron
+		if patron["activity_elapsed"] >= INVESTIGATION_SECONDS:
+			_interaction_registry.release_actor(patron_id)
+			_record(&"trapdoor_discovered", patron_id)
+			_begin_escape(patron_id)
+
+
+func _advance_escape(step: float) -> void:
+	if not _active_intercept.is_empty():
+		_active_intercept["remaining"] = maxf(0.0, float(_active_intercept["remaining"]) - step)
+		if _active_intercept["remaining"] <= TIME_EPSILON:
+			var intercepted_id: StringName = _active_intercept["patron_id"]
+			var cultist_id: StringName = _active_intercept["cultist_id"]
+			_interaction_registry.release_actor(cultist_id)
+			_active_intercept.clear()
+			if _patrons.has(intercepted_id) and _patrons[intercepted_id]["lifecycle"] == &"escaping":
+				var resumed: Dictionary = _patrons[intercepted_id]
+				_set_activity(resumed, &"escaping", &"front_exit")
+				_patrons[intercepted_id] = resumed
+			_record(&"intercept_completed", intercepted_id)
+		return
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if patron["lifecycle"] != &"escaping":
+			continue
+		if patron["activity"] == &"shock":
+			patron["activity_elapsed"] = float(patron["activity_elapsed"]) + step
+			if patron["activity_elapsed"] >= ESCAPE_SHOCK_SECONDS:
+				_set_activity(patron, &"escaping", &"front_exit")
+				_record(&"escape_started", patron_id)
+			_patrons[patron_id] = patron
+			continue
+		if patron["activity"] != &"escaping":
+			continue
+		patron["escape_remaining"] = maxf(0.0, float(patron["escape_remaining"]) - step)
+		if patron["escape_remaining"] <= TIME_EPSILON:
+			_interaction_registry.release_actor(patron_id)
+			patron["lifecycle"] = &"exited"
+			_set_activity(patron, &"normal_departure", &"front_exit")
+			_defeat = true
+			_patrons[patron_id] = patron
+			_record(&"defeat", patron_id)
+		else:
+			_patrons[patron_id] = patron
+
+
+# The integration glue: a Patron that reaches maximum Suspicion acts on the response the
+# Suspicion module selected (missing Companion -> Investigation; Hard Evidence, general
+# danger, or Companion drift -> Escape). Patrons mid-bathroom finish that visit first.
+func _dispatch_maximum_responses() -> void:
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if patron["lifecycle"] != &"active":
+			continue
+		if patron["activity"] in DISPATCH_EXCLUDED_ACTIVITIES:
+			continue
+		var state: Dictionary = _suspicion_states[patron_id].snapshot()
+		if float(state["score"]) < 100.0:
+			continue
+		match state["maximum_response"]:
+			&"investigation":
+				_request_investigation(patron_id)
+			&"escape":
+				_begin_escape(patron_id)
+
+
+func _request_investigation(patron_id: StringName) -> void:
+	var patron: Dictionary = _patrons[patron_id]
+	patron["lifecycle"] = &"investigating"
+	patron["bathroom_checks_active"] = false
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	if _bathroom_occupant().is_empty() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+		_set_activity(patron, &"investigation_search", &"bathroom")
+		_record(&"investigation_started", patron_id)
+	else:
+		_set_activity(patron, &"waiting_investigation", &"bathroom")
+		_record(&"investigation_waiting", patron_id)
+	_patrons[patron_id] = patron
+
+
+func _begin_escape(patron_id: StringName) -> void:
+	var patron: Dictionary = _patrons[patron_id]
+	_interaction_registry.release_actor(patron_id)
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	var order_id: StringName = patron["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"escaping")
+	patron["lifecycle"] = &"escaping"
+	patron["bathroom_checks_active"] = false
+	patron["escape_remaining"] = ESCAPE_TRAVEL_SECONDS
+	patron["intercept_attempted"] = false
+	_set_activity(patron, &"shock", &"front_exit")
+	_patrons[patron_id] = patron
+	_record(&"escape_shock", patron_id)
+
+
+func _capture_occupant(cause: StringName) -> void:
+	var captured_id := _bathroom_occupant()
+	if captured_id.is_empty() or not _patrons.has(captured_id):
+		return
+	var patron: Dictionary = _patrons[captured_id]
+	_interaction_registry.release_actor(captured_id)
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	var order_id: StringName = patron["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"captured")
+	patron["lifecycle"] = &"captured"
+	patron["missing_target"] = &""
+	patron["bathroom_checks_active"] = false
+	_set_activity(patron, &"captured", &"tunnel")
+	_patrons[captured_id] = patron
+	_captures.append({"id": captured_id, "cause": cause, "at": _simulated_seconds})
+	_record(&"capture", captured_id, {"cause": cause})
+
+
+func _apply_seated_hard_evidence(patron_id: StringName) -> void:
+	var patron: Dictionary = _patrons[patron_id]
+	var observer_is_max_drunk := int(patron["intoxication"]) >= 3
+	_suspicion_states[patron_id].apply_stimulus(&"trapdoor_open_seen_seated", observer_is_max_drunk)
+	if not observer_is_max_drunk:
+		patron["escape_after_bathroom"] = true
+		_patrons[patron_id] = patron
+	_record(&"trapdoor_seated_evidence", patron_id, {"max_drunk": observer_is_max_drunk})
+
+
+func _start_missing_companion_clock(entered_id: StringName) -> void:
+	if not _patrons.has(entered_id):
+		return
+	for companion_id: StringName in _patrons[entered_id]["companions"]:
+		if not _patrons.has(companion_id):
+			continue
+		var companion: Dictionary = _patrons[companion_id]
+		if companion["lifecycle"] != &"active":
+			continue
+		companion["missing_target"] = entered_id
+		companion["missing_seconds"] = 0.0
+		companion["missing_20_applied"] = false
+		companion["missing_30_applied"] = false
+		companion["missing_40_applied"] = false
+		_patrons[companion_id] = companion
+		_record(&"companion_missing_started", companion_id, {"target_id": entered_id})
+
+
+func _clear_missing_companion_clock(returned_id: StringName) -> void:
+	for patron_id: StringName in _patrons:
+		if _patrons[patron_id]["missing_target"] != returned_id:
+			continue
+		var patron: Dictionary = _patrons[patron_id]
+		patron["missing_target"] = &""
+		patron["missing_seconds"] = 0.0
+		_patrons[patron_id] = patron
+		_record(&"companion_returned", patron_id, {"target_id": returned_id})
+
+
+func _bathroom_occupant() -> StringName:
+	return _interaction_registry.slot_owner(BATHROOM_SLOT)
+
+
+func _is_standing_bathroom_activity(activity: StringName) -> bool:
+	return activity in STANDING_BATHROOM_ACTIVITIES
 
 
 func _advance_intoxication(patron_id: StringName, patron: Dictionary, delta: float) -> void:

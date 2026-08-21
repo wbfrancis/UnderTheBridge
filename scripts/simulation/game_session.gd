@@ -54,6 +54,9 @@ func restart_night(night_seed: int) -> void:
 func set_time_scale(value: float) -> bool:
 	if value not in SUPPORTED_TIME_SCALES or _phase == &"results":
 		return false
+	# An active Escape forces 1x (TECHNICAL_DESIGN §4: "Starting Escape requests 1x").
+	if value > 1.0 and _ordinary_visits.has_active_escape():
+		return false
 	_time_scale = value
 	_record(&"time_scale_changed", {"value": value})
 	_emit_snapshot()
@@ -123,6 +126,33 @@ func remove_unattended_body(body_id: StringName) -> void:
 	_emit_snapshot()
 
 
+func activate_trapdoor() -> bool:
+	if _phase == &"results":
+		return false
+	var armed: bool = _ordinary_visits.activate_trapdoor()
+	if armed:
+		_apply_escape_speed_lock()
+		_record(&"trapdoor_activated", {"captures": _ordinary_visits.snapshot()["captures"].size()})
+		_emit_snapshot()
+	return armed
+
+
+func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
+	var started: bool = _ordinary_visits.begin_intercept(patron_id, cultist_id)
+	if started:
+		_record(&"intercept_started", {"patron_id": patron_id, "cultist_id": cultist_id})
+		_emit_snapshot()
+	return started
+
+
+func debug_force_bathroom(patron_id: StringName) -> bool:
+	var forced: bool = _ordinary_visits.debug_force_bathroom(patron_id)
+	if forced:
+		_record(&"debug_bathroom_forced", {"patron_id": patron_id})
+		_emit_snapshot()
+	return forced
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
@@ -135,8 +165,30 @@ func advance(real_seconds: float) -> void:
 			_ordinary_visits.advance(step)
 			_advance_representative_rolls()
 			remaining -= step
+			if _ordinary_visits.has_defeat():
+				_finalize_defeat()
+				break
+			_apply_escape_speed_lock()
 		_apply_phase_boundary()
 	_emit_snapshot()
+
+
+func _apply_escape_speed_lock() -> void:
+	if _phase == &"results":
+		return
+	if _ordinary_visits.has_active_escape() and _time_scale > 1.0:
+		_time_scale = 1.0
+		_record(&"escape_speed_forced", {"value": 1.0})
+
+
+func _finalize_defeat() -> void:
+	if _phase == &"results":
+		return
+	_phase = &"results"
+	_time_scale = 0.0
+	_outcome = &"defeat"
+	_ordinary_visits.finish_night()
+	_record(&"results_reached", {"outcome": _outcome})
 
 
 func snapshot() -> Dictionary:
@@ -151,6 +203,7 @@ func snapshot() -> Dictionary:
 		if not queue_snapshot["active"].is_empty():
 			action_count += 1
 		action_count += queue_snapshot["pending"].size()
+	var captures: Array = visit["captures"]
 	return {
 		"night_seed": _night_seed,
 		"simulated_seconds": _simulated_seconds,
@@ -159,7 +212,12 @@ func snapshot() -> Dictionary:
 		"phase_label": _phase_label(),
 		"clock_label": _clock_label(),
 		"outcome": _outcome,
-		"captures": 0,
+		"captures": captures.size(),
+		"capture_log": captures.duplicate(true),
+		"defeat": visit["defeat"],
+		"trapdoor": visit["trapdoor"],
+		"active_intercept": visit["active_intercept"],
+		"escaping_patrons": visit["escaping_patrons"],
 		"patrons": patrons,
 		"orders": orders,
 		"safe_autonomy": visit["safe_autonomy"],
@@ -171,7 +229,7 @@ func snapshot() -> Dictionary:
 		"bathroom_owner": visit["bathroom_owner"],
 		"visit_events": visit["events"],
 		"cultist_queues": queues,
-		"results": _results(orders, patrons),
+		"results": _results(orders, patrons, captures.size()),
 		"runtime": {
 			"spawned_patrons": patrons["active_count"],
 			"prepared_drinks": 0,
@@ -283,12 +341,12 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 	return summaries
 
 
-func _results(orders: Dictionary, patrons: Dictionary) -> Dictionary:
+func _results(orders: Dictionary, patrons: Dictionary, captures: int) -> Dictionary:
 	return {
 		"visible": _phase == &"results",
 		"night_seed": _night_seed,
 		"outcome": _outcome,
-		"captures": 0,
+		"captures": captures,
 		"capture_quota": 3,
 		"revenue": orders["revenue"],
 		"tips": orders["tips"],

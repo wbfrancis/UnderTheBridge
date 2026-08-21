@@ -1,0 +1,22 @@
+{
+  "checks": {
+    "capture_starts_companion_missing_clock": true,
+    "escape_forces_single_speed": true,
+    "max_suspicion_crossing_is_defeat": true,
+    "missing_maximum_drives_investigation": true,
+    "normal_departures_are_not_defeat": true,
+    "one_intercept_per_escaper": true,
+    "proof_maximum_drives_escape": true,
+    "seated_occupant_is_hard_evidence_witness": true,
+    "trapdoor_captures_standing_occupant": true
+  },
+  "observed": {
+    "captures_after_trapdoor": 1,
+    "clean_normal_departures": 8,
+    "forced_scale": 1.0,
+    "loss_outcome": "defeat",
+    "mara_missing_suspicion": 25.0
+  },
+  "passed": true,
+  "slice": "capture_chain"
+}
