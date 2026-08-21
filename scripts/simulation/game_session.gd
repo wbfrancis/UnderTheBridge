@@ -153,6 +153,29 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	return forced
 
 
+func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var prepared: bool = _ordinary_visits.prepare_drugged_drink(patron_id, cultist_id)
+	if prepared:
+		_record(&"drugged_drink_prepared", {"patron_id": patron_id, "cultist_id": cultist_id})
+		_emit_snapshot()
+	return prepared
+
+
+func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
+	var chance := _ordinary_visits.rescue_persuasion_chance(cultist_id)
+	var attempted: bool = _ordinary_visits.attempt_rescue_persuasion(cultist_id)
+	if attempted:
+		_record(&"rescue_persuasion_attempted", {"cultist_id": cultist_id, "chance": chance})
+		_emit_snapshot()
+	return attempted
+
+
+func rescue_persuasion_chance(cultist_id: StringName) -> float:
+	return _ordinary_visits.rescue_persuasion_chance(cultist_id)
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
@@ -218,6 +241,9 @@ func snapshot() -> Dictionary:
 		"trapdoor": visit["trapdoor"],
 		"active_intercept": visit["active_intercept"],
 		"escaping_patrons": visit["escaping_patrons"],
+		"doses_remaining": visit["doses_remaining"],
+		"drug_prep": visit["drug_prep"],
+		"collapses": visit["collapses"],
 		"patrons": patrons,
 		"orders": orders,
 		"safe_autonomy": visit["safe_autonomy"],

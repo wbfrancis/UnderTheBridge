@@ -1,0 +1,25 @@
+{
+  "checks": {
+    "chance_uses_friendship_and_suspicion": true,
+    "collapse_after_twenty_seconds": true,
+    "conscious_companion_carries_victim": true,
+    "countdown_is_consumer_owned": true,
+    "failure_raises_suspicion_and_resumes": true,
+    "night_starts_with_two_doses": true,
+    "preparation_spends_one_dose": true,
+    "success_captures_both_at_tunnel": true
+  },
+  "observed": {
+    "calm_chance": 25.0,
+    "doses": [
+      2,
+      1
+    ],
+    "failed_helper_suspicion": 25.0,
+    "sip_countdown": 0.6,
+    "success_captures": 2,
+    "wary_chance": 7.5
+  },
+  "passed": true,
+  "slice": "drug_helper"
+}

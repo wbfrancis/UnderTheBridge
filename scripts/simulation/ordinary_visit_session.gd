@@ -24,6 +24,11 @@ const ACTIVITY_ROOMS := {
 	&"shock": &"front",
 	&"escaping": &"front",
 	&"intercepted": &"front",
+	&"unconscious": &"main_hall",
+	&"helper_reacting": &"main_hall",
+	&"helper_lifting": &"main_hall",
+	&"helper_carrying": &"front",
+	&"helper_persuading": &"front",
 }
 const PERCEPTION_LOG_LIMIT := 8
 const BAR_POSITION := Vector2(0.0, 0.0)
@@ -51,6 +56,17 @@ const INTERCEPT_SECONDS := 5.0
 const MISSING_COMPANION_20_SECONDS := 20.0
 const MISSING_COMPANION_30_SECONDS := 30.0
 const MISSING_COMPANION_40_SECONDS := 40.0
+# Drugged Drink and Helper Rescue timings, from the GDD §10.2 / §11 and TECHNICAL_DESIGN §7.2.
+const DRUG_DOSES_AT_START := 2
+const DRUG_PREPARE_SECONDS := 8.0
+const DRUG_DROWSY_SECONDS := 10.0
+const DRUG_COLLAPSE_SECONDS := 20.0
+const HELPER_REACTION_SECONDS := 2.0
+const HELPER_LIFT_SECONDS := 4.0
+# 60%-speed carry to the front, the same path Escape covers in 6 s at 140% (tunable).
+const HELPER_CARRY_SECONDS := 14.0
+const RESCUE_PERSUASION_SECONDS := 6.0
+const RESCUE_FAILURE_SUSPICION := 25.0
 const TIME_EPSILON := 0.0001
 # Bathroom activities where the occupant stands (capturable by the Trapdoor pulse).
 const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
@@ -166,6 +182,9 @@ var _trapdoor_eligible_occupant: StringName = &""
 var _captures: Array[Dictionary] = []
 var _active_intercept: Dictionary = {}
 var _defeat: bool = false
+var _doses_remaining: int = DRUG_DOSES_AT_START
+var _drug_prep: Dictionary = {}
+var _collapses: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -203,6 +222,9 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_captures.clear()
 	_active_intercept.clear()
 	_defeat = false
+	_doses_remaining = DRUG_DOSES_AT_START
+	_drug_prep.clear()
+	_collapses.clear()
 	_emit_snapshot()
 
 
@@ -220,6 +242,9 @@ func advance(simulated_seconds: float) -> void:
 		_advance_missing_companions(step)
 		_advance_investigations(step)
 		_advance_escape(step)
+		_advance_drug_prep(step)
+		_advance_drug(step)
+		_advance_collapses(step)
 		_apply_body_pressure(step)
 		_apply_companion_influence(step)
 		_dispatch_maximum_responses()
@@ -518,6 +543,10 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"escape_remaining": patron["escape_remaining"],
 		"escape_after_bathroom": patron["escape_after_bathroom"],
 		"intercept_attempted": patron["intercept_attempted"],
+		"drug_countdown": patron["drug_countdown"],
+		"dosed_pending": patron["dosed_pending"],
+		"helper_id": patron["helper_id"],
+		"helping_victim": patron["helping_victim"],
 	}
 
 
@@ -554,6 +583,9 @@ func snapshot() -> Dictionary:
 		"defeat": _defeat,
 		"active_intercept": _active_intercept.duplicate(true),
 		"escaping_patrons": _escaping_patron_ids(),
+		"doses_remaining": _doses_remaining,
+		"drug_prep": _drug_prep.duplicate(true),
+		"collapses": _collapses.duplicate(true),
 	}
 
 
@@ -660,6 +692,11 @@ func _new_patron(
 		"escape_remaining": ESCAPE_TRAVEL_SECONDS,
 		"escape_after_bathroom": false,
 		"intercept_attempted": false,
+		"dosed_pending": false,
+		"drug_countdown": -1.0,
+		"drug_drowsy_reported": false,
+		"helper_id": &"",
+		"helping_victim": &"",
 	}
 
 
@@ -766,6 +803,12 @@ func _serve_patron(patron_id: StringName, patron: Dictionary) -> void:
 	_autonomy_events.append(autonomy_event)
 	_record(&"safe_autonomy_service", cultist_id, {"patron_id": patron_id})
 	_set_activity(patron, &"drinking", &"drink")
+	# First sip: a prepared dose starts this consumer's countdown.
+	if patron["dosed_pending"]:
+		patron["dosed_pending"] = false
+		patron["drug_countdown"] = 0.0
+		patron["drug_drowsy_reported"] = false
+		_record(&"drugged_drink_sipped", patron_id)
 	_record(&"order_served", patron_id, {"order_id": patron["order_id"]})
 
 
@@ -1119,6 +1162,291 @@ func _bathroom_occupant() -> StringName:
 
 func _is_standing_bathroom_activity(activity: StringName) -> bool:
 	return activity in STANDING_BATHROOM_ACTIVITIES
+
+
+# --- Drugged Drink, collapse, Helper, and Rescue Persuasion (Ticket #12) ---
+# The dose attaches to the target's open Order; the consumer-owned countdown starts at the
+# first sip. On collapse the least-intoxicated conscious Companion carries the victim toward
+# the front, where one Rescue Persuasion may capture both at the Tunnel Intake.
+
+
+func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
+	if _doses_remaining <= 0 or not _drug_prep.is_empty() or cultist_id.is_empty():
+		return false
+	if not _patrons.has(patron_id):
+		return false
+	if not _order_system.is_open(_patrons[patron_id]["order_id"]):
+		return false
+	_drug_prep = {
+		"cultist_id": cultist_id,
+		"patron_id": patron_id,
+		"remaining": DRUG_PREPARE_SECONDS,
+	}
+	_record(&"drugged_drink_prepared", patron_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
+	if cultist_id.is_empty():
+		return false
+	var victim_id := _carrying_collapse_victim()
+	if victim_id.is_empty():
+		return false
+	var collapse: Dictionary = _collapses[victim_id]
+	if collapse["rescue_attempted"]:
+		return false
+	collapse["rescue_attempted"] = true
+	collapse["acting_cultist"] = cultist_id
+	collapse["carry_remaining"] = collapse["remaining"]
+	collapse["last_chance"] = rescue_persuasion_chance(cultist_id)
+	collapse["phase"] = &"persuading"
+	collapse["remaining"] = RESCUE_PERSUASION_SECONDS
+	_collapses[victim_id] = collapse
+	_record(&"rescue_persuasion_started", collapse["helper_id"], {
+		"cultist_id": cultist_id, "chance": collapse["last_chance"],
+	})
+	_emit_snapshot()
+	return true
+
+
+func rescue_persuasion_chance(cultist_id: StringName) -> float:
+	var victim_id := _active_collapse_with_helper()
+	if victim_id.is_empty() or cultist_id.is_empty():
+		return 0.0
+	var helper_id: StringName = _collapses[victim_id]["helper_id"]
+	if not _patrons.has(helper_id):
+		return 0.0
+	var friendship: float = float(_patrons[helper_id]["friendship"].get(cultist_id, 0))
+	var suspicion: float = _suspicion_states[helper_id].snapshot()["score"]
+	return clampf(25.0 + 0.7 * (friendship - suspicion), 5.0, 95.0)
+
+
+func _advance_drug_prep(step: float) -> void:
+	if _drug_prep.is_empty():
+		return
+	_drug_prep["remaining"] = float(_drug_prep["remaining"]) - step
+	if _drug_prep["remaining"] > TIME_EPSILON:
+		return
+	var patron_id: StringName = _drug_prep["patron_id"]
+	_doses_remaining -= 1
+	if _patrons.has(patron_id) and _order_system.is_open(_patrons[patron_id]["order_id"]):
+		_patrons[patron_id]["dosed_pending"] = true
+	_record(&"drugged_drink_ready", patron_id, {"doses_remaining": _doses_remaining})
+	_drug_prep.clear()
+
+
+func _advance_drug(step: float) -> void:
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if float(patron["drug_countdown"]) < 0.0 or patron["lifecycle"] != &"active":
+			continue
+		patron["drug_countdown"] = float(patron["drug_countdown"]) + step
+		if float(patron["drug_countdown"]) >= DRUG_DROWSY_SECONDS and not patron["drug_drowsy_reported"]:
+			patron["drug_drowsy_reported"] = true
+			_record(&"drugged_drink_drowsy", patron_id)
+		_patrons[patron_id] = patron
+		if float(patron["drug_countdown"]) >= DRUG_COLLAPSE_SECONDS:
+			_collapse_patron(patron_id)
+
+
+func _advance_collapses(step: float) -> void:
+	for victim_id: StringName in _collapses.keys():
+		var collapse: Dictionary = _collapses[victim_id]
+		match collapse["phase"]:
+			&"reacting":
+				collapse["remaining"] = float(collapse["remaining"]) - step
+				if collapse["remaining"] <= TIME_EPSILON:
+					_assign_helper(victim_id, collapse)
+			&"lifting":
+				collapse["remaining"] = float(collapse["remaining"]) - step
+				if collapse["remaining"] <= TIME_EPSILON:
+					collapse["phase"] = &"carrying"
+					collapse["remaining"] = HELPER_CARRY_SECONDS
+					_set_helper_activity(collapse["helper_id"], &"helper_carrying")
+					_record(&"helper_carrying", collapse["helper_id"], {"victim_id": victim_id})
+			&"carrying":
+				collapse["remaining"] = float(collapse["remaining"]) - step
+				if collapse["remaining"] <= TIME_EPSILON:
+					_collapses[victim_id] = collapse
+					_helper_reaches_front(victim_id)
+					continue
+			&"persuading":
+				collapse["remaining"] = float(collapse["remaining"]) - step
+				if collapse["remaining"] <= TIME_EPSILON:
+					_collapses[victim_id] = collapse
+					_resolve_rescue(victim_id)
+					continue
+		if _collapses.has(victim_id):
+			_collapses[victim_id] = collapse
+
+
+func _collapse_patron(patron_id: StringName) -> void:
+	var patron: Dictionary = _patrons[patron_id]
+	# The drink still raises Bladder and Intoxication before the Patron goes under.
+	patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
+	patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
+	patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
+	patron["drug_countdown"] = DRUG_COLLAPSE_SECONDS
+	patron["bathroom_checks_active"] = false
+	patron["lifecycle"] = &"unconscious"
+	_set_activity(patron, &"unconscious", &"collapsed")
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	_interaction_registry.release_actor(patron_id)
+	var order_id: StringName = patron["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"collapsed")
+	_patrons[patron_id] = patron
+	_collapses[patron_id] = {
+		"victim_id": patron_id,
+		"helper_id": &"",
+		"phase": &"reacting",
+		"remaining": HELPER_REACTION_SECONDS,
+		"carry_remaining": HELPER_CARRY_SECONDS,
+		"acting_cultist": &"",
+		"rescue_attempted": false,
+		"last_chance": 0.0,
+		"last_roll": -1.0,
+		"last_success": false,
+	}
+	_record(&"drugged_drink_collapse", patron_id)
+
+
+func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
+	var helper_id := _select_helper(victim_id)
+	if helper_id.is_empty():
+		collapse["phase"] = &"unattended"
+		_collapses[victim_id] = collapse
+		_record(&"collapse_unattended", victim_id)
+		return
+	var helper: Dictionary = _patrons[helper_id]
+	helper["bathroom_checks_active"] = false
+	if not StringName(helper["seat"]).is_empty():
+		_seat_owners[helper["seat"]] = &""
+		helper["seat"] = &""
+	_interaction_registry.release_actor(helper_id)
+	var order_id: StringName = helper["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"helping")
+	helper["lifecycle"] = &"helping"
+	helper["helping_victim"] = victim_id
+	_set_activity(helper, &"helper_lifting", &"front")
+	_patrons[helper_id] = helper
+	_patrons[victim_id]["helper_id"] = helper_id
+	collapse["phase"] = &"lifting"
+	collapse["remaining"] = HELPER_LIFT_SECONDS
+	collapse["helper_id"] = helper_id
+	_collapses[victim_id] = collapse
+	_record(&"helper_assigned", helper_id, {"victim_id": victim_id})
+
+
+func _select_helper(victim_id: StringName) -> StringName:
+	var best_id: StringName = &""
+	var best_intoxication := 4
+	var best_index := 999
+	for companion_id: StringName in _patrons[victim_id]["companions"]:
+		if not _patrons.has(companion_id) or _patrons[companion_id]["lifecycle"] != &"active":
+			continue
+		var intoxication := int(_patrons[companion_id]["intoxication"])
+		var index := _definition_index(companion_id)
+		if intoxication < best_intoxication or (intoxication == best_intoxication and index < best_index):
+			best_id = companion_id
+			best_intoxication = intoxication
+			best_index = index
+	return best_id
+
+
+func _definition_index(patron_id: StringName) -> int:
+	for index in range(FULL_NIGHT_PATRON_DEFINITIONS.size()):
+		if FULL_NIGHT_PATRON_DEFINITIONS[index]["id"] == patron_id:
+			return index
+	return 999
+
+
+func _helper_reaches_front(victim_id: StringName) -> void:
+	var collapse: Dictionary = _collapses[victim_id]
+	var helper_id: StringName = collapse["helper_id"]
+	# Both Patrons leave. It is defeat only if the Helper is at maximum Suspicion.
+	if _patrons.has(helper_id) and _suspicion_states[helper_id].snapshot()["score"] >= 100.0:
+		_defeat = true
+		_record(&"defeat", helper_id, {"reason": &"helper_max_suspicion_at_front"})
+	for patron_id: StringName in [victim_id, helper_id]:
+		if not _patrons.has(patron_id):
+			continue
+		var patron: Dictionary = _patrons[patron_id]
+		_interaction_registry.release_actor(patron_id)
+		patron["lifecycle"] = &"exited"
+		patron["helper_id"] = &""
+		patron["helping_victim"] = &""
+		_set_activity(patron, &"normal_departure", &"front_exit")
+		_patrons[patron_id] = patron
+	_collapses.erase(victim_id)
+	_record(&"helper_reached_front", helper_id, {"victim_id": victim_id})
+
+
+func _resolve_rescue(victim_id: StringName) -> void:
+	var collapse: Dictionary = _collapses[victim_id]
+	var helper_id: StringName = collapse["helper_id"]
+	var roll := _rng.randf_range(0.0, 100.0)
+	var success := roll <= float(collapse["last_chance"])
+	collapse["last_roll"] = roll
+	collapse["last_success"] = success
+	_collapses[victim_id] = collapse
+	if success:
+		_record(&"rescue_persuasion_succeeded", helper_id, {"roll": roll, "chance": collapse["last_chance"]})
+		_capture_pair(victim_id, helper_id, &"rescue_persuasion")
+		return
+	if _patrons.has(helper_id):
+		_suspicion_states[helper_id].apply_stimulus(&"rescue_persuasion_failed")
+	collapse["phase"] = &"carrying"
+	collapse["remaining"] = float(collapse["carry_remaining"])
+	_set_helper_activity(helper_id, &"helper_carrying")
+	_collapses[victim_id] = collapse
+	_record(&"rescue_persuasion_failed", helper_id, {"roll": roll, "chance": collapse["last_chance"]})
+
+
+func _capture_pair(victim_id: StringName, helper_id: StringName, cause: StringName) -> void:
+	for patron_id: StringName in [victim_id, helper_id]:
+		if not _patrons.has(patron_id):
+			continue
+		var patron: Dictionary = _patrons[patron_id]
+		_interaction_registry.release_actor(patron_id)
+		if not StringName(patron["seat"]).is_empty():
+			_seat_owners[patron["seat"]] = &""
+			patron["seat"] = &""
+		patron["lifecycle"] = &"captured"
+		patron["helper_id"] = &""
+		patron["helping_victim"] = &""
+		_set_activity(patron, &"captured", &"tunnel")
+		_patrons[patron_id] = patron
+		_captures.append({"id": patron_id, "cause": cause, "at": _simulated_seconds})
+		_record(&"capture", patron_id, {"cause": cause})
+	_collapses.erase(victim_id)
+
+
+func _set_helper_activity(helper_id: StringName, activity: StringName) -> void:
+	if not _patrons.has(helper_id):
+		return
+	var helper: Dictionary = _patrons[helper_id]
+	_set_activity(helper, activity, &"front")
+	_patrons[helper_id] = helper
+
+
+func _carrying_collapse_victim() -> StringName:
+	for victim_id: StringName in _collapses:
+		if _collapses[victim_id]["phase"] == &"carrying" and not StringName(_collapses[victim_id]["helper_id"]).is_empty():
+			return victim_id
+	return &""
+
+
+func _active_collapse_with_helper() -> StringName:
+	for victim_id: StringName in _collapses:
+		var phase: StringName = _collapses[victim_id]["phase"]
+		if phase in [&"carrying", &"persuading"] and not StringName(_collapses[victim_id]["helper_id"]).is_empty():
+			return victim_id
+	return &""
 
 
 func _advance_intoxication(patron_id: StringName, patron: Dictionary, delta: float) -> void:

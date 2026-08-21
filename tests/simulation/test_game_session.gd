@@ -529,3 +529,126 @@ func test_only_max_suspicion_front_exit_crossing_causes_immediate_defeat() -> vo
 	assert_eq(loss["phase"], &"results", "Defeat ends the Night immediately.")
 	assert_eq(loss["debug_patron_views"][&"patron_elias"]["lifecycle"], &"exited")
 	assert_almost_eq(float(loss["time_scale"]), 0.0, 0.0001, "The results phase pauses the clock.")
+
+
+func test_night_starts_with_two_doses_and_drugged_drink_runs_consumer_countdown() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	assert_eq(session.snapshot()["doses_remaining"], 2, "The Night begins with two doses.")
+
+	# Prepare a dose for Mara while her Order is open; the 8-second Action consumes a dose.
+	session.advance(95.0)
+	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"),
+		"A dose can be prepared against a Patron with an open Order.")
+	assert_eq(session.snapshot()["doses_remaining"], 2, "The dose is only spent when preparation completes.")
+	session.advance(8.1)
+	assert_eq(session.snapshot()["doses_remaining"], 1, "Preparation completes and spends one dose.")
+
+	# The consumer-owned countdown begins at Mara's first sip.
+	session.advance(1.5)
+	var sipping: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_gt(float(sipping["drug_countdown"]), 0.0, "The countdown is owned by the Patron who drank it.")
+	assert_eq(sipping["lifecycle"], &"active")
+
+	# Drowsy at 10 seconds, collapse into Unconscious at 20 seconds.
+	session.advance(10.0)
+	var drowsy: Dictionary = session.snapshot()["debug_patron_views"][&"patron_mara"]
+	assert_gte(float(drowsy["drug_countdown"]), 10.0, "Ten seconds in, the Patron is visibly drowsy.")
+	assert_eq(drowsy["lifecycle"], &"active", "Drowsy is not yet collapse.")
+
+	session.advance(11.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["lifecycle"], &"unconscious",
+		"Twenty seconds in, the Patron collapses.")
+
+
+func test_collapse_assigns_least_intoxicated_conscious_companion_as_helper() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(95.0)
+	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"))
+	session.advance(30.1)  # preparation, first sip, and the 20-second countdown to collapse
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["lifecycle"], &"unconscious")
+
+	# After a 2-second reaction the conscious Companion (June) becomes the Helper and lifts.
+	session.advance(2.0)
+	var lifting: Dictionary = session.snapshot()["debug_patron_views"]
+	assert_eq(lifting[&"patron_june"]["lifecycle"], &"helping", "The conscious Companion becomes the Helper.")
+	assert_eq(lifting[&"patron_june"]["activity"], &"helper_lifting")
+	assert_eq(lifting[&"patron_june"]["helping_victim"], &"patron_mara")
+	assert_eq(lifting[&"patron_mara"]["helper_id"], &"patron_june", "The victim knows its Helper.")
+
+	# After a 4-second lift the Helper carries the victim toward the front.
+	session.advance(4.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["activity"], &"helper_carrying",
+		"The Helper carries the victim toward the front exit.")
+
+
+func _carry_session(game_session_script, helper_suspicion_stimulus: StringName, night_seed: int = 707):
+	# Drive June to be the carrying Helper for a collapsed Mara, optionally seeding June's
+	# Suspicion first (while still conscious) so the Rescue chance can be exercised.
+	var session = game_session_script.new()
+	session.start_night(night_seed)
+	session.advance(95.0)
+	if not helper_suspicion_stimulus.is_empty():
+		session.report_patron_stimulus(&"patron_june", helper_suspicion_stimulus)
+	session.prepare_drugged_drink(&"patron_mara", &"cultist_01")
+	session.advance(30.1)  # to collapse
+	session.advance(6.1)   # reaction (2s) + lift (4s) => carrying
+	return session
+
+
+func test_rescue_persuasion_chance_uses_friendship_and_suspicion() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+
+	# Friendship is 0 this prototype, so with the Helper calm the chance is the 25% base.
+	var calm = _carry_session(game_session_script, &"")
+	assert_eq(calm.snapshot()["debug_patron_views"][&"patron_june"]["activity"], &"helper_carrying")
+	assert_almost_eq(calm.rescue_persuasion_chance(&"cultist_01"), 25.0, 0.001,
+		"25 + 0.7 x (0 Friendship - 0 Suspicion) = 25.")
+
+	# A Helper with 25 Suspicion lowers the displayed chance by 0.7 x 25.
+	var wary = _carry_session(game_session_script, &"missing_companion_20")
+	assert_almost_eq(wary.rescue_persuasion_chance(&"cultist_01"), 7.5, 0.001,
+		"clamp(25 + 0.7 x (0 - 25), 5, 95) = 7.5.")
+
+	# The attempt commits that displayed chance and runs a single seeded roll.
+	assert_true(wary.attempt_rescue_persuasion(&"cultist_01"))
+	var collapse: Dictionary = wary.snapshot()["collapses"][&"patron_mara"]
+	assert_eq(collapse["phase"], &"persuading")
+	assert_almost_eq(float(collapse["last_chance"]), 7.5, 0.001)
+	assert_true(collapse["rescue_attempted"])
+
+
+func test_rescue_success_captures_both_and_failure_raises_suspicion_and_resumes() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+
+	# Success (seed chosen so the seeded roll lands under the chance): both Patrons are
+	# captured at the Tunnel Intake.
+	var win = _carry_session(game_session_script, &"", 13)
+	assert_true(win.attempt_rescue_persuasion(&"cultist_01"))
+	win.advance(6.1)
+	var won: Dictionary = win.snapshot()
+	assert_eq(won["captures"], 2, "Success captures both the victim and the Helper.")
+	assert_eq(won["debug_patron_views"][&"patron_mara"]["lifecycle"], &"captured")
+	assert_eq(won["debug_patron_views"][&"patron_june"]["lifecycle"], &"captured")
+
+	# Failure: the Helper gains 25 Suspicion and the pair resumes leaving, ending Exited
+	# rather than captured.
+	var lose = _carry_session(game_session_script, &"", 1)
+	assert_true(lose.attempt_rescue_persuasion(&"cultist_01"))
+	lose.advance(6.1)
+	var after_fail: Dictionary = lose.snapshot()
+	assert_eq(after_fail["captures"], 0, "A failed persuasion captures no one.")
+	assert_almost_eq(float(after_fail["debug_patron_views"][&"patron_june"]["suspicion"]), 25.0, 0.001,
+		"The Helper gains 25 Suspicion on failure.")
+	assert_eq(after_fail["debug_patron_views"][&"patron_june"]["activity"], &"helper_carrying",
+		"The Helper resumes carrying toward the exit.")
+
+	lose.advance(15.0)
+	var left: Dictionary = lose.snapshot()
+	assert_eq(left["captures"], 0)
+	assert_eq(left["debug_patron_views"][&"patron_mara"]["lifecycle"], &"exited", "Both Patrons leave.")
+	assert_eq(left["debug_patron_views"][&"patron_june"]["lifecycle"], &"exited")
+	assert_false(left["defeat"], "A sub-maximum Helper leaving the front is not defeat.")
