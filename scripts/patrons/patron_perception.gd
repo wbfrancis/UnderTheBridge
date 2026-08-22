@@ -93,6 +93,16 @@ func remove_body(body_id: StringName) -> void:
 	_bodies.erase(body_id)
 
 
+# The number of bodies currently applying (or building toward) Unattended pressure —
+# every body in the unattended state, whether or not its grace has elapsed.
+func unattended_body_count() -> int:
+	var count := 0
+	for body_id: StringName in _bodies:
+		if _bodies[body_id]["state"] == &"unattended":
+			count += 1
+	return count
+
+
 # Advances every body's grace and pressure timers by delta. Returns the body ids
 # that produced a pressure tick this step; the caller applies one +5 stimulus to
 # every active Patron per returned id (so N stacked bodies appear N times).

@@ -211,6 +211,9 @@ var _windup: Dictionary = {}
 var _drags: Dictionary = {}
 var _conversations: Dictionary = {}
 var _follows: Dictionary = {}
+var _peak_suspicion: float = 0.0
+var _interceptions: int = 0
+var _unattended_body_seconds: float = 0.0
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -255,6 +258,9 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_drags.clear()
 	_conversations.clear()
 	_follows.clear()
+	_peak_suspicion = 0.0
+	_interceptions = 0
+	_unattended_body_seconds = 0.0
 	_emit_snapshot()
 
 
@@ -284,8 +290,14 @@ func advance(simulated_seconds: float) -> void:
 		_dispatch_maximum_responses()
 		_try_group_departures()
 		_try_stayer_departures()
+		_track_peak_suspicion()
 		remaining -= step
 	_emit_snapshot()
+
+
+func _track_peak_suspicion() -> void:
+	for patron_id: StringName in _suspicion_states:
+		_peak_suspicion = maxf(_peak_suspicion, float(_suspicion_states[patron_id].snapshot()["score"]))
 
 
 func begin_closing() -> void:
@@ -380,6 +392,7 @@ func remove_unattended_body(body_id: StringName) -> void:
 
 
 func _apply_body_pressure(step: float) -> void:
+	_unattended_body_seconds += step * float(_perception.unattended_body_count())
 	var ticks: Array = _perception.advance_bodies(step)
 	for body_id: StringName in ticks:
 		for patron_id: StringName in _patrons:
@@ -537,7 +550,53 @@ func normal_patron_view(
 		"known_drugged_drink": "None",
 		"victim_value": patron["victim_value"],
 		"victim_risk": patron["victim_risk"],
+		"urgent_intention": _urgent_intention(patron),
 	}
+
+
+# The single observable overhead intention, if any: ordering, choosing/queueing for the
+# bathroom, Investigation, or Escape. Everything else reads as no urgent intention.
+func _urgent_intention(patron: Dictionary) -> StringName:
+	match patron["activity"]:
+		&"awaiting_drink":
+			return &"ordering"
+		&"entering_bathroom", &"waiting_investigation":
+			return &"bathroom"
+		&"investigation_search":
+			return &"investigating"
+		&"shock", &"escaping", &"intercepted":
+			return &"escaping"
+	return &"none"
+
+
+func peak_suspicion() -> float:
+	return _peak_suspicion
+
+
+func interception_count() -> int:
+	return _interceptions
+
+
+func unattended_body_seconds() -> float:
+	return _unattended_body_seconds
+
+
+# Capture counts grouped by route cause, for the results screen.
+func capture_methods() -> Dictionary:
+	var methods: Dictionary = {}
+	for capture: Dictionary in _captures:
+		var cause: StringName = capture["cause"]
+		methods[cause] = int(methods.get(cause, 0)) + 1
+	return methods
+
+
+# The exact Rescue Persuasion odds for the current carrying collapse, or -1 when none is
+# available. Surfaced so the HUD can display the committed chance before the roll.
+func current_rescue_odds() -> float:
+	var victim_id := _active_collapse_with_helper()
+	if victim_id.is_empty():
+		return -1.0
+	return rescue_persuasion_chance(_collapses[victim_id]["acting_cultist"] if not StringName(_collapses[victim_id]["acting_cultist"]).is_empty() else &"cultist_01")
 
 
 func debug_patron_view(patron_id: StringName) -> Dictionary:
@@ -629,6 +688,11 @@ func snapshot() -> Dictionary:
 		"drags": _drags.duplicate(true),
 		"conversations": _conversations.duplicate(true),
 		"follows": _follows.duplicate(true),
+		"peak_suspicion": _peak_suspicion,
+		"interceptions": _interceptions,
+		"unattended_body_seconds": _unattended_body_seconds,
+		"capture_methods": capture_methods(),
+		"rescue_odds": current_rescue_odds(),
 	}
 
 
@@ -929,6 +993,7 @@ func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
 		"cultist_id": cultist_id,
 		"remaining": INTERCEPT_SECONDS,
 	}
+	_interceptions += 1
 	_record(&"intercept_started", patron_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
 	return true

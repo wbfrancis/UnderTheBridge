@@ -1,0 +1,24 @@
+{
+  "checks": {
+    "all_four_routes_complete": true,
+    "exact_rescue_odds_readable": true,
+    "no_autonomous_captures": true,
+    "outcome_failed_operation_below_quota": true,
+    "outcome_immediate_defeat_on_max_exit": true,
+    "outcome_success_on_quota_and_safe_closing": true,
+    "readable_info_exposed_and_hidden_withheld": true,
+    "results_report_all_metrics": true
+  },
+  "observed": {
+    "capture_methods": "Trapdoor x1, Knockout x1, Friendship Capture x1, Rescue Persuasion x2",
+    "defeat_outcome": "defeat",
+    "failed_outcome": "failed_operation",
+    "interceptions": 1,
+    "peak_suspicion": 100.0,
+    "rescue_odds": 25.0,
+    "success_outcome": "success",
+    "unattended_body_seconds": 10.15
+  },
+  "passed": true,
+  "slice": "full_integration"
+}

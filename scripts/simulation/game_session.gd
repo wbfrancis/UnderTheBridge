@@ -10,6 +10,7 @@ const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_
 const PREPARATION_END_SECONDS := 60.0
 const CLOSING_START_SECONDS := 960.0
 const NIGHT_END_SECONDS := 1080.0
+const CAPTURE_QUOTA := 3
 const REPRESENTATIVE_ROLL_INTERVAL_SECONDS := 5.0
 const REPRESENTATIVE_ROLLS_FOR_OUTCOME := 4
 
@@ -349,7 +350,9 @@ func snapshot() -> Dictionary:
 		"bathroom_owner": visit["bathroom_owner"],
 		"visit_events": visit["events"],
 		"cultist_queues": queues,
-		"results": _results(orders, patrons, captures.size()),
+		"results": _results(orders, patrons, captures.size(), visit),
+		"rescue_odds": visit["rescue_odds"],
+		"escape_alerts": visit["escaping_patrons"],
 		"runtime": {
 			"spawned_patrons": patrons["active_count"],
 			"prepared_drinks": 0,
@@ -375,9 +378,11 @@ func _apply_phase_boundary() -> void:
 	if _simulated_seconds >= NIGHT_END_SECONDS - 0.0001 and _phase != &"results":
 		_phase = &"results"
 		_time_scale = 0.0
-		_outcome = &"failed_operation"
 		_ordinary_visits.finish_night()
-		_record(&"results_reached", {"outcome": _outcome})
+		# A safe Closing with the Capture quota met is a success; short of it, a failed operation.
+		var captures: int = _ordinary_visits.snapshot()["captures"].size()
+		_outcome = &"success" if captures >= CAPTURE_QUOTA else &"failed_operation"
+		_record(&"results_reached", {"outcome": _outcome, "captures": captures})
 	elif _simulated_seconds >= CLOSING_START_SECONDS - 0.0001 and _phase != &"closing":
 		_phase = &"closing"
 		_ordinary_visits.begin_closing()
@@ -461,18 +466,22 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 	return summaries
 
 
-func _results(orders: Dictionary, patrons: Dictionary, captures: int) -> Dictionary:
+func _results(orders: Dictionary, patrons: Dictionary, captures: int, visit: Dictionary) -> Dictionary:
 	return {
 		"visible": _phase == &"results",
 		"night_seed": _night_seed,
 		"outcome": _outcome,
 		"captures": captures,
-		"capture_quota": 3,
+		"capture_quota": CAPTURE_QUOTA,
+		"capture_methods": visit["capture_methods"],
 		"revenue": orders["revenue"],
 		"tips": orders["tips"],
 		"orders_served": orders["served_count"],
 		"orders_cancelled": orders["cancelled_count"],
 		"normal_departures": patrons["normal_departure_count"],
+		"peak_suspicion": visit["peak_suspicion"],
+		"interceptions": visit["interceptions"],
+		"unattended_body_seconds": visit["unattended_body_seconds"],
 	}
 
 
