@@ -30,6 +30,8 @@ const ACTIVITY_ROOMS := {
 	&"helper_carrying": &"front",
 	&"helper_persuading": &"front",
 	&"being_dragged": &"main_hall",
+	&"conversing": &"main_hall",
+	&"following": &"front",
 }
 const PERCEPTION_LOG_LIMIT := 8
 const BAR_POSITION := Vector2(0.0, 0.0)
@@ -74,6 +76,19 @@ const BODY_PICKUP_SECONDS := 1.0
 # 50%-speed drag to the Tunnel Intake; the same abstract front path as the Helper carry.
 const DRAG_TO_INTAKE_SECONDS := 14.0
 const DRAG_MOVEMENT_SCALE := 0.5
+# Friendship Capture and stay-behind departures, from the GDD §5/§10.4/§11 and TECHNICAL_DESIGN §9.
+const FRIENDSHIP_CIGARETTE_BONUS := 10.0
+const FRIENDSHIP_CONVERSATION_PER_SECOND := 0.75
+const FRIENDSHIP_TRUSTED_THRESHOLD := 75.0
+const FRIENDSHIP_MAXIMUM := 100.0
+# Deterministic walk that leads a Trusted follower to the Tunnel Intake (no roll).
+const FOLLOW_TO_INTAKE_SECONDS := 14.0
+const STAY_BEHIND_BASE := 10.0
+const STAY_BEHIND_FRIENDSHIP_COEFF := 0.5
+const STAY_BEHIND_INTOXICATION_COEFF := 15.0
+const STAY_BEHIND_SUSPICION_COEFF := 0.6
+const STAY_BEHIND_MAXIMUM := 90.0
+const MAXIMUM_SUSPICION := 100.0
 const TIME_EPSILON := 0.0001
 # Bathroom activities where the occupant stands (capturable by the Trapdoor pulse).
 const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
@@ -137,7 +152,7 @@ const FULL_NIGHT_PATRON_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": &"patron_elias", "name": "Elias", "group_id": &"arrival_group_solo_01",
 		"companions": [], "bladder_gain": 60.0, "service_delay": 10.0,
-		"victim_value": "Promising", "victim_risk": "Low",
+		"victim_value": "Promising", "victim_risk": "Low", "friendship_capturable": true,
 	},
 	{
 		"id": &"patron_ruth", "name": "Ruth", "group_id": &"arrival_group_trio_01",
@@ -194,6 +209,8 @@ var _drug_prep: Dictionary = {}
 var _collapses: Dictionary = {}
 var _windup: Dictionary = {}
 var _drags: Dictionary = {}
+var _conversations: Dictionary = {}
+var _follows: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -236,6 +253,8 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_collapses.clear()
 	_windup.clear()
 	_drags.clear()
+	_conversations.clear()
+	_follows.clear()
 	_emit_snapshot()
 
 
@@ -258,10 +277,13 @@ func advance(simulated_seconds: float) -> void:
 		_advance_collapses(step)
 		_advance_windup(step)
 		_advance_drags(step)
+		_advance_conversations(step)
+		_advance_follows(step)
 		_apply_body_pressure(step)
 		_apply_companion_influence(step)
 		_dispatch_maximum_responses()
 		_try_group_departures()
+		_try_stayer_departures()
 		remaining -= step
 	_emit_snapshot()
 
@@ -272,6 +294,7 @@ func begin_closing() -> void:
 	_closing = true
 	_record(&"closing_started", &"night")
 	_try_group_departures()
+	_try_stayer_departures()
 	_emit_snapshot()
 
 
@@ -560,6 +583,9 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"dosed_pending": patron["dosed_pending"],
 		"helper_id": patron["helper_id"],
 		"helping_victim": patron["helping_victim"],
+		"friendship_capturable": patron["friendship_capturable"],
+		"stay_rolled": patron["stay_rolled"],
+		"stayed_behind": patron["stayed_behind"],
 	}
 
 
@@ -601,6 +627,8 @@ func snapshot() -> Dictionary:
 		"collapses": _collapses.duplicate(true),
 		"windup": _windup.duplicate(true),
 		"drags": _drags.duplicate(true),
+		"conversations": _conversations.duplicate(true),
+		"follows": _follows.duplicate(true),
 	}
 
 
@@ -651,7 +679,8 @@ func _initialize_full_night_cast() -> void:
 			definition["service_delay"],
 			&"not_arrived",
 			definition["victim_value"],
-			definition["victim_risk"]
+			definition["victim_risk"],
+			definition.get("friendship_capturable", false)
 		)
 	for definition in FULL_NIGHT_GROUP_DEFINITIONS:
 		var group_id: StringName = definition["id"]
@@ -675,7 +704,8 @@ func _new_patron(
 		service_delay: float,
 		lifecycle: StringName,
 		victim_value: String = "Ordinary",
-		victim_risk: String = "Low"
+		victim_risk: String = "Low",
+		friendship_capturable: bool = false
 ) -> Dictionary:
 	return {
 		"id": id,
@@ -696,7 +726,8 @@ func _new_patron(
 		"next_bathroom_check_at": -1.0,
 		"recent_bathroom_rolls": [],
 		"navigation_destination": &"entrance" if lifecycle == &"not_arrived" else &"seat",
-		"friendship": {&"cultist_01": 0, &"cultist_02": 0, &"cultist_03": 0},
+		"friendship": {&"cultist_01": 0.0, &"cultist_02": 0.0, &"cultist_03": 0.0},
+		"friendship_capturable": friendship_capturable,
 		"victim_value": victim_value,
 		"victim_risk": victim_risk,
 		"missing_target": &"",
@@ -712,6 +743,8 @@ func _new_patron(
 		"drug_drowsy_reported": false,
 		"helper_id": &"",
 		"helping_victim": &"",
+		"stay_rolled": false,
+		"stayed_behind": false,
 	}
 
 
@@ -1539,6 +1572,11 @@ func drop_body(cultist_id: StringName) -> bool:
 func is_cultist_busy(cultist_id: StringName) -> bool:
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
+	if _conversations.has(cultist_id):
+		return true
+	for patron_id: StringName in _follows:
+		if _follows[patron_id]["cultist_id"] == cultist_id:
+			return true
 	return not _drag_victim_for_cultist(cultist_id).is_empty()
 
 
@@ -1641,6 +1679,166 @@ func _capture_dragged_body(victim_id: StringName) -> void:
 	_record(&"capture", victim_id, {"cause": &"knockout", "cultist_id": drag["cultist_id"]})
 
 
+# --- Friendship building and Friendship Capture (GDD §10.4/§11) --------------
+
+# Offers a cigarette: an instant +10 Friendship from this Cultist. Repeatable, capped
+# at the Friendship maximum. Valid against any active Patron.
+func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _patrons.has(patron_id):
+		return false
+	if _patrons[patron_id]["lifecycle"] != &"active":
+		return false
+	_add_friendship(patron_id, cultist_id, FRIENDSHIP_CIGARETTE_BONUS)
+	_record(&"cigarette_offered", patron_id, {
+		"cultist_id": cultist_id, "friendship": _friendship_value(patron_id, cultist_id),
+	})
+	_emit_snapshot()
+	return true
+
+
+# Begins a sustained conversation that accrues ~0.75 Friendship per second and occupies
+# the Cultist. Valid against an active Patron when the Cultist is free.
+func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _patrons.has(patron_id):
+		return false
+	if _patrons[patron_id]["lifecycle"] != &"active" or is_cultist_busy(cultist_id):
+		return false
+	if _conversation_partner(patron_id) != &"":
+		return false
+	_conversations[cultist_id] = patron_id
+	_record(&"conversation_started", patron_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+func end_conversation(cultist_id: StringName) -> bool:
+	if not _conversations.has(cultist_id):
+		return false
+	var patron_id: StringName = _conversations[cultist_id]
+	_conversations.erase(cultist_id)
+	_record(&"conversation_ended", patron_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+# Leads a Trusted, receptive Patron to the Tunnel Intake. There is no roll — only the
+# sad, friendship-capturable Patron follows, and only once at Trusted Friendship (75+).
+func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _patrons.has(patron_id):
+		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] != &"active" or not patron["friendship_capturable"]:
+		return false
+	if _friendship_value(patron_id, cultist_id) < FRIENDSHIP_TRUSTED_THRESHOLD:
+		return false
+	if is_cultist_busy(cultist_id):
+		return false
+	_end_conversation_with(patron_id)
+	patron["bathroom_checks_active"] = false
+	patron["lifecycle"] = &"following"
+	if not StringName(patron["seat"]).is_empty():
+		_seat_owners[patron["seat"]] = &""
+		patron["seat"] = &""
+	_interaction_registry.release_actor(patron_id)
+	var order_id: StringName = patron["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"following")
+	_set_activity(patron, &"following", &"tunnel")
+	_patrons[patron_id] = patron
+	_follows[patron_id] = {"cultist_id": cultist_id, "remaining": FOLLOW_TO_INTAKE_SECONDS}
+	_record(&"friendship_capture_started", patron_id, {"cultist_id": cultist_id})
+	_emit_snapshot()
+	return true
+
+
+func friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+	return _friendship_value(patron_id, cultist_id)
+
+
+func friendship_band(patron_id: StringName, cultist_id: StringName) -> String:
+	return _friendship_band(_friendship_value(patron_id, cultist_id))
+
+
+func stay_behind_chance(patron_id: StringName) -> float:
+	if not _patrons.has(patron_id):
+		return 0.0
+	var suspicion: float = _suspicion_states[patron_id].snapshot()["score"]
+	if suspicion >= MAXIMUM_SUSPICION:
+		return 0.0
+	var friendship := _active_bartender_friendship(patron_id)
+	var intoxication := float(_patrons[patron_id]["intoxication"])
+	return clampf(
+		STAY_BEHIND_BASE
+			+ STAY_BEHIND_FRIENDSHIP_COEFF * friendship
+			+ STAY_BEHIND_INTOXICATION_COEFF * intoxication
+			- STAY_BEHIND_SUSPICION_COEFF * suspicion,
+		0.0, STAY_BEHIND_MAXIMUM
+	)
+
+
+func _add_friendship(patron_id: StringName, cultist_id: StringName, amount: float) -> void:
+	var friendship: Dictionary = _patrons[patron_id]["friendship"]
+	friendship[cultist_id] = minf(FRIENDSHIP_MAXIMUM, float(friendship.get(cultist_id, 0.0)) + amount)
+
+
+func _friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+	if not _patrons.has(patron_id):
+		return 0.0
+	return float(_patrons[patron_id]["friendship"].get(cultist_id, 0.0))
+
+
+# The Active Bartender Friendship: the Patron's highest Friendship toward a Cultist doing
+# bar work. Every Cultist may serve, so we take the Patron's highest Friendship of all.
+func _active_bartender_friendship(patron_id: StringName) -> float:
+	var best := 0.0
+	for cultist_id: StringName in _patrons[patron_id]["friendship"]:
+		best = maxf(best, float(_patrons[patron_id]["friendship"][cultist_id]))
+	return best
+
+
+func _conversation_partner(patron_id: StringName) -> StringName:
+	for cultist_id: StringName in _conversations:
+		if _conversations[cultist_id] == patron_id:
+			return cultist_id
+	return &""
+
+
+func _end_conversation_with(patron_id: StringName) -> void:
+	var cultist_id := _conversation_partner(patron_id)
+	if not cultist_id.is_empty():
+		_conversations.erase(cultist_id)
+
+
+func _advance_conversations(step: float) -> void:
+	for cultist_id: StringName in _conversations.keys():
+		var patron_id: StringName = _conversations[cultist_id]
+		if not _patrons.has(patron_id) or _patrons[patron_id]["lifecycle"] != &"active":
+			_conversations.erase(cultist_id)
+			continue
+		_add_friendship(patron_id, cultist_id, FRIENDSHIP_CONVERSATION_PER_SECOND * step)
+
+
+func _advance_follows(step: float) -> void:
+	for patron_id: StringName in _follows.keys():
+		var follow: Dictionary = _follows[patron_id]
+		follow["remaining"] = float(follow["remaining"]) - step
+		if float(follow["remaining"]) <= TIME_EPSILON:
+			_capture_follower(patron_id, follow["cultist_id"])
+			continue
+		_follows[patron_id] = follow
+
+
+func _capture_follower(patron_id: StringName, cultist_id: StringName) -> void:
+	_follows.erase(patron_id)
+	var patron: Dictionary = _patrons[patron_id]
+	_interaction_registry.release_actor(patron_id)
+	patron["lifecycle"] = &"captured"
+	_set_activity(patron, &"captured", &"tunnel")
+	_patrons[patron_id] = patron
+	_captures.append({"id": patron_id, "cause": &"friendship_capture", "at": _simulated_seconds})
+	_record(&"capture", patron_id, {"cause": &"friendship_capture", "cultist_id": cultist_id})
+
+
 func _advance_intoxication(patron_id: StringName, patron: Dictionary, delta: float) -> void:
 	if int(patron["intoxication"]) <= 0:
 		return
@@ -1661,13 +1859,52 @@ func _try_group_departures() -> void:
 		var due := _closing or _simulated_seconds >= float(group["seated_at"]) + DEPARTURE_AFTER_SEATED_SECONDS
 		if not due or not _group_ready_to_depart(group):
 			continue
+		# The departure anchor (first-defined member) always leaves. Every other eligible
+		# member rolls its stay-behind chance once; a stayer becomes a solo Patron.
+		var anchor_taken := false
 		for patron_id: StringName in group["patrons"]:
 			var patron: Dictionary = _patrons[patron_id]
-			if patron["lifecycle"] == &"active":
+			if patron["lifecycle"] != &"active":
+				continue
+			if not anchor_taken:
+				anchor_taken = true
 				_depart_patron(patron_id, patron, &"visit_complete")
+				continue
+			if not _closing and _roll_stay_behind(patron_id):
+				continue
+			_depart_patron(patron_id, patron, &"visit_complete")
 		group["departed"] = true
 		_groups[group_id] = group
 		_record(&"arrival_group_departed", group_id)
+
+
+# A single stay-behind roll on the seeded source. Returns true when the Patron stays.
+func _roll_stay_behind(patron_id: StringName) -> bool:
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["stay_rolled"]:
+		return patron["stayed_behind"]
+	patron["stay_rolled"] = true
+	var chance := stay_behind_chance(patron_id)
+	var roll := _rng.randf_range(0.0, 100.0)
+	var stays := roll < chance
+	patron["stayed_behind"] = stays
+	_patrons[patron_id] = patron
+	_record(&"stay_behind_rolled", patron_id, {"chance": chance, "roll": roll, "stays": stays})
+	return stays
+
+
+# A stayer is a solo Patron until Closing, when it finally leaves through the front.
+func _try_stayer_departures() -> void:
+	if not _closing:
+		return
+	for patron_id: StringName in _patrons:
+		var patron: Dictionary = _patrons[patron_id]
+		if not patron["stayed_behind"] or patron["lifecycle"] != &"active":
+			continue
+		if patron["activity"] not in [&"socializing", &"awaiting_drink"]:
+			continue
+		patron["stayed_behind"] = false
+		_depart_patron(patron_id, patron, &"stayer_closing")
 
 
 func _group_ready_to_depart(group: Dictionary) -> bool:
@@ -1726,14 +1963,14 @@ func _intoxication_label(level: int) -> String:
 	return ["Sober", "Buzzed", "Drunk", "Max Drunk"][clampi(level, 0, 3)]
 
 
-func _friendship_band(value: int) -> String:
-	if value >= 75:
+func _friendship_band(value: float) -> String:
+	if value >= 75.0:
 		return "Trusted"
-	if value >= 50:
+	if value >= 50.0:
 		return "Friendly"
-	if value >= 25:
-		return "Familiar"
-	return "Unknown"
+	if value >= 25.0:
+		return "Acquainted"
+	return "Stranger"
 
 
 func _count_capture_autonomy_actions() -> int:

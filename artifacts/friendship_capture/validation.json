@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "anchor_leaves_and_others_roll_once": true,
+    "friendship_bands_and_no_decay": true,
+    "friendship_stored_per_cultist": true,
+    "non_sad_patron_never_follows": true,
+    "stay_chance_uses_all_terms_with_clamp": true,
+    "sub_trusted_cannot_follow": true,
+    "successful_roll_makes_solo_patron": true,
+    "trusted_sad_patron_captured_at_intake": true
+  },
+  "observed": {
+    "built_friendship": 25.7499999999998,
+    "intoxication": 1.0,
+    "leave_seed_mara": "exited",
+    "stay_seed_mara": "active",
+    "trusted_follows": true
+  },
+  "passed": true,
+  "slice": "friendship_capture"
+}

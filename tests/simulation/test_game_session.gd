@@ -780,3 +780,128 @@ func test_dropping_restarts_unattended_pressure_and_intake_crossing_captures_onc
 	assert_eq(captured["debug_patron_views"][&"patron_elias"]["lifecycle"], &"captured")
 	session.advance(10.0)
 	assert_eq(session.snapshot()["captures"], 1, "The crossing completes the Capture exactly once.")
+
+
+func test_friendship_is_stored_per_cultist_banded_and_does_not_decay() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	assert_almost_eq(session.friendship_value(&"patron_elias", &"cultist_01"), 0.0, 0.001)
+	assert_eq(session.friendship_band(&"patron_elias", &"cultist_01"), "Stranger")
+
+	# A cigarette is an instant +10 from the acting Cultist, stored against that Cultist only.
+	assert_true(session.offer_cigarette(&"cultist_01", &"patron_elias"))
+	assert_almost_eq(session.friendship_value(&"patron_elias", &"cultist_01"), 10.0, 0.001)
+	assert_almost_eq(session.friendship_value(&"patron_elias", &"cultist_02"), 0.0, 0.001,
+		"Friendship is stored separately per Cultist.")
+	assert_eq(session.friendship_band(&"patron_elias", &"cultist_02"), "Stranger")
+
+	# Sustained conversation accrues ~0.75 Friendship per second and crosses a band.
+	assert_true(session.begin_conversation(&"cultist_01", &"patron_elias"))
+	session.advance(21.0)
+	assert_true(session.end_conversation(&"cultist_01"))
+	var built: float = session.friendship_value(&"patron_elias", &"cultist_01")
+	assert_almost_eq(built, 25.75, 0.2, "10 + 0.75 x 21 ~= 25.75.")
+	assert_eq(session.friendship_band(&"patron_elias", &"cultist_01"), "Acquainted")
+
+	# Friendship does not decay during the Night.
+	session.advance(120.0)
+	assert_almost_eq(session.friendship_value(&"patron_elias", &"cultist_01"), built, 0.001,
+		"Friendship holds steady with no further building.")
+
+
+func test_sad_patron_follows_deterministically_only_at_trusted() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	# Below Trusted the receptive Patron does not follow.
+	assert_false(session.begin_friendship_capture(&"cultist_01", &"patron_elias"),
+		"A sub-Trusted Patron cannot be led to the Tunnel Intake.")
+
+	# Raise the sad solo Patron (Elias) to Trusted and lead him out — no roll.
+	for _i in range(8):
+		session.offer_cigarette(&"cultist_01", &"patron_elias")
+	assert_eq(session.friendship_band(&"patron_elias", &"cultist_01"), "Trusted")
+	assert_true(session.begin_friendship_capture(&"cultist_01", &"patron_elias"),
+		"At Trusted the sad Patron follows deterministically.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"following")
+	session.advance(14.1)
+	var after: Dictionary = session.snapshot()
+	assert_eq(after["captures"], 1, "Crossing the Tunnel Intake captures the follower.")
+	assert_eq(after["debug_patron_views"][&"patron_elias"]["lifecycle"], &"captured")
+	assert_eq(after["capture_log"][0]["cause"], &"friendship_capture")
+
+	# A non-sad Patron at Trusted never follows: the route is exclusive to the receptive Patron.
+	for _j in range(8):
+		session.offer_cigarette(&"cultist_02", &"patron_june")
+	assert_eq(session.friendship_band(&"patron_june", &"cultist_02"), "Trusted")
+	assert_false(session.begin_friendship_capture(&"cultist_02", &"patron_june"),
+		"Only the receptive sad Patron can be Friendship-Captured.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["lifecycle"], &"active")
+
+
+func test_departure_anchor_leaves_and_others_roll_stay_independently_once() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+
+	# The anchor always leaves; the other member rolls once. Seed 707 rolls a leave for Mara.
+	var leave_session = game_session_script.new()
+	leave_session.start_night(707)
+	leave_session.advance(700.0)  # past June & Mara's pre-closing departure (~640 s)
+	var left: Dictionary = leave_session.snapshot()["debug_patron_views"]
+	assert_eq(left[&"patron_june"]["lifecycle"], &"exited", "The departure anchor always leaves.")
+	assert_false(left[&"patron_june"]["stay_rolled"], "The anchor does not roll to stay.")
+	assert_true(left[&"patron_mara"]["stay_rolled"], "The other member rolls exactly once.")
+	assert_eq(left[&"patron_mara"]["lifecycle"], &"exited", "At seed 707 Mara's roll leaves.")
+
+	# Seed 42 with a boosted stay chance rolls a stay: Mara becomes a solo Patron.
+	var stay_session = game_session_script.new()
+	stay_session.start_night(42)
+	stay_session.advance(600.0)
+	for _i in range(10):
+		stay_session.offer_cigarette(&"cultist_01", &"patron_mara")  # lifts the stay chance to 60
+	stay_session.advance(60.0)  # cross the ~640 s departure
+	var stayed: Dictionary = stay_session.snapshot()["debug_patron_views"]
+	assert_eq(stayed[&"patron_june"]["lifecycle"], &"exited", "The anchor leaves even when its friend stays.")
+	assert_true(stayed[&"patron_mara"]["stayed_behind"], "A successful roll keeps Mara behind.")
+	assert_eq(stayed[&"patron_mara"]["lifecycle"], &"active", "The stayer is a solo Patron until Closing.")
+	assert_ne(stayed[&"patron_mara"]["suspicion_cause"], &"missing_companion",
+		"A friend's known departure does not trigger missing-Companion Suspicion.")
+
+	# The stayer rolls only once and finally leaves at Closing.
+	stay_session.advance(400.0)  # into the Closing phase
+	assert_eq(stay_session.snapshot()["debug_patron_views"][&"patron_mara"]["lifecycle"], &"exited",
+		"The stayer leaves through the front at Closing.")
+
+
+func test_stay_chance_uses_bartender_friendship_intoxication_and_suspicion() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(250.0)  # Elias has completed a drink, so his Intoxication is non-zero.
+
+	var intoxication: float = float(session.snapshot()["debug_patron_views"][&"patron_elias"]["intoxication_level"])
+	var base_expected := clampf(10.0 + 15.0 * intoxication, 0.0, 90.0)
+	assert_almost_eq(session.stay_behind_chance(&"patron_elias"), base_expected, 0.001,
+		"Base 10 plus 15 per Intoxication level.")
+
+	# Active Bartender Friendship adds 0.5 per point (highest Friendship among Cultists).
+	for _i in range(5):
+		session.offer_cigarette(&"cultist_01", &"patron_elias")  # Friendship 50
+	var friendly_expected := clampf(10.0 + 0.5 * 50.0 + 15.0 * intoxication, 0.0, 90.0)
+	assert_almost_eq(session.stay_behind_chance(&"patron_elias"), friendly_expected, 0.001,
+		"Friendship raises the stay chance by 0.5 per point.")
+
+	# Suspicion subtracts 0.6 per point.
+	assert_true(session.report_patron_stimulus(&"patron_elias", &"knockout_heard"))  # +25 Suspicion
+	var wary_expected := clampf(10.0 + 25.0 + 15.0 * intoxication - 0.6 * 25.0, 0.0, 90.0)
+	assert_almost_eq(session.stay_behind_chance(&"patron_elias"), wary_expected, 0.001,
+		"Suspicion lowers the stay chance by 0.6 per point.")
+
+	# A maximum-Suspicion Patron never stays.
+	assert_true(session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))  # Hard Evidence -> 100
+	assert_almost_eq(session.stay_behind_chance(&"patron_elias"), 0.0, 0.001,
+		"A maximum-Suspicion Patron never stays.")

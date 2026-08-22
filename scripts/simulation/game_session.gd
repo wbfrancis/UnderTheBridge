@@ -216,6 +216,56 @@ func is_cultist_busy(cultist_id: StringName) -> bool:
 	return _ordinary_visits.is_cultist_busy(cultist_id)
 
 
+func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var offered: bool = _ordinary_visits.offer_cigarette(cultist_id, patron_id)
+	if offered:
+		_record(&"cigarette_offered", {"cultist_id": cultist_id, "patron_id": patron_id})
+		_emit_snapshot()
+	return offered
+
+
+func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var started: bool = _ordinary_visits.begin_conversation(cultist_id, patron_id)
+	if started:
+		_record(&"conversation_started", {"cultist_id": cultist_id, "patron_id": patron_id})
+		_emit_snapshot()
+	return started
+
+
+func end_conversation(cultist_id: StringName) -> bool:
+	var ended: bool = _ordinary_visits.end_conversation(cultist_id)
+	if ended:
+		_record(&"conversation_ended", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return ended
+
+
+func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var started: bool = _ordinary_visits.begin_friendship_capture(cultist_id, patron_id)
+	if started:
+		_record(&"friendship_capture_started", {"cultist_id": cultist_id, "patron_id": patron_id})
+		_emit_snapshot()
+	return started
+
+
+func friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+	return _ordinary_visits.friendship_value(patron_id, cultist_id)
+
+
+func friendship_band(patron_id: StringName, cultist_id: StringName) -> String:
+	return _ordinary_visits.friendship_band(patron_id, cultist_id)
+
+
+func stay_behind_chance(patron_id: StringName) -> float:
+	return _ordinary_visits.stay_behind_chance(patron_id)
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
@@ -286,6 +336,8 @@ func snapshot() -> Dictionary:
 		"collapses": visit["collapses"],
 		"windup": visit["windup"],
 		"drags": visit["drags"],
+		"conversations": visit["conversations"],
+		"follows": visit["follows"],
 		"patrons": patrons,
 		"orders": orders,
 		"safe_autonomy": visit["safe_autonomy"],
