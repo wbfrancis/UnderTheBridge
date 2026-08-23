@@ -42,7 +42,7 @@ func _build_room_shell() -> void:
 		"MainRoomFloor",
 		FLOOR_SIZE,
 		Vector3(-0.5, 0.09, 4.0),
-		_textured_material(FLOOR_TEXTURE, Color("8d8173"), 0.88, Vector3(5.0, 5.0, 5.0))
+		_textured_material(FLOOR_TEXTURE, Color("8d8173"), 0.88, Vector3(9.0, 4.0, 1.0))
 	))
 	add_child(_box(
 		"WallpaperBackWall",
@@ -173,31 +173,31 @@ func _build_seating() -> void:
 
 
 func _build_auxiliary_spaces() -> void:
-	var floor_material := _textured_material(FLOOR_TEXTURE, Color("85796c"), 0.9, Vector3(4.0, 4.0, 4.0))
+	var front_floor_material := _textured_material(FLOOR_TEXTURE, Color("85796c"), 0.9, Vector3(3.5, 7.0, 1.0))
+	var hallway_floor_material := _textured_material(FLOOR_TEXTURE, Color("85796c"), 0.9, Vector3(2.0, 3.0, 1.0))
 	var wallpaper := _textured_material(WALLPAPER_TEXTURE, Color("715c45"), 0.86, Vector3(4.0, 3.0, 4.0))
 	var boards := _textured_material(WALL_BOARDS_TEXTURE, Color("63392e"), 0.68, Vector3(4.0, 2.0, 4.0))
 	var wood := _textured_material(WOOD_LIGHT_TEXTURE, Color("815033"), 0.55, Vector3(3.0, 2.0, 2.0))
 	var brass := _textured_material(BRASS_TEXTURE, Color("a3773f"), 0.38, Vector3(2.0, 2.0, 2.0))
 	var dark_metal := _textured_material(METAL_TEXTURE, Color("343038"), 0.46, Vector3(2.0, 2.0, 2.0))
 
-	# Front room: the seven-metre approach from the main hall to the street exit.
-	add_child(_box("FrontFloor", Vector3(14.0, 0.08, 7.0), Vector3(0.0, 0.09, 13.5), floor_material))
-	for x_position in [-6.9, 6.9]:
-		add_child(_box("FrontSideWall", Vector3(0.22, 0.9, 7.0), Vector3(x_position, 0.45, 13.5), wallpaper))
-		add_child(_box("FrontWainscot", Vector3(0.28, 0.62, 7.0), Vector3(x_position, 0.32, 13.5), boards))
-	add_child(_box("StreetWallLeft", Vector3(5.2, 0.9, 0.24), Vector3(-4.4, 0.45, 16.88), wallpaper))
-	add_child(_box("StreetWallRight", Vector3(5.2, 0.9, 0.24), Vector3(4.4, 0.45, 16.88), wallpaper))
-	add_child(_box("ExitHeader", Vector3(3.6, 0.18, 0.32), Vector3(0.0, 0.88, 16.82), wood))
-	for x_position in [-0.9, 0.9]:
-		add_child(_box("FrontExitDoor", Vector3(1.7, 0.7, 0.18), Vector3(x_position, 0.36, 16.72), wood))
-		add_child(_box("ExitDoorGlass", Vector3(1.0, 0.32, 0.05), Vector3(x_position, 0.48, 16.59), _mirror_material()))
-		add_child(_box("ExitDoorHandle", Vector3(0.08, 0.18, 0.12), Vector3(x_position * 0.22, 0.38, 16.45), brass))
-	add_child(_box("FrontRunner", Vector3(3.8, 0.035, 5.4), Vector3(0.0, 0.16, 13.3), _textured_material(CLOTH_TEXTURE, Color("572b38"), 0.92, Vector3(2.0, 4.0, 2.0))))
-	add_child(_space_label("FRONT EXIT", Vector3(0.0, 1.22, 16.55), Color("edc685")))
+	# Front room: rotate the same 14×7-metre footprint onto the map's left edge.
+	add_child(_box("FrontFloor", Vector3(7.0, 0.08, 14.0), Vector3(-17.5, 0.09, 5.0), front_floor_material))
+	for z_position in [-1.9, 11.9]:
+		add_child(_box("FrontSideWall", Vector3(7.0, 0.9, 0.22), Vector3(-17.5, 0.45, z_position), wallpaper))
+		add_child(_box("FrontWainscot", Vector3(7.0, 0.62, 0.28), Vector3(-17.5, 0.32, z_position), boards))
+	add_child(_box("StreetWallNorth", Vector3(0.24, 0.9, 5.2), Vector3(-20.88, 0.45, 0.6), wallpaper))
+	add_child(_box("StreetWallSouth", Vector3(0.24, 0.9, 5.2), Vector3(-20.88, 0.45, 9.4), wallpaper))
+	add_child(_box("ExitHeader", Vector3(0.32, 0.18, 3.6), Vector3(-20.82, 0.88, 5.0), wood))
+	for z_position in [4.1, 5.9]:
+		add_child(_box("FrontExitDoor", Vector3(0.18, 0.7, 1.7), Vector3(-20.72, 0.36, z_position), wood))
+		add_child(_box("ExitDoorGlass", Vector3(0.05, 0.32, 1.0), Vector3(-20.59, 0.48, z_position), _mirror_material()))
+		add_child(_box("ExitDoorHandle", Vector3(0.12, 0.18, 0.08), Vector3(-20.45, 0.38, 5.0 + (z_position - 5.0) * 0.22), brass))
+	add_child(_box("FrontRunner", Vector3(5.4, 0.035, 3.8), Vector3(-17.7, 0.16, 5.0), _textured_material(CLOTH_TEXTURE, Color("572b38"), 0.92, Vector3(4.0, 2.0, 1.0))))
+	add_child(_space_label("FRONT EXIT", Vector3(-20.55, 1.22, 5.0), Color("edc685")))
 
 	# Hallway: the narrow east route between the main room, bathroom, and intake.
-	add_child(_box("HallwayFloor", Vector3(4.0, 0.08, 6.0), Vector3(15.0, 0.09, 6.0), floor_material))
-	add_child(_box("HallwayNorthWall", Vector3(4.0, 2.4, 0.22), Vector3(15.0, 1.2, 8.9), wallpaper))
+	add_child(_box("HallwayFloor", Vector3(4.0, 0.08, 6.0), Vector3(15.0, 0.09, 6.0), hallway_floor_material))
 	add_child(_box("HallwaySouthWall", Vector3(4.0, 2.4, 0.22), Vector3(15.0, 1.2, 3.1), wallpaper))
 	for z_position in [3.1, 8.9]:
 		add_child(_box("HallwayRail", Vector3(4.0, 0.15, 0.34), Vector3(15.0, 1.04, z_position), wood))
@@ -266,7 +266,7 @@ func _build_lighting() -> void:
 	add_child(service_light)
 	var front_light := OmniLight3D.new()
 	front_light.name = "FrontRoomLight"
-	front_light.position = Vector3(0.0, 2.8, 13.6)
+	front_light.position = Vector3(-17.5, 2.8, 5.0)
 	front_light.light_color = Color("e6a873")
 	front_light.light_energy = 0.9
 	front_light.omni_range = 7.0

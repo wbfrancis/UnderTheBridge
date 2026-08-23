@@ -514,7 +514,7 @@ func _patron_position(patron: Dictionary) -> Vector2:
 	if SEAT_POSITIONS.has(seat):
 		return SEAT_POSITIONS[seat]
 	match _patron_room(patron):
-		&"front": return Vector2(0.0, 14.0)
+		&"front": return Vector2(-17.5, 5.0)
 		&"hallway": return Vector2(14.0, 6.0)
 		&"bathroom": return Vector2(18.0, 6.0)
 	return Vector2(0.0, 8.0)

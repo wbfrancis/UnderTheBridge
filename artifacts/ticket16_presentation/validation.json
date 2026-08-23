@@ -4,7 +4,11 @@
     "all_five_spaces_present": true,
     "eight_distinct_patron_palettes": true,
     "eight_patrons_exposed": true,
+    "entrance_is_left_of_main_hall": true,
     "four_x_simulation_supported": true,
+    "hallway_has_no_foreground_wall": true,
+    "main_floor_tiles_are_square": true,
+    "minus_and_equals_zoom_without_shift": true,
     "three_cultists_exposed": true,
     "visual_spike_source_unchanged": true
   },
@@ -16,13 +20,14 @@
     "cultist_count": 3,
     "cultist_visible_height_metres": 1.75,
     "front_metres": [
-      14.0,
-      7.0
+      7.0,
+      14.0
     ],
     "hallway_metres": [
       4.0,
       6.0
     ],
+    "main_floor_tile_metres": "(3.0, 3.0)",
     "main_hall_metres": [
       27.0,
       12.0

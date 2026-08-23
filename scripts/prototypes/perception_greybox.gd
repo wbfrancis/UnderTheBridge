@@ -41,8 +41,8 @@ const PRESENTATION_CAMERA_FOV := 30.0
 const SERVICE_CAMERA_POSITION := Vector3(6.0, 12.0, 24.0)
 const SERVICE_CAMERA_TARGET := Vector3(16.5, 0.7, 6.0)
 const SERVICE_CAMERA_FOV := 32.0
-const FRONT_CAMERA_POSITION := Vector3(0.0, 11.0, 29.0)
-const FRONT_CAMERA_TARGET := Vector3(0.0, 0.8, 13.5)
+const FRONT_CAMERA_POSITION := Vector3(-31.0, 11.0, 20.0)
+const FRONT_CAMERA_TARGET := Vector3(-17.5, 0.8, 5.0)
 const FRONT_CAMERA_FOV := 34.0
 const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
 const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
@@ -87,7 +87,7 @@ const COMPANION_RING_COLOR := Color("74c98d")
 # room-hearing relationship is visible on the floor.
 const ROOM_RECTS := {
 	&"main_hall": [-14.0, -2.0, 13.0, 10.0],
-	&"front": [-7.0, 10.0, 7.0, 17.0],
+	&"front": [-21.0, -2.0, -14.0, 12.0],
 	&"hallway": [13.0, 3.0, 17.0, 9.0],
 	&"bathroom": [17.0, 3.0, 21.0, 9.0],
 }
@@ -170,9 +170,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_camera.fov = maxf(20.0, _camera.fov - 2.0)
+			_zoom_camera(-2.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_camera.fov = minf(55.0, _camera.fov + 2.0)
+			_zoom_camera(2.0)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_EQUAL:
+			_zoom_camera(-2.0)
+		elif event.keycode == KEY_MINUS:
+			_zoom_camera(2.0)
+
+
+func _zoom_camera(fov_delta: float) -> void:
+	_camera.fov = clampf(_camera.fov + fov_delta, 20.0, 55.0)
 
 
 # --- World -------------------------------------------------------------------
@@ -744,6 +753,11 @@ func _build_hud() -> void:
 	debug_toggle.custom_minimum_size = Vector2(90.0, 32.0)
 	debug_toggle.pressed.connect(func(): _debug_visible = debug_toggle.button_pressed; _refresh(_session.snapshot()))
 	controls.add_child(debug_toggle)
+	var camera_hint := Label.new()
+	camera_hint.text = "PAN ARROWS  ·  ZOOM - / ="
+	camera_hint.add_theme_color_override("font_color", Color("8195a2"))
+	camera_hint.add_theme_font_size_override("font_size", 13)
+	controls.add_child(camera_hint)
 
 	var panel := PanelContainer.new()
 	panel.position = Vector2(18.0, 104.0)
@@ -850,6 +864,8 @@ func _write_validation_report(report_path: String) -> void:
 	)
 
 	var source_hash := FileAccess.get_sha256(VISUAL_SPIKE_SOURCE)
+	var main_floor := find_child("MainRoomFloor", true, false) as MeshInstance3D
+	var front_floor := find_child("FrontFloor", true, false) as MeshInstance3D
 	var checks := {
 		"visual_spike_source_unchanged": source_hash == VISUAL_SPIKE_EXPECTED_SHA256,
 		"all_five_spaces_present": (
@@ -868,6 +884,10 @@ func _write_validation_report(report_path: String) -> void:
 			and cultists[&"cultist_03"]["activity"] == &"preparing_drugged_drink"
 		),
 		"four_x_simulation_supported": four_x_supported,
+		"entrance_is_left_of_main_hall": _floor_is_left_of(front_floor, main_floor),
+		"hallway_has_no_foreground_wall": find_child("HallwayNorthWall", true, false) == null,
+		"main_floor_tiles_are_square": _floor_tiles_are_square(main_floor),
+		"minus_and_equals_zoom_without_shift": _keyboard_zoom_keys_work(),
 	}
 	var report := {
 		"passed": not checks.values().has(false),
@@ -878,10 +898,11 @@ func _write_validation_report(report_path: String) -> void:
 			"cultist_count": full_cast["cultists"].size(),
 			"patron_count": full_cast["debug_patron_views"].size(),
 			"main_hall_metres": [27.0, 12.0],
-			"front_metres": [14.0, 7.0],
+			"front_metres": [7.0, 14.0],
 			"hallway_metres": [4.0, 6.0],
 			"bathroom_metres": [4.0, 6.0],
 			"cultist_visible_height_metres": CULTIST_VISIBLE_HEIGHT_METRES,
+			"main_floor_tile_metres": _floor_tile_metres(main_floor),
 		},
 	}
 	var absolute_path := ProjectSettings.globalize_path(report_path)
@@ -892,3 +913,47 @@ func _write_validation_report(report_path: String) -> void:
 		return
 	file.store_string(JSON.stringify(report, "  "))
 	get_tree().quit(0 if report["passed"] else 1)
+
+
+func _floor_is_left_of(left_floor: MeshInstance3D, right_floor: MeshInstance3D) -> bool:
+	if left_floor == null or right_floor == null:
+		return false
+	var left_mesh := left_floor.mesh as BoxMesh
+	var right_mesh := right_floor.mesh as BoxMesh
+	return (
+		left_floor.position.x + left_mesh.size.x * 0.5
+		<= right_floor.position.x - right_mesh.size.x * 0.5 + 0.001
+	)
+
+
+func _floor_tile_metres(floor: MeshInstance3D) -> Vector2:
+	if floor == null:
+		return Vector2.ZERO
+	var mesh := floor.mesh as BoxMesh
+	var material := floor.material_override as StandardMaterial3D
+	if mesh == null or material == null:
+		return Vector2.ZERO
+	return Vector2(mesh.size.x / material.uv1_scale.x, mesh.size.z / material.uv1_scale.y)
+
+
+func _floor_tiles_are_square(floor: MeshInstance3D) -> bool:
+	var tile_metres := _floor_tile_metres(floor)
+	return tile_metres.x > 0.0 and is_equal_approx(tile_metres.x, tile_metres.y)
+
+
+func _keyboard_zoom_keys_work() -> bool:
+	var was_capture_mode := _capture_mode
+	_capture_mode = false
+	var original_fov := _camera.fov
+	var zoom_in := InputEventKey.new()
+	zoom_in.keycode = KEY_EQUAL
+	zoom_in.pressed = true
+	_unhandled_input(zoom_in)
+	var equals_zooms_in := _camera.fov < original_fov
+	var zoom_out := InputEventKey.new()
+	zoom_out.keycode = KEY_MINUS
+	zoom_out.pressed = true
+	_unhandled_input(zoom_out)
+	var minus_zooms_out := is_equal_approx(_camera.fov, original_fov)
+	_capture_mode = was_capture_mode
+	return equals_zooms_in and minus_zooms_out
