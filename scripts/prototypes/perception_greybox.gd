@@ -44,6 +44,12 @@ const SERVICE_CAMERA_FOV := 32.0
 const FRONT_CAMERA_POSITION := Vector3(-31.0, 11.0, 20.0)
 const FRONT_CAMERA_TARGET := Vector3(-17.5, 0.8, 5.0)
 const FRONT_CAMERA_FOV := 34.0
+const CAMERA_PAN_SPEED := 16.0
+const CAMERA_PAN_ACCELERATION := 48.0
+const CAMERA_PAN_DECELERATION := 64.0
+const TRACKPAD_PAN_HOLD_SECONDS := 0.08
+const TRACKPAD_ZOOM_SENSITIVITY := 2.0
+const ZOOM_SMOOTHNESS := 9.0
 const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
 const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
 const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
@@ -128,6 +134,10 @@ var _body_root: Node3D
 var _event_root: Node3D
 var _camera: Camera3D
 var _camera_target: Vector3 = PRESENTATION_CAMERA_TARGET
+var _camera_fov_target: float = PRESENTATION_CAMERA_FOV
+var _camera_pan_velocity := Vector3.ZERO
+var _trackpad_pan_intent := Vector2.ZERO
+var _trackpad_pan_hold_remaining := 0.0
 var _staged_bodies: Array = []
 var _events: Array = []
 var _scenario_buttons: Dictionary = {}
@@ -157,31 +167,71 @@ func _process(delta: float) -> void:
 	if _playing and not _capture_mode:
 		_session.advance(delta * PLAY_SCALE)
 	if _presentation_prototype and not _capture_mode:
-		var pan := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
-		if not pan.is_zero_approx():
-			var shift := Vector3(pan.x, 0.0, pan.y) * delta * 8.0
-			_camera.position += shift
-			_camera_target += shift
-			_camera.look_at(_camera_target, Vector3.UP)
+		_update_camera_pan(delta)
+		if not is_equal_approx(_camera.fov, _camera_fov_target):
+			var zoom_weight := 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
+			_camera.fov = lerpf(_camera.fov, _camera_fov_target, zoom_weight)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _presentation_prototype or _capture_mode:
 		return
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_zoom_camera(-2.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_zoom_camera(2.0)
+	if event is InputEventPanGesture:
+		if event.meta_pressed:
+			_zoom_camera_smooth(event.delta.y * TRACKPAD_ZOOM_SENSITIVITY)
+		else:
+			_queue_trackpad_pan(event.delta)
+	elif event is InputEventMouseButton and event.pressed:
+		var wheel_pan := _wheel_pan_delta(event)
+		if not wheel_pan.is_zero_approx():
+			if event.meta_pressed:
+				_zoom_camera_smooth(wheel_pan.y * TRACKPAD_ZOOM_SENSITIVITY)
+			else:
+				_queue_trackpad_pan(wheel_pan)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_EQUAL:
-			_zoom_camera(-2.0)
+			_zoom_camera_smooth(-2.0)
 		elif event.keycode == KEY_MINUS:
-			_zoom_camera(2.0)
+			_zoom_camera_smooth(2.0)
 
 
-func _zoom_camera(fov_delta: float) -> void:
-	_camera.fov = clampf(_camera.fov + fov_delta, 20.0, 55.0)
+func _zoom_camera_smooth(fov_delta: float) -> void:
+	_camera_fov_target = clampf(_camera_fov_target + fov_delta, 20.0, 55.0)
+
+
+func _queue_trackpad_pan(pan_delta: Vector2) -> void:
+	_trackpad_pan_intent = pan_delta.limit_length(1.0)
+	_trackpad_pan_hold_remaining = TRACKPAD_PAN_HOLD_SECONDS
+
+
+func _wheel_pan_delta(event: InputEventMouseButton) -> Vector2:
+	var factor := maxf(event.factor, 1.0)
+	match event.button_index:
+		MOUSE_BUTTON_WHEEL_LEFT: return Vector2(-factor, 0.0)
+		MOUSE_BUTTON_WHEEL_RIGHT: return Vector2(factor, 0.0)
+		MOUSE_BUTTON_WHEEL_UP: return Vector2(0.0, -factor)
+		MOUSE_BUTTON_WHEEL_DOWN: return Vector2(0.0, factor)
+	return Vector2.ZERO
+
+
+func _update_camera_pan(delta: float) -> void:
+	var pan := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	if pan.is_zero_approx() and _trackpad_pan_hold_remaining > 0.0:
+		pan = _trackpad_pan_intent
+	_trackpad_pan_hold_remaining = maxf(0.0, _trackpad_pan_hold_remaining - delta)
+	if _trackpad_pan_hold_remaining <= 0.0:
+		_trackpad_pan_intent = Vector2.ZERO
+	var desired_velocity := Vector3(pan.x, 0.0, pan.y) * CAMERA_PAN_SPEED
+	var acceleration := CAMERA_PAN_ACCELERATION if not pan.is_zero_approx() else CAMERA_PAN_DECELERATION
+	_camera_pan_velocity = _camera_pan_velocity.move_toward(desired_velocity, acceleration * delta)
+	if not _camera_pan_velocity.is_zero_approx():
+		_pan_camera(_camera_pan_velocity * delta)
+
+
+func _pan_camera(shift: Vector3) -> void:
+	_camera.position += shift
+	_camera_target += shift
+	_camera.look_at(_camera_target, Vector3.UP)
 
 
 # --- World -------------------------------------------------------------------
@@ -240,6 +290,7 @@ func _build_environment() -> void:
 	_camera = Camera3D.new()
 	_camera.position = PRESENTATION_CAMERA_POSITION if _presentation_closeup else CAMERA_POSITION
 	_camera.fov = PRESENTATION_CAMERA_FOV if _presentation_closeup else CAMERA_FOV
+	_camera_fov_target = _camera.fov
 	_camera.near = 0.1
 	_camera.far = 200.0
 	add_child(_camera)
@@ -703,6 +754,7 @@ func _update_camera_for_scenario() -> void:
 			_camera.fov = PRESENTATION_CAMERA_FOV
 			_camera_target = PRESENTATION_CAMERA_TARGET
 	_camera.look_at(_camera_target, Vector3.UP)
+	_camera_fov_target = _camera.fov
 
 
 func _record_event(stimulus: StringName, channel: StringName, room: StringName, source_id: StringName, position: Vector2) -> void:
@@ -754,7 +806,7 @@ func _build_hud() -> void:
 	debug_toggle.pressed.connect(func(): _debug_visible = debug_toggle.button_pressed; _refresh(_session.snapshot()))
 	controls.add_child(debug_toggle)
 	var camera_hint := Label.new()
-	camera_hint.text = "PAN ARROWS  ·  ZOOM - / ="
+	camera_hint.text = "PAN TRACKPAD / ARROWS  ·  ZOOM ⌘+TRACKPAD / - / ="
 	camera_hint.add_theme_color_override("font_color", Color("8195a2"))
 	camera_hint.add_theme_font_size_override("font_size", 13)
 	controls.add_child(camera_hint)
@@ -888,6 +940,9 @@ func _write_validation_report(report_path: String) -> void:
 		"hallway_has_no_foreground_wall": find_child("HallwayNorthWall", true, false) == null,
 		"main_floor_tiles_are_square": _floor_tiles_are_square(main_floor),
 		"minus_and_equals_zoom_without_shift": _keyboard_zoom_keys_work(),
+		"trackpad_pans_in_all_directions": _trackpad_pans_in_all_directions(),
+		"command_trackpad_zoom_is_smooth": _command_trackpad_zoom_is_smooth(),
+		"camera_pan_is_fast_and_eased": _camera_pan_is_fast_and_eased(),
 	}
 	var report := {
 		"passed": not checks.values().has(false),
@@ -903,6 +958,9 @@ func _write_validation_report(report_path: String) -> void:
 			"bathroom_metres": [4.0, 6.0],
 			"cultist_visible_height_metres": CULTIST_VISIBLE_HEIGHT_METRES,
 			"main_floor_tile_metres": _floor_tile_metres(main_floor),
+			"camera_pan_speed_metres_per_second": CAMERA_PAN_SPEED,
+			"camera_pan_acceleration_metres_per_second_squared": CAMERA_PAN_ACCELERATION,
+			"camera_pan_deceleration_metres_per_second_squared": CAMERA_PAN_DECELERATION,
 		},
 	}
 	var absolute_path := ProjectSettings.globalize_path(report_path)
@@ -949,11 +1007,135 @@ func _keyboard_zoom_keys_work() -> bool:
 	zoom_in.keycode = KEY_EQUAL
 	zoom_in.pressed = true
 	_unhandled_input(zoom_in)
-	var equals_zooms_in := _camera.fov < original_fov
+	for _frame in 30:
+		_process(1.0 / 60.0)
+	var zoomed_in_fov := _camera.fov
+	var equals_zooms_in := zoomed_in_fov < original_fov
 	var zoom_out := InputEventKey.new()
 	zoom_out.keycode = KEY_MINUS
 	zoom_out.pressed = true
 	_unhandled_input(zoom_out)
-	var minus_zooms_out := is_equal_approx(_camera.fov, original_fov)
+	for _frame in 30:
+		_process(1.0 / 60.0)
+	var minus_zooms_out := _camera.fov > zoomed_in_fov
+	_camera.fov = original_fov
+	_camera_fov_target = original_fov
 	_capture_mode = was_capture_mode
 	return equals_zooms_in and minus_zooms_out
+
+
+func _trackpad_pans_in_all_directions() -> bool:
+	var was_capture_mode := _capture_mode
+	_capture_mode = false
+	var original_position := _camera.position
+	var original_target := _camera_target
+	var gestures := [
+		[Vector2(-1.0, 0.0), Vector3(-1.0, 0.0, 0.0)],
+		[Vector2(1.0, 0.0), Vector3(1.0, 0.0, 0.0)],
+		[Vector2(0.0, -1.0), Vector3(0.0, 0.0, -1.0)],
+		[Vector2(0.0, 1.0), Vector3(0.0, 0.0, 1.0)],
+	]
+	var all_directions_work := true
+	for gesture_case: Array in gestures:
+		_camera.position = original_position
+		_camera_target = original_target
+		_camera_pan_velocity = Vector3.ZERO
+		_trackpad_pan_intent = Vector2.ZERO
+		_trackpad_pan_hold_remaining = 0.0
+		var gesture := InputEventPanGesture.new()
+		gesture.delta = gesture_case[0]
+		_unhandled_input(gesture)
+		_process(1.0 / 60.0)
+		var shift: Vector3 = _camera.position - original_position
+		var expected: Vector3 = gesture_case[1]
+		all_directions_work = all_directions_work and shift.dot(expected) > 0.0
+	_camera.position = original_position
+	_camera_target = original_target
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
+	_camera.look_at(_camera_target, Vector3.UP)
+	_capture_mode = was_capture_mode
+	return all_directions_work
+
+
+func _command_trackpad_zoom_is_smooth() -> bool:
+	var was_capture_mode := _capture_mode
+	_capture_mode = false
+	var original_position := _camera.position
+	var original_target := _camera_target
+	var original_fov := _camera.fov
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
+	var gesture := InputEventPanGesture.new()
+	gesture.delta = Vector2(0.0, -2.0)
+	gesture.meta_pressed = true
+	_unhandled_input(gesture)
+	var waits_for_frame := is_equal_approx(_camera.fov, original_fov)
+	_process(1.0 / 60.0)
+	var first_frame_fov := _camera.fov
+	var starts_smoothly := first_frame_fov < original_fov and first_frame_fov > original_fov - 2.0
+	for _frame in 30:
+		_process(1.0 / 60.0)
+	var continues_toward_target := _camera.fov < first_frame_fov
+	var does_not_pan := _camera.position.is_equal_approx(original_position)
+	_camera.position = original_position
+	_camera_target = original_target
+	_camera.fov = original_fov
+	_camera_fov_target = original_fov
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
+	_camera.look_at(_camera_target, Vector3.UP)
+	_capture_mode = was_capture_mode
+	return waits_for_frame and starts_smoothly and continues_toward_target and does_not_pan
+
+
+func _camera_pan_is_fast_and_eased() -> bool:
+	var was_capture_mode := _capture_mode
+	_capture_mode = false
+	var original_position := _camera.position
+	var original_target := _camera_target
+	var delta := 1.0 / 60.0
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
+	var gesture := InputEventPanGesture.new()
+	gesture.delta = Vector2(1.0, 0.0)
+	_unhandled_input(gesture)
+	var waits_for_frame := _camera.position.is_equal_approx(original_position)
+	_process(delta)
+	var first_step := (_camera.position - original_position).length()
+	var previous_position := _camera.position
+	var steady_step := first_step
+	for _frame in 30:
+		_unhandled_input(gesture)
+		_process(delta)
+		steady_step = (_camera.position - previous_position).length()
+		previous_position = _camera.position
+	var accelerates := steady_step > first_step * 2.0
+	var faster_than_old_pan := steady_step / delta > 8.0
+	_process(delta)
+	var coast_step := (_camera.position - previous_position).length()
+	var coasts_after_release := coast_step > 0.0
+	for _frame in 45:
+		_process(delta)
+	var settled_position := _camera.position
+	_process(delta)
+	var settles_smoothly := _camera.position.is_equal_approx(settled_position)
+	_camera.position = original_position
+	_camera_target = original_target
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
+	_camera.look_at(_camera_target, Vector3.UP)
+	_capture_mode = was_capture_mode
+	return (
+		waits_for_frame
+		and first_step > 0.0
+		and accelerates
+		and faster_than_old_pan
+		and coasts_after_release
+		and settles_smoothly
+	)

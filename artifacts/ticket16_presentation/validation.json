@@ -2,6 +2,8 @@
   "checks": {
     "active_cultist_states_readable": true,
     "all_five_spaces_present": true,
+    "camera_pan_is_fast_and_eased": true,
+    "command_trackpad_zoom_is_smooth": true,
     "eight_distinct_patron_palettes": true,
     "eight_patrons_exposed": true,
     "entrance_is_left_of_main_hall": true,
@@ -10,6 +12,7 @@
     "main_floor_tiles_are_square": true,
     "minus_and_equals_zoom_without_shift": true,
     "three_cultists_exposed": true,
+    "trackpad_pans_in_all_directions": true,
     "visual_spike_source_unchanged": true
   },
   "observed": {
@@ -17,6 +20,9 @@
       4.0,
       6.0
     ],
+    "camera_pan_acceleration_metres_per_second_squared": 48.0,
+    "camera_pan_deceleration_metres_per_second_squared": 64.0,
+    "camera_pan_speed_metres_per_second": 16.0,
     "cultist_count": 3,
     "cultist_visible_height_metres": 1.75,
     "front_metres": [
