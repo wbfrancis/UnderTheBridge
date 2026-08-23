@@ -11,6 +11,8 @@
     "hallway_has_no_foreground_wall": true,
     "main_floor_tiles_are_square": true,
     "minus_and_equals_zoom_without_shift": true,
+    "service_and_front_buttons_use_consistent_camera": true,
+    "service_area_has_no_loose_labels": true,
     "three_cultists_exposed": true,
     "trackpad_pans_in_all_directions": true,
     "visual_spike_source_unchanged": true
@@ -39,6 +41,10 @@
       12.0
     ],
     "patron_count": 8,
+    "service_area_labels": [
+      "HALLWAY",
+      "BATHROOM / TRAPDOOR"
+    ],
     "visual_spike_sha256": "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
   },
   "passed": true,

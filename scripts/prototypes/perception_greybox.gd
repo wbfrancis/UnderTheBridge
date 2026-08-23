@@ -38,12 +38,10 @@ const CAMERA_FOV := 50.0
 const PRESENTATION_CAMERA_POSITION := Vector3(0.0, 10.0, 34.0)
 const PRESENTATION_CAMERA_TARGET := Vector3(0.0, 1.0, 3.0)
 const PRESENTATION_CAMERA_FOV := 30.0
-const SERVICE_CAMERA_POSITION := Vector3(6.0, 12.0, 24.0)
-const SERVICE_CAMERA_TARGET := Vector3(16.5, 0.7, 6.0)
-const SERVICE_CAMERA_FOV := 32.0
-const FRONT_CAMERA_POSITION := Vector3(-31.0, 11.0, 20.0)
-const FRONT_CAMERA_TARGET := Vector3(-17.5, 0.8, 5.0)
-const FRONT_CAMERA_FOV := 34.0
+const SERVICE_CAMERA_POSITION := Vector3(17.0, 10.0, 37.0)
+const SERVICE_CAMERA_TARGET := Vector3(17.0, 1.0, 6.0)
+const FRONT_CAMERA_POSITION := Vector3(-17.5, 10.0, 36.0)
+const FRONT_CAMERA_TARGET := Vector3(-17.5, 1.0, 5.0)
 const CAMERA_PAN_SPEED := 16.0
 const CAMERA_PAN_ACCELERATION := 48.0
 const CAMERA_PAN_DECELERATION := 64.0
@@ -288,13 +286,14 @@ func _build_environment() -> void:
 	add_child(_event_root)
 
 	_camera = Camera3D.new()
-	_camera.position = PRESENTATION_CAMERA_POSITION if _presentation_closeup else CAMERA_POSITION
-	_camera.fov = PRESENTATION_CAMERA_FOV if _presentation_closeup else CAMERA_FOV
+	_camera.position = PRESENTATION_CAMERA_POSITION if _presentation_prototype else CAMERA_POSITION
+	_camera_target = PRESENTATION_CAMERA_TARGET if _presentation_prototype else CAMERA_TARGET
+	_camera.fov = PRESENTATION_CAMERA_FOV if _presentation_prototype else CAMERA_FOV
 	_camera_fov_target = _camera.fov
 	_camera.near = 0.1
 	_camera.far = 200.0
 	add_child(_camera)
-	_camera.look_at(PRESENTATION_CAMERA_TARGET if _presentation_closeup else CAMERA_TARGET, Vector3.UP)
+	_camera.look_at(_camera_target, Vector3.UP)
 	_camera.current = true
 
 
@@ -308,6 +307,8 @@ func _build_room_zone(room_id: StringName) -> Node3D:
 	var rect: Array = ROOM_RECTS[room_id]
 	var center := Vector2((rect[0] + rect[2]) * 0.5, (rect[1] + rect[3]) * 0.5)
 	var pad := _build_box(center, Vector3(rect[2] - rect[0], 0.06, rect[3] - rect[1]), 0.03, ROOM_COLORS[room_id], true)
+	if _presentation_prototype and room_id in [&"hallway", &"bathroom"]:
+		return pad
 	var label := Label3D.new()
 	label.text = String(room_id).to_upper().replace("_", " ")
 	label.position = Vector3(center.x, 1.4, center.y)
@@ -742,19 +743,22 @@ func _update_camera_for_scenario() -> void:
 		return
 	match _scenario:
 		"service_wing":
-			_camera.position = SERVICE_CAMERA_POSITION
-			_camera.fov = SERVICE_CAMERA_FOV
-			_camera_target = SERVICE_CAMERA_TARGET
+			_set_camera_view(SERVICE_CAMERA_POSITION, SERVICE_CAMERA_TARGET)
 		"front_exit":
-			_camera.position = FRONT_CAMERA_POSITION
-			_camera.fov = FRONT_CAMERA_FOV
-			_camera_target = FRONT_CAMERA_TARGET
+			_set_camera_view(FRONT_CAMERA_POSITION, FRONT_CAMERA_TARGET)
 		_:
-			_camera.position = PRESENTATION_CAMERA_POSITION
-			_camera.fov = PRESENTATION_CAMERA_FOV
-			_camera_target = PRESENTATION_CAMERA_TARGET
+			_set_camera_view(PRESENTATION_CAMERA_POSITION, PRESENTATION_CAMERA_TARGET)
+
+
+func _set_camera_view(position: Vector3, target: Vector3) -> void:
+	_camera.position = position
+	_camera_target = target
+	_camera.fov = PRESENTATION_CAMERA_FOV
+	_camera_fov_target = PRESENTATION_CAMERA_FOV
+	_camera_pan_velocity = Vector3.ZERO
+	_trackpad_pan_intent = Vector2.ZERO
+	_trackpad_pan_hold_remaining = 0.0
 	_camera.look_at(_camera_target, Vector3.UP)
-	_camera_fov_target = _camera.fov
 
 
 func _record_event(stimulus: StringName, channel: StringName, room: StringName, source_id: StringName, position: Vector2) -> void:
@@ -943,6 +947,8 @@ func _write_validation_report(report_path: String) -> void:
 		"trackpad_pans_in_all_directions": _trackpad_pans_in_all_directions(),
 		"command_trackpad_zoom_is_smooth": _command_trackpad_zoom_is_smooth(),
 		"camera_pan_is_fast_and_eased": _camera_pan_is_fast_and_eased(),
+		"service_area_has_no_loose_labels": _service_area_labels_are_correct(),
+		"service_and_front_buttons_use_consistent_camera": _service_and_front_buttons_use_consistent_camera(),
 	}
 	var report := {
 		"passed": not checks.values().has(false),
@@ -961,6 +967,7 @@ func _write_validation_report(report_path: String) -> void:
 			"camera_pan_speed_metres_per_second": CAMERA_PAN_SPEED,
 			"camera_pan_acceleration_metres_per_second_squared": CAMERA_PAN_ACCELERATION,
 			"camera_pan_deceleration_metres_per_second_squared": CAMERA_PAN_DECELERATION,
+			"service_area_labels": _service_area_labels(),
 		},
 	}
 	var absolute_path := ProjectSettings.globalize_path(report_path)
@@ -1139,3 +1146,49 @@ func _camera_pan_is_fast_and_eased() -> bool:
 		and coasts_after_release
 		and settles_smoothly
 	)
+
+
+func _service_area_labels() -> Array[String]:
+	var labels: Array[String] = []
+	for node: Node in find_children("*", "Label3D", true, false):
+		var label := node as Label3D
+		if label.text == "HALLWAY" or label.text.begins_with("BATHROOM"):
+			labels.append(label.text)
+	return labels
+
+
+func _service_area_labels_are_correct() -> bool:
+	var labels := _service_area_labels()
+	return (
+		labels.count("HALLWAY") == 1
+		and labels.count("BATHROOM") == 0
+		and labels.count("BATHROOM / TRAPDOOR") == 1
+	)
+
+
+func _service_and_front_buttons_use_consistent_camera() -> bool:
+	var original_scenario := _scenario
+	var original_position := _camera.position
+	var original_target := _camera_target
+	var original_fov := _camera.fov
+	var normal_direction := (PRESENTATION_CAMERA_TARGET - PRESENTATION_CAMERA_POSITION).normalized()
+	var scenarios := {
+		"service_wing": Vector3(17.0, 1.0, 6.0),
+		"front_exit": Vector3(-17.5, 1.0, 5.0),
+	}
+	var buttons_use_consistent_camera := true
+	for scenario_id: String in scenarios:
+		_set_scenario(scenario_id)
+		var direction := (_camera_target - _camera.position).normalized()
+		buttons_use_consistent_camera = buttons_use_consistent_camera and (
+			_camera_target.is_equal_approx(scenarios[scenario_id])
+			and direction.is_equal_approx(normal_direction)
+			and is_equal_approx(_camera.fov, PRESENTATION_CAMERA_FOV)
+		)
+	_set_scenario(original_scenario)
+	_camera.position = original_position
+	_camera_target = original_target
+	_camera.fov = original_fov
+	_camera_fov_target = original_fov
+	_camera.look_at(_camera_target, Vector3.UP)
+	return buttons_use_consistent_camera
