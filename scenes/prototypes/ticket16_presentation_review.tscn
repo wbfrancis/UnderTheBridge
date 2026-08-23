@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/perception_greybox.gd" id="1_script"]
+
+[node name="Ticket16PresentationReview" type="Node3D"]
+script = ExtResource("1_script")
+review_presentation = true
+review_closeup = true

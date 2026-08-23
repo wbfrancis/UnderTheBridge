@@ -8,6 +8,8 @@ extends Node3D
 
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
+const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
+const BARTENDER_TEXTURE: Texture2D = preload("res://assets/characters/prototype_visual/Bartender.png")
 const PATRON_IDS: Array[StringName] = [&"patron_june", &"patron_mara"]
 const SCENARIOS := {
 	"line_of_sight": "LINE OF SIGHT",
@@ -22,6 +24,12 @@ const SCENARIOS := {
 const CAMERA_POSITION := Vector3(3.0, 33.0, 33.0)
 const CAMERA_TARGET := Vector3(3.0, 0.0, 6.0)
 const CAMERA_FOV := 50.0
+const PRESENTATION_CAMERA_POSITION := Vector3(0.0, 10.0, 34.0)
+const PRESENTATION_CAMERA_TARGET := Vector3(0.0, 1.0, 3.0)
+const PRESENTATION_CAMERA_FOV := 30.0
+const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
+const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
+const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
 const PLAY_SCALE := 4.0
 
 # The real perception rule values, read straight from the module so the drawn cone
@@ -64,11 +72,15 @@ const BAND_COLORS := {
 }
 
 var _session = GAME_SESSION_SCRIPT.new()
+@export var review_presentation: bool = false
+@export var review_closeup: bool = false
 var _scenario: String = "line_of_sight"
 var _scenario_trace: String = ""
 var _playing: bool = false
 var _debug_visible: bool = true
 var _capture_mode: bool = false
+var _presentation_prototype: bool = false
+var _presentation_closeup: bool = false
 var _patron_nodes: Dictionary = {}
 var _actor_root: Node3D
 var _body_root: Node3D
@@ -78,9 +90,12 @@ var _events: Array = []
 var _scenario_buttons: Dictionary = {}
 var _play_button: Button
 var _debug_label: RichTextLabel
+var _prototype_cultist_label: Label3D
 
 
 func _ready() -> void:
+	_presentation_closeup = review_closeup or _command_line_flag("--presentation-closeup")
+	_presentation_prototype = review_presentation or _command_line_flag("--presentation-prototype") or _presentation_closeup
 	_build_environment()
 	_build_hud()
 	_session.snapshot_changed.connect(_refresh)
@@ -129,7 +144,10 @@ func _build_environment() -> void:
 		add_child(_build_room_zone(room_id))
 
 	# Bar counter box at the origin, and the eight seat pads.
-	add_child(_build_box(Vector2(0.0, 0.0), Vector3(6.0, 1.1, 1.4), 0.55, Color("3a2c22")))
+	if _presentation_prototype:
+		_add_presentation_prototype()
+	else:
+		add_child(_build_box(Vector2(0.0, 0.0), Vector3(6.0, 1.1, 1.4), 0.55, Color("3a2c22")))
 	for seat_id: StringName in SEAT_POSITIONS:
 		add_child(_build_box(SEAT_POSITIONS[seat_id], Vector3(0.9, 0.5, 0.9), 0.25, Color("223743")))
 
@@ -144,13 +162,45 @@ func _build_environment() -> void:
 	add_child(_event_root)
 
 	var camera := Camera3D.new()
-	camera.position = CAMERA_POSITION
-	camera.fov = CAMERA_FOV
+	camera.position = PRESENTATION_CAMERA_POSITION if _presentation_closeup else CAMERA_POSITION
+	camera.fov = PRESENTATION_CAMERA_FOV if _presentation_closeup else CAMERA_FOV
 	camera.near = 0.1
 	camera.far = 200.0
 	add_child(camera)
-	camera.look_at(CAMERA_TARGET, Vector3.UP)
+	camera.look_at(PRESENTATION_CAMERA_TARGET if _presentation_closeup else CAMERA_TARGET, Vector3.UP)
 	camera.current = true
+
+
+func _add_presentation_prototype() -> void:
+	var main_room := MAIN_ROOM_PRESENTATION_SCRIPT.new() as Node3D
+	main_room.name = "FullScaleMainRoomPrototype"
+	add_child(main_room)
+
+	var cultist := Sprite3D.new()
+	cultist.name = "PrototypeCultist"
+	cultist.texture = BARTENDER_TEXTURE
+	cultist.pixel_size = CULTIST_VISIBLE_HEIGHT_METRES / BARTENDER_OPAQUE_HEIGHT_PIXELS
+	cultist.position = Vector3(
+		0.0,
+		BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * cultist.pixel_size,
+		1.45
+	)
+	cultist.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	cultist.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	cultist.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	cultist.render_priority = 2
+	add_child(cultist)
+
+	_prototype_cultist_label = Label3D.new()
+	_prototype_cultist_label.name = "PrototypeCultistState"
+	_prototype_cultist_label.position = Vector3(1.7, 2.05, 1.45)
+	_prototype_cultist_label.font_size = 42
+	_prototype_cultist_label.pixel_size = 0.006
+	_prototype_cultist_label.outline_size = 14
+	_prototype_cultist_label.outline_modulate = Color("0b1016")
+	_prototype_cultist_label.modulate = Color("e8bd79")
+	_prototype_cultist_label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	add_child(_prototype_cultist_label)
 
 
 func _build_room_zone(room_id: StringName) -> Node3D:
@@ -166,6 +216,11 @@ func _build_room_zone(room_id: StringName) -> Node3D:
 	label.outline_modulate = Color("0b1016")
 	label.pixel_size = 0.01
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	if _presentation_prototype and room_id == &"main_hall":
+		label.font_size = 36
+		label.pixel_size = 0.006
+		label.position.y = 0.45
+		label.modulate = Color("c8a878")
 	pad.add_child(label)
 	return pad
 
@@ -323,7 +378,15 @@ func _refresh(state: Dictionary) -> void:
 
 	_refresh_bodies()
 	_refresh_events(state)
+	_refresh_prototype_cultist(state)
 	_refresh_hud(state)
+
+
+func _refresh_prototype_cultist(state: Dictionary) -> void:
+	if _prototype_cultist_label == null:
+		return
+	var activity: StringName = state["cultists"][&"cultist_01"]["activity"]
+	_prototype_cultist_label.text = "CULTIST 01 - %s" % _humanize(activity).to_upper()
 
 
 func _refresh_bodies() -> void:
@@ -582,6 +645,10 @@ func _command_line_value(prefix: String, fallback: String = "") -> String:
 		if argument.begins_with(prefix):
 			return argument.trim_prefix(prefix)
 	return fallback
+
+
+func _command_line_flag(flag: String) -> bool:
+	return flag in OS.get_cmdline_user_args()
 
 
 func _capture_after_render(capture_path: String) -> void:
