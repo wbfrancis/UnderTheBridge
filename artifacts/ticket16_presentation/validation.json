@@ -1,0 +1,35 @@
+{
+  "checks": {
+    "active_cultist_states_readable": true,
+    "all_five_spaces_present": true,
+    "eight_distinct_patron_palettes": true,
+    "eight_patrons_exposed": true,
+    "four_x_simulation_supported": true,
+    "three_cultists_exposed": true,
+    "visual_spike_source_unchanged": true
+  },
+  "observed": {
+    "bathroom_metres": [
+      4.0,
+      6.0
+    ],
+    "cultist_count": 3,
+    "cultist_visible_height_metres": 1.75,
+    "front_metres": [
+      14.0,
+      7.0
+    ],
+    "hallway_metres": [
+      4.0,
+      6.0
+    ],
+    "main_hall_metres": [
+      27.0,
+      12.0
+    ],
+    "patron_count": 8,
+    "visual_spike_sha256": "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
+  },
+  "passed": true,
+  "slice": "ticket16_migrated_presentation"
+}

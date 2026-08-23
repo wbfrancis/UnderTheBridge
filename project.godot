@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Under the Bridge Prototype"
-run/main_scene="res://scenes/slices/personal_suspicion_slice.tscn"
+run/main_scene="res://scenes/prototypes/ticket16_presentation_review.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [display]

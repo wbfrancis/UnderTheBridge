@@ -12,6 +12,18 @@ const WALL_BOARDS_TEXTURE: Texture2D = preload(
 const WOOD_TEXTURE: Texture2D = preload(
 	"res://assets/environment/prototype_visual/Textures/wood_finished03.jpg"
 )
+const WOOD_LIGHT_TEXTURE: Texture2D = preload(
+	"res://assets/environment/prototype_visual/Textures/wood_finished01.jpg"
+)
+const BRASS_TEXTURE: Texture2D = preload(
+	"res://assets/environment/prototype_visual/Textures/brass.jpg"
+)
+const CLOTH_TEXTURE: Texture2D = preload(
+	"res://assets/environment/prototype_visual/Textures/cloth.jpg"
+)
+const METAL_TEXTURE: Texture2D = preload(
+	"res://assets/environment/prototype_visual/Textures/ADS_base_metal.jpg"
+)
 
 const FLOOR_SIZE := Vector3(27.0, 0.08, 12.0)
 const BAR_WIDTH := 12.0
@@ -21,6 +33,7 @@ func _ready() -> void:
 	_build_room_shell()
 	_build_full_scale_bar()
 	_build_seating()
+	_build_auxiliary_spaces()
 	_build_lighting()
 
 
@@ -159,6 +172,74 @@ func _build_seating() -> void:
 	))
 
 
+func _build_auxiliary_spaces() -> void:
+	var floor_material := _textured_material(FLOOR_TEXTURE, Color("85796c"), 0.9, Vector3(4.0, 4.0, 4.0))
+	var wallpaper := _textured_material(WALLPAPER_TEXTURE, Color("715c45"), 0.86, Vector3(4.0, 3.0, 4.0))
+	var boards := _textured_material(WALL_BOARDS_TEXTURE, Color("63392e"), 0.68, Vector3(4.0, 2.0, 4.0))
+	var wood := _textured_material(WOOD_LIGHT_TEXTURE, Color("815033"), 0.55, Vector3(3.0, 2.0, 2.0))
+	var brass := _textured_material(BRASS_TEXTURE, Color("a3773f"), 0.38, Vector3(2.0, 2.0, 2.0))
+	var dark_metal := _textured_material(METAL_TEXTURE, Color("343038"), 0.46, Vector3(2.0, 2.0, 2.0))
+
+	# Front room: the seven-metre approach from the main hall to the street exit.
+	add_child(_box("FrontFloor", Vector3(14.0, 0.08, 7.0), Vector3(0.0, 0.09, 13.5), floor_material))
+	for x_position in [-6.9, 6.9]:
+		add_child(_box("FrontSideWall", Vector3(0.22, 0.9, 7.0), Vector3(x_position, 0.45, 13.5), wallpaper))
+		add_child(_box("FrontWainscot", Vector3(0.28, 0.62, 7.0), Vector3(x_position, 0.32, 13.5), boards))
+	add_child(_box("StreetWallLeft", Vector3(5.2, 0.9, 0.24), Vector3(-4.4, 0.45, 16.88), wallpaper))
+	add_child(_box("StreetWallRight", Vector3(5.2, 0.9, 0.24), Vector3(4.4, 0.45, 16.88), wallpaper))
+	add_child(_box("ExitHeader", Vector3(3.6, 0.18, 0.32), Vector3(0.0, 0.88, 16.82), wood))
+	for x_position in [-0.9, 0.9]:
+		add_child(_box("FrontExitDoor", Vector3(1.7, 0.7, 0.18), Vector3(x_position, 0.36, 16.72), wood))
+		add_child(_box("ExitDoorGlass", Vector3(1.0, 0.32, 0.05), Vector3(x_position, 0.48, 16.59), _mirror_material()))
+		add_child(_box("ExitDoorHandle", Vector3(0.08, 0.18, 0.12), Vector3(x_position * 0.22, 0.38, 16.45), brass))
+	add_child(_box("FrontRunner", Vector3(3.8, 0.035, 5.4), Vector3(0.0, 0.16, 13.3), _textured_material(CLOTH_TEXTURE, Color("572b38"), 0.92, Vector3(2.0, 4.0, 2.0))))
+	add_child(_space_label("FRONT EXIT", Vector3(0.0, 1.22, 16.55), Color("edc685")))
+
+	# Hallway: the narrow east route between the main room, bathroom, and intake.
+	add_child(_box("HallwayFloor", Vector3(4.0, 0.08, 6.0), Vector3(15.0, 0.09, 6.0), floor_material))
+	add_child(_box("HallwayNorthWall", Vector3(4.0, 2.4, 0.22), Vector3(15.0, 1.2, 8.9), wallpaper))
+	add_child(_box("HallwaySouthWall", Vector3(4.0, 2.4, 0.22), Vector3(15.0, 1.2, 3.1), wallpaper))
+	for z_position in [3.1, 8.9]:
+		add_child(_box("HallwayRail", Vector3(4.0, 0.15, 0.34), Vector3(15.0, 1.04, z_position), wood))
+	add_child(_space_label("HALLWAY", Vector3(15.0, 2.7, 7.7), Color("d8b77d")))
+
+	# Bathroom: a cutaway room with a visible standing zone, seated fixture, and Trapdoor.
+	add_child(_box("BathroomFloor", Vector3(4.0, 0.08, 6.0), Vector3(19.0, 0.09, 6.0), _material(Color("4b5558"), 0.88)))
+	add_child(_box("BathroomOuterWall", Vector3(0.22, 2.7, 6.0), Vector3(20.9, 1.35, 6.0), wallpaper))
+	add_child(_box("BathroomBackWall", Vector3(4.0, 2.7, 0.22), Vector3(19.0, 1.35, 3.1), wallpaper))
+	add_child(_box("BathroomWainscot", Vector3(0.28, 1.0, 6.0), Vector3(20.75, 0.52, 6.0), boards))
+	add_child(_box("BathroomDivider", Vector3(0.16, 0.82, 2.5), Vector3(18.0, 0.41, 5.25), dark_metal))
+	add_child(_box("ToiletBase", Vector3(0.72, 0.48, 0.9), Vector3(19.55, 0.3, 5.8), _material(Color("c6c0ad"), 0.72)))
+	add_child(_box("ToiletTank", Vector3(0.8, 0.72, 0.35), Vector3(19.55, 0.7, 5.42), _material(Color("d8d1bc"), 0.7)))
+	add_child(_box("Sink", Vector3(0.95, 0.18, 0.6), Vector3(19.55, 0.92, 7.75), _material(Color("c9c4b6"), 0.68)))
+	add_child(_box("SinkStand", Vector3(0.28, 0.82, 0.28), Vector3(19.55, 0.45, 7.75), brass))
+	add_child(_box("BathroomMirror", Vector3(1.3, 1.05, 0.08), Vector3(20.72, 1.75, 7.75), _mirror_material()))
+	add_child(_box("Trapdoor", Vector3(1.35, 0.045, 1.35), Vector3(18.8, 0.16, 6.1), dark_metal))
+	add_child(_box("TrapdoorInset", Vector3(1.05, 0.025, 1.05), Vector3(18.8, 0.19, 6.1), _material(Color("17171b"), 0.35)))
+	add_child(_space_label("BATHROOM / TRAPDOOR", Vector3(19.0, 3.05, 4.0), Color("d7b77d")))
+
+	# Tunnel Intake: a clear threshold in the hallway, separate from the bathroom Trapdoor.
+	add_child(_box("IntakeThreshold", Vector3(2.35, 0.09, 1.0), Vector3(15.0, 0.16, 3.65), dark_metal))
+	for x_position in [14.0, 16.0]:
+		add_child(_box("IntakePost", Vector3(0.22, 2.25, 0.28), Vector3(x_position, 1.14, 3.65), wood))
+	add_child(_box("IntakeHeader", Vector3(2.25, 0.28, 0.35), Vector3(15.0, 2.22, 3.65), wood))
+	add_child(_box("IntakeCurtain", Vector3(1.65, 1.82, 0.08), Vector3(15.0, 1.05, 3.58), _textured_material(CLOTH_TEXTURE, Color("4a1f2d"), 0.9, Vector3(2.0, 3.0, 2.0))))
+	add_child(_space_label("TUNNEL INTAKE", Vector3(15.0, 2.7, 3.65), Color("ef9e6c")))
+
+
+func _space_label(text: String, at: Vector3, color: Color) -> Label3D:
+	var label := Label3D.new()
+	label.text = text
+	label.position = at
+	label.font_size = 28
+	label.pixel_size = 0.006
+	label.modulate = color
+	label.outline_size = 14
+	label.outline_modulate = Color("171017")
+	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	return label
+
+
 func _build_lighting() -> void:
 	var bar_light := OmniLight3D.new()
 	bar_light.name = "BarLight"
@@ -176,6 +257,20 @@ func _build_lighting() -> void:
 		side_light.light_energy = 0.78
 		side_light.omni_range = 6.0
 		add_child(side_light)
+	var service_light := OmniLight3D.new()
+	service_light.name = "ServiceWingLight"
+	service_light.position = Vector3(16.5, 2.8, 6.0)
+	service_light.light_color = Color("ffd29c")
+	service_light.light_energy = 1.2
+	service_light.omni_range = 8.0
+	add_child(service_light)
+	var front_light := OmniLight3D.new()
+	front_light.name = "FrontRoomLight"
+	front_light.position = Vector3(0.0, 2.8, 13.6)
+	front_light.light_color = Color("e6a873")
+	front_light.light_energy = 0.9
+	front_light.omni_range = 7.0
+	add_child(front_light)
 
 
 func _box(node_name: String, size: Vector3, at: Vector3, material: StandardMaterial3D) -> MeshInstance3D:

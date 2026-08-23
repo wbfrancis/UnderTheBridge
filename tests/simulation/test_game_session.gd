@@ -97,6 +97,29 @@ func test_safe_autonomy_serves_or_idles_and_never_starts_capture() -> void:
 		)
 
 
+func test_cultist_snapshot_exposes_active_capture_activity_and_target() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+
+	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
+	var windup: Dictionary = session.snapshot()["cultists"][&"cultist_01"]
+	assert_eq(windup["activity"], &"knockout_windup")
+	assert_eq(windup["last_target_id"], &"patron_elias")
+
+	session.advance(2.05)
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	var pickup: Dictionary = session.snapshot()["cultists"][&"cultist_01"]
+	assert_eq(pickup["activity"], &"body_pickup")
+	assert_eq(pickup["last_target_id"], &"patron_elias")
+
+	session.advance(1.05)
+	var dragging: Dictionary = session.snapshot()["cultists"][&"cultist_01"]
+	assert_eq(dragging["activity"], &"dragging")
+	assert_eq(dragging["last_target_id"], &"patron_elias")
+
+
 func test_time_controls_reach_closing_and_basic_non_capture_results() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
@@ -1046,6 +1069,9 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	var alerted: Dictionary = session.snapshot()
 	assert_true(alerted["escape_alerts"].has(&"patron_elias"), "Escaping Patrons raise an Escape alert.")
 	assert_eq(alerted["normal_patron_views"][&"patron_elias"]["urgent_intention"], &"escaping")
+	assert_eq(alerted["normal_patron_views"][&"patron_elias"]["visible_activity"], "Reacting")
+	session.advance(2.0)
+	assert_eq(session.snapshot()["normal_patron_views"][&"patron_elias"]["visible_activity"], "Escaping")
 
 	# With no carry in progress the odds read -1; during a carry they equal the exact chance.
 	assert_almost_eq(float(alerted["rescue_odds"]), -1.0, 0.001, "No carry means no Rescue odds.")

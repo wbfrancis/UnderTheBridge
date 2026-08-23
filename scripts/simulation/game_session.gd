@@ -463,7 +463,56 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 		)
 		summaries[cultist_id]["last_action"] = event["action"]
 		summaries[cultist_id]["last_target_id"] = event["target_id"]
+
+	var drug_prep: Dictionary = visit["drug_prep"]
+	if not drug_prep.is_empty():
+		_set_active_cultist_summary(
+			summaries, drug_prep["cultist_id"], &"preparing_drugged_drink", drug_prep["patron_id"]
+		)
+	var windup: Dictionary = visit["windup"]
+	if not windup.is_empty():
+		_set_active_cultist_summary(
+			summaries, windup["cultist_id"], &"knockout_windup", windup["victim_id"]
+		)
+	for victim_id: StringName in visit["drags"]:
+		var drag: Dictionary = visit["drags"][victim_id]
+		var activity: StringName = &"body_pickup" if drag["phase"] == &"pickup" else &"dragging"
+		_set_active_cultist_summary(summaries, drag["cultist_id"], activity, victim_id)
+	for cultist_id: StringName in visit["conversations"]:
+		_set_active_cultist_summary(
+			summaries, cultist_id, &"conversing", visit["conversations"][cultist_id]
+		)
+	for patron_id: StringName in visit["follows"]:
+		var follow: Dictionary = visit["follows"][patron_id]
+		_set_active_cultist_summary(summaries, follow["cultist_id"], &"leading", patron_id)
+	for victim_id: StringName in visit["collapses"]:
+		var collapse: Dictionary = visit["collapses"][victim_id]
+		if collapse["phase"] == &"persuading":
+			_set_active_cultist_summary(
+				summaries, collapse["acting_cultist"], &"rescue_persuasion", collapse["helper_id"]
+			)
+	var active_intercept: Dictionary = visit["active_intercept"]
+	if not active_intercept.is_empty():
+		_set_active_cultist_summary(
+			summaries,
+			active_intercept["cultist_id"],
+			&"intercepting",
+			active_intercept["patron_id"]
+		)
 	return summaries
+
+
+func _set_active_cultist_summary(
+		summaries: Dictionary,
+		cultist_id: StringName,
+		activity: StringName,
+		target_id: StringName
+) -> void:
+	if not summaries.has(cultist_id):
+		return
+	summaries[cultist_id]["activity"] = activity
+	summaries[cultist_id]["last_action"] = activity
+	summaries[cultist_id]["last_target_id"] = target_id
 
 
 func _results(orders: Dictionary, patrons: Dictionary, captures: int, visit: Dictionary) -> Dictionary:

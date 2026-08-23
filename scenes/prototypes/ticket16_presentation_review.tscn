@@ -5,4 +5,5 @@
 [node name="Ticket16PresentationReview" type="Node3D"]
 script = ExtResource("1_script")
 review_presentation = true
-review_closeup = true
+review_stage = "full_cast"
+review_debug_visible = false

@@ -10,8 +10,19 @@ const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
 const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
 const BARTENDER_TEXTURE: Texture2D = preload("res://assets/characters/prototype_visual/Bartender.png")
+const VISUAL_SPIKE_SOURCE := "res://assets/environment/prototype_visual/Speakeasy_VisualSpike.blend"
+const VISUAL_SPIKE_EXPECTED_SHA256 := "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
 const PATRON_IDS: Array[StringName] = [&"patron_june", &"patron_mara"]
+const ALL_PATRON_IDS: Array[StringName] = [
+	&"patron_june", &"patron_mara", &"patron_elias", &"patron_ruth",
+	&"patron_walter", &"patron_nell", &"patron_vincent", &"patron_clara",
+]
+const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
 const SCENARIOS := {
+	"full_cast": "FULL CAST",
+	"service_wing": "SERVICE WING",
+	"front_exit": "FRONT EXIT",
+	"cultist_states": "CULTIST STATES",
 	"line_of_sight": "LINE OF SIGHT",
 	"room_hearing": "ROOM HEARING",
 	"unattended_body": "UNATTENDED BODY",
@@ -27,10 +38,36 @@ const CAMERA_FOV := 50.0
 const PRESENTATION_CAMERA_POSITION := Vector3(0.0, 10.0, 34.0)
 const PRESENTATION_CAMERA_TARGET := Vector3(0.0, 1.0, 3.0)
 const PRESENTATION_CAMERA_FOV := 30.0
+const SERVICE_CAMERA_POSITION := Vector3(6.0, 12.0, 24.0)
+const SERVICE_CAMERA_TARGET := Vector3(16.5, 0.7, 6.0)
+const SERVICE_CAMERA_FOV := 32.0
+const FRONT_CAMERA_POSITION := Vector3(0.0, 11.0, 29.0)
+const FRONT_CAMERA_TARGET := Vector3(0.0, 0.8, 13.5)
+const FRONT_CAMERA_FOV := 34.0
 const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
 const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
 const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
 const PLAY_SCALE := 4.0
+const PATRON_COLORS := {
+	&"patron_june": Color("e3a57a"), &"patron_mara": Color("7fc7c4"),
+	&"patron_elias": Color("b79ad8"), &"patron_ruth": Color("d9c56f"),
+	&"patron_walter": Color("83a9d8"), &"patron_nell": Color("d8849d"),
+	&"patron_vincent": Color("94c77c"), &"patron_clara": Color("d69a63"),
+}
+const PATRON_HEIGHT_SCALE := {
+	&"patron_june": 0.94, &"patron_mara": 1.02, &"patron_elias": 1.08,
+	&"patron_ruth": 0.98, &"patron_walter": 1.12, &"patron_nell": 0.9,
+	&"patron_vincent": 1.04, &"patron_clara": 0.96,
+}
+const CULTIST_COLORS := {
+	&"cultist_01": Color("efe1ce"), &"cultist_02": Color("b9a0db"),
+	&"cultist_03": Color("8fc4af"),
+}
+const CULTIST_POSITIONS := {
+	&"cultist_01": Vector3(-3.6, 0.0, 1.45),
+	&"cultist_02": Vector3(0.0, 0.0, 1.45),
+	&"cultist_03": Vector3(3.6, 0.0, 1.45),
+}
 
 # The real perception rule values, read straight from the module so the drawn cone
 # and rings match what the sim actually tests.
@@ -74,6 +111,8 @@ const BAND_COLORS := {
 var _session = GAME_SESSION_SCRIPT.new()
 @export var review_presentation: bool = false
 @export var review_closeup: bool = false
+@export var review_stage: String = "line_of_sight"
+@export var review_debug_visible: bool = true
 var _scenario: String = "line_of_sight"
 var _scenario_trace: String = ""
 var _playing: bool = false
@@ -82,33 +121,58 @@ var _capture_mode: bool = false
 var _presentation_prototype: bool = false
 var _presentation_closeup: bool = false
 var _patron_nodes: Dictionary = {}
+var _cultist_nodes: Dictionary = {}
 var _actor_root: Node3D
+var _cultist_root: Node3D
 var _body_root: Node3D
 var _event_root: Node3D
+var _camera: Camera3D
+var _camera_target: Vector3 = PRESENTATION_CAMERA_TARGET
 var _staged_bodies: Array = []
 var _events: Array = []
 var _scenario_buttons: Dictionary = {}
 var _play_button: Button
 var _debug_label: RichTextLabel
-var _prototype_cultist_label: Label3D
 
 
 func _ready() -> void:
 	_presentation_closeup = review_closeup or _command_line_flag("--presentation-closeup")
 	_presentation_prototype = review_presentation or _command_line_flag("--presentation-prototype") or _presentation_closeup
+	_debug_visible = review_debug_visible
 	_build_environment()
 	_build_hud()
 	_session.snapshot_changed.connect(_refresh)
-	_set_scenario(_command_line_value("--stage=", "line_of_sight"))
+	_set_scenario(_command_line_value("--stage=", review_stage))
 	var capture_path := _command_line_value("--capture=")
+	var report_path := _command_line_value("--report=")
 	if not capture_path.is_empty():
 		_capture_mode = true
 		_capture_after_render.call_deferred(capture_path)
+	elif not report_path.is_empty():
+		_capture_mode = true
+		_write_validation_report.call_deferred(report_path)
 
 
 func _process(delta: float) -> void:
 	if _playing and not _capture_mode:
 		_session.advance(delta * PLAY_SCALE)
+	if _presentation_prototype and not _capture_mode:
+		var pan := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+		if not pan.is_zero_approx():
+			var shift := Vector3(pan.x, 0.0, pan.y) * delta * 8.0
+			_camera.position += shift
+			_camera_target += shift
+			_camera.look_at(_camera_target, Vector3.UP)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not _presentation_prototype or _capture_mode:
+		return
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_camera.fov = maxf(20.0, _camera.fov - 2.0)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_camera.fov = minf(55.0, _camera.fov + 2.0)
 
 
 # --- World -------------------------------------------------------------------
@@ -154,6 +218,9 @@ func _build_environment() -> void:
 	_actor_root = Node3D.new()
 	_actor_root.name = "Actors"
 	add_child(_actor_root)
+	_cultist_root = Node3D.new()
+	_cultist_root.name = "Cultists"
+	add_child(_cultist_root)
 	_body_root = Node3D.new()
 	_body_root.name = "Bodies"
 	add_child(_body_root)
@@ -161,46 +228,20 @@ func _build_environment() -> void:
 	_event_root.name = "DangerEvents"
 	add_child(_event_root)
 
-	var camera := Camera3D.new()
-	camera.position = PRESENTATION_CAMERA_POSITION if _presentation_closeup else CAMERA_POSITION
-	camera.fov = PRESENTATION_CAMERA_FOV if _presentation_closeup else CAMERA_FOV
-	camera.near = 0.1
-	camera.far = 200.0
-	add_child(camera)
-	camera.look_at(PRESENTATION_CAMERA_TARGET if _presentation_closeup else CAMERA_TARGET, Vector3.UP)
-	camera.current = true
+	_camera = Camera3D.new()
+	_camera.position = PRESENTATION_CAMERA_POSITION if _presentation_closeup else CAMERA_POSITION
+	_camera.fov = PRESENTATION_CAMERA_FOV if _presentation_closeup else CAMERA_FOV
+	_camera.near = 0.1
+	_camera.far = 200.0
+	add_child(_camera)
+	_camera.look_at(PRESENTATION_CAMERA_TARGET if _presentation_closeup else CAMERA_TARGET, Vector3.UP)
+	_camera.current = true
 
 
 func _add_presentation_prototype() -> void:
 	var main_room := MAIN_ROOM_PRESENTATION_SCRIPT.new() as Node3D
-	main_room.name = "FullScaleMainRoomPrototype"
+	main_room.name = "FullScaleSpeakeasyPresentation"
 	add_child(main_room)
-
-	var cultist := Sprite3D.new()
-	cultist.name = "PrototypeCultist"
-	cultist.texture = BARTENDER_TEXTURE
-	cultist.pixel_size = CULTIST_VISIBLE_HEIGHT_METRES / BARTENDER_OPAQUE_HEIGHT_PIXELS
-	cultist.position = Vector3(
-		0.0,
-		BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * cultist.pixel_size,
-		1.45
-	)
-	cultist.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	cultist.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	cultist.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-	cultist.render_priority = 2
-	add_child(cultist)
-
-	_prototype_cultist_label = Label3D.new()
-	_prototype_cultist_label.name = "PrototypeCultistState"
-	_prototype_cultist_label.position = Vector3(1.7, 2.05, 1.45)
-	_prototype_cultist_label.font_size = 42
-	_prototype_cultist_label.pixel_size = 0.006
-	_prototype_cultist_label.outline_size = 14
-	_prototype_cultist_label.outline_modulate = Color("0b1016")
-	_prototype_cultist_label.modulate = Color("e8bd79")
-	_prototype_cultist_label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	add_child(_prototype_cultist_label)
 
 
 func _build_room_zone(room_id: StringName) -> Node3D:
@@ -314,14 +355,24 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 	if _patron_nodes.has(patron_id):
 		return _patron_nodes[patron_id]
 	var pivot := Node3D.new()
-	var body := MeshInstance3D.new()
-	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.42
-	capsule.height = 1.7
-	body.mesh = capsule
-	body.position = Vector3(0.0, 0.9, 0.0)
-	body.name = "Body"
-	pivot.add_child(body)
+	pivot.name = String(patron_id)
+	if _presentation_prototype:
+		var sprite := _pixel_actor_sprite()
+		sprite.name = "Body"
+		var height_scale: float = PATRON_HEIGHT_SCALE.get(patron_id, 1.0)
+		sprite.scale = Vector3(0.88, height_scale, 1.0)
+		sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size * height_scale
+		pivot.add_child(sprite)
+		pivot.add_child(_actor_shadow())
+	else:
+		var body := MeshInstance3D.new()
+		var capsule := CapsuleMesh.new()
+		capsule.radius = 0.42
+		capsule.height = 1.7
+		body.mesh = capsule
+		body.position = Vector3(0.0, 0.9, 0.0)
+		body.name = "Body"
+		pivot.add_child(body)
 	# The vision cone (its radius is the view range) and the Companion ring make
 	# the perception geometry judgeable by eye instead of implied by an arrow.
 	var cone := MeshInstance3D.new()
@@ -339,10 +390,10 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 	var label := Label3D.new()
 	label.name = "Name"
 	# Stagger label height by seat order so neighbouring Patrons' labels don't overlap.
-	var order := maxi(0, PATRON_IDS.find(patron_id))
-	label.position = Vector3(0.0, 2.5 + order * 0.9, 0.0)
-	label.font_size = 44
-	label.pixel_size = 0.006
+	var order := maxi(0, ALL_PATRON_IDS.find(patron_id))
+	label.position = Vector3(0.0, 2.0 + float(order % 2) * 0.32, 0.0)
+	label.font_size = 36 if _presentation_prototype else 44
+	label.pixel_size = 0.0055 if _presentation_prototype else 0.006
 	label.outline_size = 14
 	label.outline_modulate = Color("0b1016")
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
@@ -352,14 +403,68 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 	return pivot
 
 
+func _pixel_actor_sprite() -> Sprite3D:
+	var sprite := Sprite3D.new()
+	sprite.texture = BARTENDER_TEXTURE
+	sprite.pixel_size = CULTIST_VISIBLE_HEIGHT_METRES / BARTENDER_OPAQUE_HEIGHT_PIXELS
+	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	sprite.render_priority = 2
+	return sprite
+
+
+func _actor_shadow() -> MeshInstance3D:
+	var shadow := MeshInstance3D.new()
+	shadow.name = "Shadow"
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.43
+	mesh.bottom_radius = 0.43
+	mesh.height = 0.018
+	mesh.radial_segments = 24
+	shadow.mesh = mesh
+	shadow.position.y = 0.03
+	shadow.scale.z = 0.52
+	shadow.material_override = _flat_material(Color("09080b"), 0.7)
+	return shadow
+
+
+func _cultist_pivot(cultist_id: StringName) -> Node3D:
+	if _cultist_nodes.has(cultist_id):
+		return _cultist_nodes[cultist_id]
+	var pivot := Node3D.new()
+	pivot.name = String(cultist_id)
+	pivot.position = CULTIST_POSITIONS[cultist_id]
+	var sprite := _pixel_actor_sprite()
+	sprite.name = "Body"
+	sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
+	sprite.modulate = CULTIST_COLORS[cultist_id]
+	pivot.add_child(sprite)
+	pivot.add_child(_actor_shadow())
+	var label := Label3D.new()
+	label.name = "Name"
+	label.position = Vector3(0.0, 2.05, 0.0)
+	label.font_size = 36
+	label.pixel_size = 0.0055
+	label.modulate = CULTIST_COLORS[cultist_id]
+	label.outline_size = 14
+	label.outline_modulate = Color("0b1016")
+	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	pivot.add_child(label)
+	_cultist_root.add_child(pivot)
+	_cultist_nodes[cultist_id] = pivot
+	return pivot
+
+
 func _refresh(state: Dictionary) -> void:
 	for scenario_id: String in _scenario_buttons:
 		_scenario_buttons[scenario_id].button_pressed = scenario_id == _scenario
-	for patron_id: StringName in PATRON_IDS:
+	var visible_patron_ids: Array[StringName] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
+	for patron_id: StringName in visible_patron_ids:
 		var pivot := _actor_pivot(patron_id)
 		var debug: Dictionary = state["debug_patron_views"][patron_id]
 		var normal: Dictionary = state["normal_patron_views"][patron_id]
-		var active: bool = debug["lifecycle"] == &"active"
+		var active: bool = debug["lifecycle"] not in [&"not_arrived", &"captured", &"exited"]
 		pivot.visible = active
 		if not active:
 			continue
@@ -368,25 +473,42 @@ func _refresh(state: Dictionary) -> void:
 		pivot.position = Vector3(position.x, 0.0, position.y)
 		pivot.look_at(pivot.position + Vector3(facing.x, 0.0, facing.y), Vector3.UP)
 		var band_color: Color = BAND_COLORS.get(normal["suspicion_band"], Color.WHITE)
-		var body := pivot.get_node("Body") as MeshInstance3D
-		body.material_override = _flat_material(band_color, 1.0)
+		var body := pivot.get_node("Body")
+		if _presentation_prototype:
+			var sprite := body as Sprite3D
+			var palette: Color = PATRON_COLORS.get(patron_id, Color.WHITE)
+			sprite.modulate = palette.lerp(band_color, 0.2)
+			var height_scale: float = PATRON_HEIGHT_SCALE.get(patron_id, 1.0)
+			var is_unconscious: bool = debug["lifecycle"] == &"unconscious"
+			sprite.scale = Vector3(1.25 if is_unconscious else 0.88, 0.38 if is_unconscious else height_scale, 1.0)
+			sprite.position.y = 0.32 if is_unconscious else BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size * height_scale
+		else:
+			(body as MeshInstance3D).material_override = _flat_material(band_color, 1.0)
 		var cone := pivot.get_node("VisionCone") as MeshInstance3D
 		cone.material_override = _flat_material(band_color, 0.6)
+		cone.visible = _debug_visible
+		(pivot.get_node("CompanionRing") as MeshInstance3D).visible = _debug_visible
 		var label := pivot.get_node("Name") as Label3D
-		label.text = "%s\n%s" % [normal["name"], normal["suspicion_band"]]
+		label.text = "%s\n%s · %s" % [normal["name"], normal["visible_activity"], normal["suspicion_band"]]
 		label.modulate = band_color
 
 	_refresh_bodies()
 	_refresh_events(state)
-	_refresh_prototype_cultist(state)
+	_refresh_cultists(state)
 	_refresh_hud(state)
 
 
-func _refresh_prototype_cultist(state: Dictionary) -> void:
-	if _prototype_cultist_label == null:
+func _refresh_cultists(state: Dictionary) -> void:
+	if not _presentation_prototype:
 		return
-	var activity: StringName = state["cultists"][&"cultist_01"]["activity"]
-	_prototype_cultist_label.text = "CULTIST 01 - %s" % _humanize(activity).to_upper()
+	for cultist_id: StringName in CULTIST_IDS:
+		var pivot := _cultist_pivot(cultist_id)
+		var cultist: Dictionary = state["cultists"][cultist_id]
+		var label := pivot.get_node("Name") as Label3D
+		label.text = "%s\n%s" % [
+			String(cultist_id).replace("cultist_", "CULTIST "),
+			_humanize(cultist["activity"]),
+		]
 
 
 func _refresh_bodies() -> void:
@@ -499,14 +621,36 @@ func _room_center(room_id: StringName) -> Vector2:
 
 func _set_scenario(scenario_id: String) -> void:
 	if not SCENARIOS.has(scenario_id):
-		scenario_id = "line_of_sight"
+		scenario_id = "full_cast" if _presentation_prototype else "line_of_sight"
 	_scenario = scenario_id
 	_playing = false
 	_staged_bodies.clear()
 	_events.clear()
 	_session.restart_night(707)
-	_session.advance(100.0)
+	if scenario_id in ["full_cast", "front_exit"]:
+		_session.advance(421.0)
+	elif scenario_id == "service_wing":
+		_session.advance(92.0)
+	elif scenario_id == "cultist_states":
+		_session.advance(95.0)
+	else:
+		_session.advance(100.0)
 	match scenario_id:
+		"full_cast":
+			_scenario_trace = "All three Cultists and all eight authored Patrons share the full-scale room. Distinct palettes, names, visible activities, and Suspicion bands come from one GameSession snapshot."
+		"service_wing":
+			_session.debug_force_bathroom(&"patron_june")
+			_session.advance(2.1)
+			_scenario_trace = "The hallway preserves the proven east-side route. The bathroom shows its standing zone, seated fixture, and Trapdoor; the curtained Tunnel Intake remains a separate threshold."
+		"front_exit":
+			_session.report_patron_stimulus(&"patron_vincent", &"drink_dosed_seen")
+			_session.advance(2.2)
+			_scenario_trace = "The seven-metre front approach ends at the street doors. Vincent's visible Escape intention occupies the same front-exit coordinates used by GameSession."
+		"cultist_states":
+			_session.begin_knockout(&"cultist_01", &"patron_june")
+			_session.begin_conversation(&"cultist_02", &"patron_mara")
+			_session.prepare_drugged_drink(&"patron_mara", &"cultist_03")
+			_scenario_trace = "The public snapshot labels three simultaneous observable states: knockout wind-up, conversation, and Drugged Drink preparation."
 		"line_of_sight":
 			_record_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(0.0, 0.0))
 			_record_event(&"unexplained_collapse_seen", &"visual", &"main_hall", &"cultist_01", Vector2(-18.0, 6.0))
@@ -529,7 +673,27 @@ func _set_scenario(scenario_id: String) -> void:
 			_stage_body(&"body_01", &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
+	_update_camera_for_scenario()
 	_refresh(_session.snapshot())
+
+
+func _update_camera_for_scenario() -> void:
+	if not _presentation_prototype:
+		return
+	match _scenario:
+		"service_wing":
+			_camera.position = SERVICE_CAMERA_POSITION
+			_camera.fov = SERVICE_CAMERA_FOV
+			_camera_target = SERVICE_CAMERA_TARGET
+		"front_exit":
+			_camera.position = FRONT_CAMERA_POSITION
+			_camera.fov = FRONT_CAMERA_FOV
+			_camera_target = FRONT_CAMERA_TARGET
+		_:
+			_camera.position = PRESENTATION_CAMERA_POSITION
+			_camera.fov = PRESENTATION_CAMERA_FOV
+			_camera_target = PRESENTATION_CAMERA_TARGET
+	_camera.look_at(_camera_target, Vector3.UP)
 
 
 func _record_event(stimulus: StringName, channel: StringName, room: StringName, source_id: StringName, position: Vector2) -> void:
@@ -556,7 +720,7 @@ func _build_hud() -> void:
 		var button := Button.new()
 		button.text = SCENARIOS[scenario_id]
 		button.toggle_mode = true
-		button.custom_minimum_size = Vector2(150.0, 34.0)
+		button.custom_minimum_size = Vector2(118.0, 34.0)
 		button.pressed.connect(_set_scenario.bind(scenario_id))
 		_scenario_buttons[scenario_id] = button
 		top.add_child(button)
@@ -660,3 +824,71 @@ func _capture_after_render(capture_path: String) -> void:
 	var result := get_viewport().get_texture().get_image().save_png(absolute_path)
 	await get_tree().process_frame
 	get_tree().quit(result)
+
+
+func _write_validation_report(report_path: String) -> void:
+	await get_tree().process_frame
+	var validation_session = GAME_SESSION_SCRIPT.new()
+	validation_session.start_night(707)
+	validation_session.advance(421.0)
+	var full_cast: Dictionary = validation_session.snapshot()
+
+	var state_session = GAME_SESSION_SCRIPT.new()
+	state_session.start_night(707)
+	state_session.advance(95.0)
+	state_session.begin_knockout(&"cultist_01", &"patron_june")
+	state_session.begin_conversation(&"cultist_02", &"patron_mara")
+	state_session.prepare_drugged_drink(&"patron_mara", &"cultist_03")
+	var cultists: Dictionary = state_session.snapshot()["cultists"]
+
+	var scale_session = GAME_SESSION_SCRIPT.new()
+	scale_session.start_night(707)
+	var four_x_supported: bool = scale_session.set_time_scale(4.0)
+	scale_session.advance(1.0)
+	four_x_supported = four_x_supported and is_equal_approx(
+		float(scale_session.snapshot()["simulated_seconds"]), 4.0
+	)
+
+	var source_hash := FileAccess.get_sha256(VISUAL_SPIKE_SOURCE)
+	var checks := {
+		"visual_spike_source_unchanged": source_hash == VISUAL_SPIKE_EXPECTED_SHA256,
+		"all_five_spaces_present": (
+			find_child("MainRoomFloor", true, false) != null
+			and find_child("FrontFloor", true, false) != null
+			and find_child("HallwayFloor", true, false) != null
+			and find_child("BathroomFloor", true, false) != null
+			and find_child("IntakeThreshold", true, false) != null
+		),
+		"three_cultists_exposed": full_cast["cultists"].size() == 3,
+		"eight_patrons_exposed": full_cast["debug_patron_views"].size() == 8,
+		"eight_distinct_patron_palettes": PATRON_COLORS.size() == 8,
+		"active_cultist_states_readable": (
+			cultists[&"cultist_01"]["activity"] == &"knockout_windup"
+			and cultists[&"cultist_02"]["activity"] == &"conversing"
+			and cultists[&"cultist_03"]["activity"] == &"preparing_drugged_drink"
+		),
+		"four_x_simulation_supported": four_x_supported,
+	}
+	var report := {
+		"passed": not checks.values().has(false),
+		"slice": "ticket16_migrated_presentation",
+		"checks": checks,
+		"observed": {
+			"visual_spike_sha256": source_hash,
+			"cultist_count": full_cast["cultists"].size(),
+			"patron_count": full_cast["debug_patron_views"].size(),
+			"main_hall_metres": [27.0, 12.0],
+			"front_metres": [14.0, 7.0],
+			"hallway_metres": [4.0, 6.0],
+			"bathroom_metres": [4.0, 6.0],
+			"cultist_visible_height_metres": CULTIST_VISIBLE_HEIGHT_METRES,
+		},
+	}
+	var absolute_path := ProjectSettings.globalize_path(report_path)
+	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
+	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
+	if file == null:
+		get_tree().quit(1)
+		return
+	file.store_string(JSON.stringify(report, "  "))
+	get_tree().quit(0 if report["passed"] else 1)
