@@ -46,15 +46,21 @@ flowchart TD
 
 **CultistAgent**
 
-- Interface: enqueue Action, do-now Action, remove pending Action, cancel current Action, return normal/debug snapshots.
-- Hides: queue validation, Commitment Points, pathing, interaction execution, failure reasons, and safe autonomy.
-- Invariant: one active plus at most three pending Actions; autonomy never enqueues Capture Actions.
+- Interface: replace Action Queue, append Action, remove pending Action, cancel current Action, return normal/debug snapshots.
+- Hides: queue validation, Commitment Points, pathing, interaction execution, and failure reasons.
+- Invariant: one active plus at most three pending Actions; an empty queue leaves the Cultist idle.
 
 **PatronAgent**
 
 - Interface: apply observation/stimulus, request intent change, return visible snapshot.
 - Hides: needs, activity transitions, Suspicion, Friendship, companion knowledge, drug countdown, Investigation, Escape, and Capture eligibility.
 - Invariant: `Captured` and `Exited` are terminal and mutually exclusive.
+
+**PatronBehaviorMachine**
+
+- Interface: submit typed intent, advance simulated time, return emitted events and current snapshot.
+- Hides: the hierarchical transition table, behavior priority, preemption, deferred intents, committed phases, state entry and exit, and reservation cleanup.
+- Invariant: every accepted transition exits the old state and releases its obsolete reservation before the new state acquires one; terminal states reject later intents.
 
 **InteractionRegistry**
 
@@ -86,9 +92,9 @@ Recommended identifiers are typed `StringName` values or small value objects rat
 
 No state is duplicated in UI. UI reads snapshots and submits commands.
 
-Normal Patron snapshots expose observable activity, qualitative mood, Suspicion band, Intoxication level, Arrival Group, relevant Friendship band, Order state, known drug countdown, and qualitative victim value/risk. They exclude Bladder, exact probability/value/timer data, hidden causes, reservations, navigation, and random state.
+Normal Patron snapshots expose Observable Status before identification. After a Talk Action identifies a Patron for the crew, they also expose name, Ideal Intoxication, Arrival Group, relevant Friendship band, and qualitative victim value/risk. They exclude Bladder, exact probability/value/timer data, hidden causes, Overdrink Limit, Excess Drink count, reservations, navigation, and random state.
 
-Debug snapshots may additionally expose exact Bladder and next bathroom-check probability, Intoxication decay, patience/mood, Suspicion cause and recovery, complete Friendship values, lifecycle/activity, reservations, navigation, Action progress, seed, and recent rolls.
+Debug snapshots may additionally expose exact Bladder and next bathroom-check probability, Intoxication decay, Ideal Intoxication, Overdrink Limit, Excess Drink count, patience/Mood, Suspicion cause and recovery, complete Friendship values, lifecycle/activity, reservations, navigation, Action progress, seed, and recent rolls.
 
 The selected Cultist snapshot includes stable Action identifiers for the active and pending rows. The HUD removes a pending Action by identifier or requests cancellation of the active Action; a committed active Action reports cancellation unavailable.
 
@@ -98,7 +104,7 @@ A central simulation clock owns pause and speed. All gameplay durations consume 
 
 Navigation and animation receive the same speed state while UI continues processing during pause. Starting Escape requests 1x. The movement spike decides whether speed is implemented through a shared scaled delta or a safe engine time-scale adapter; callers do not depend on that choice.
 
-Each Night has one seed. Rescue Persuasion and staying-behind checks draw from the injected seeded random source. Results and failures record the seed for reproduction.
+Each Night has one seed. Rescue Persuasion, staying-behind, bathroom choice, Ideal Intoxication, Overdrink Limit, Offer Drink acceptance, social intervals, and Companion Mood reactions draw from the injected seeded random source. Results and failures record the seed for reproduction.
 
 ## 5. World representation
 
@@ -114,7 +120,11 @@ Actor movement is constrained to the floor plane. Animation state is selected fr
 
 The navigation spike validated flat-plane `NavigationAgent3D` path following with 2D RVO avoidance and physical actor collision as a fallback. Path updates occur once per physics frame. A four-simulated-second no-progress interval requests a fresh path; fifteen simulated seconds without progress is a measured stuck failure. Production geometry should use a pre-baked static navigation mesh; runtime collision-geometry baking exists only in the spike harness.
 
+Cultists move at 1.5 meters per second and Patrons at 1.3 meters per second. Escape applies 140% Patron speed, Helper movement 60%, and dragging 50% Cultist speed. A blocked Cultist Action fails after the measured fifteen-second limit; Patron emergency movement retries from the nearest valid waiting position.
+
 ## 6. State models
+
+Patron behavior uses the table-driven hierarchical state machine recorded in [ADR 0001](adr/0001-centralize-patron-behavior-transitions.md). Callers submit intents and consume events; they do not inspect the current state to choose a transition. The transition table classifies each state-intent pair as accept, defer, or reject and records a reason. State entry and exit handlers apply the resulting reservation and lifecycle effects in one place.
 
 ### 6.1 Patron lifecycle
 
@@ -124,7 +134,7 @@ stateDiagram-v2
     NotArrived --> Active: scheduled arrival
     Active --> Investigating: max suspicion from missing companion
     Active --> Escaping: max suspicion from proof or danger
-    Active --> Unconscious: drug or knockout
+    Active --> Unconscious: drug, knockout, or Overdrink Limit
     Active --> Following: trusted friendship
     Active --> Leaving: normal visit or service failure
     Investigating --> Captured: trapdoor
@@ -221,7 +231,7 @@ The first prototype may simplify reassignment presentation, but ownership and te
 
 ### 6.5 Bathroom occupancy
 
-The registry owns one occupant slot and two FIFO queue slots. The Patron activity owns phase timing:
+The registry owns one occupant slot and one FIFO Bathroom Line slot. Additional Patrons retain bathroom intent at their seats until the line opens. The Patron activity owns phase timing:
 
 1. 2 seconds standing entry
 2. 8 seconds seated use
@@ -246,11 +256,11 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 7. Escape forces 1x and permits one 5-second Intercept.
 8. Crossing the front exit records immediate defeat.
 
-### 7.2 Drug collapse with Helper
+### 7.2 Collapse with Helper
 
-1. Consumer starts a 20-second countdown at first sip.
-2. At 10 seconds, report drowsiness; at 20, enter `Unconscious`.
-3. Strongest available Companion claims the Helper role after 2 seconds.
+1. A Drugged Drink, knockout, or Overdrink Limit changes the Patron to `Unconscious`.
+2. Each conscious same-room Companion makes the seeded Mood-reaction roll.
+3. After 2 seconds, the least Intoxicated conscious, non-Miserable same-room Companion claims the Helper role; authored order breaks ties.
 4. Helper supports the victim after a 4-second lift and moves at 60% toward the front.
 5. Rescue Persuasion may run once for 6 seconds.
 6. Success routes Helper and victim to Tunnel Intake and captures both.
@@ -260,7 +270,8 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 
 - Visual events require a configured view range, facing test, and unobstructed ray to the event.
 - Sound events target Patrons in the configured room/hearing relationship.
-- Unattended Body pressure is global to active Patrons after each body's 3-second grace period.
+- A non-Overdrink Unattended Body affects only Patrons who can see it after the body's 3-second grace period.
+- An Overdrink body causes a one-time same-room Mood reaction instead of collapse or unattended-body Suspicion; dragging it uses half the normal Suspicion values.
 - Companion influence applies every 10 seconds within 5 meters and the same room, targets the highest nearby group value, and adds at most 5.
 - Perception emits domain stimuli; it does not directly choose Patron states.
 
@@ -274,7 +285,7 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 | Intoxication decay | -1 level after each 4 minutes without completing a drink |
 | Hard Evidence | permanent 100 normally; +25 soft while observer is Max Drunk |
 | Soft recovery | after 20 quiet seconds, -5 per 10 seconds |
-| Unattended Body | after 3 seconds, +5 per body to all active Patrons every 5 seconds |
+| Unattended Body | after 3 seconds, +5 per visible non-Overdrink body every 5 seconds |
 | Companion influence | every 10 seconds, +up to 5 toward highest nearby group member |
 | Trapdoor | open 2 seconds, cooldown 3 seconds |
 | Bathroom | standing 2, seated 8, standing 3 seconds |
@@ -294,12 +305,12 @@ Automate only:
 
 - formula bounds and representative Suspicion/Friendship/stay cases
 - representative bathroom-choice bounds and deterministic seeded roll
-- Action Queue append, pending-row removal, do-now, pre/post-Commitment cancellation, and invalid-target progression
+- Action Queue replace, Shift-append, pending-row removal, pre/post-Commitment cancellation, and invalid-target progression
 - exclusive reservation and bathroom FIFO invariants
 - Order served versus 60-second cancellation/payment behavior
 - seated versus standing Trapdoor result, including Max Drunk Hard Evidence downgrade
 - missing Companion to Investigation to Escape/defeat chain
-- Drugged Drink Helper success/failure chain
+- collapse Mood reaction and Helper success/failure chain
 - results outcome for quota success, quota failure, and maximum-Suspicion escape
 - clean restart releasing runtime state
 

@@ -58,6 +58,41 @@ func test_do_now_interrupts_before_commitment_but_waits_after_commitment() -> vo
 	assert_eq(committed_snapshot["pending"][0]["id"], waiting_urgent_id)
 
 
+func test_replace_is_the_player_facing_queue_replacement_operation() -> void:
+	var queue_script := load(ACTION_QUEUE_PATH)
+	var queue = queue_script.new()
+	var interrupted_id: int = queue.append(&"talk", &"patron_a", 10.0, 3.0)
+	queue.append(&"serve", &"patron_b")
+	var replacement_id: int = queue.replace(
+		&"move", &"floor", INF, INF, true, {"destination": Vector3(3.0, 0.0, 4.0)}
+	)
+
+	var state: Dictionary = queue.snapshot()
+	assert_eq(state["active"]["id"], replacement_id)
+	assert_eq(state["active"]["payload"]["destination"], Vector3(3.0, 0.0, 4.0))
+	assert_true(state["pending"].is_empty())
+	assert_true(state["recent_events"].any(
+		func(event: Dictionary) -> bool:
+			return event["id"] == interrupted_id and event["reason"] == &"replace"
+	))
+
+
+func test_external_action_completion_and_failure_advance_the_queue() -> void:
+	var queue_script := load(ACTION_QUEUE_PATH)
+	var queue = queue_script.new()
+	var first_id: int = queue.append(&"move", &"floor", INF, INF)
+	var second_id: int = queue.append(&"move", &"floor", INF, INF)
+
+	assert_true(queue.complete_active())
+	assert_eq(queue.snapshot()["active"]["id"], second_id)
+	assert_true(queue.fail_active(&"path_stuck"))
+	assert_true(queue.snapshot()["active"].is_empty())
+	assert_true(queue.snapshot()["recent_events"].any(
+		func(event: Dictionary) -> bool:
+			return event["id"] == first_id and event["state"] == &"completed"
+	))
+
+
 func test_active_cancellation_stops_at_commitment() -> void:
 	var queue_script := load(ACTION_QUEUE_PATH)
 	assert_not_null(queue_script)

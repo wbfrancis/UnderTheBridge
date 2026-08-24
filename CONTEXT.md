@@ -32,11 +32,45 @@ _Avoid_: Bartender class, bartender specialization
 A per-patron, per-cultist relationship measuring trust built during the current night.
 _Avoid_: Affinity, loyalty
 
+## Knowledge and inspection
+
+**Identified Patron**:
+A Patron whose name and complete limited profile the Cultists have learned during the current Night.
+_Avoid_: Discovered Patron, unlocked Patron
+
+**Patron Profile**:
+The limited set of personal facts shown for an Identified Patron. Before identification, its fields appear unknown, while directly observable status remains visible.
+_Avoid_: Character sheet, NPC data
+
+**Observable Status**:
+The visible current condition of a Patron, including activity, mood, Suspicion band, Intoxication, Order state, and player-created drug state.
+_Avoid_: Patron Profile, hidden state
+
+**Hover Summary**:
+The small temporary view of a Cultist or Patron that appears while the pointer rests on that person.
+_Avoid_: Tooltip, summary menu
+
+**Patron Info Panel**:
+The persistent detailed view of an Inspected Patron. It stays open until the player closes or replaces it, or the Patron leaves play.
+_Avoid_: Full info menu, character sheet
+
+**Selected Cultist**:
+The Cultist who receives player commands and supplies Cultist-specific relationship context. Inspecting a Patron does not change the Selected Cultist.
+_Avoid_: Active Cultist, focused unit
+
+**Inspected Patron**:
+The Patron whose full information panel is open. An Inspected Patron and a Selected Cultist can exist at the same time.
+_Avoid_: Selected Patron, targeted Patron
+
 ## Service and needs
 
 **Order**:
 A patron's request for one generic drink, represented from request through delivery or cancellation.
 _Avoid_: Ticket when referring to the whole gameplay concept
+
+**Mood**:
+A Patron's 0-100 measure of satisfaction during the Night, shown as Miserable, Unhappy, Content, or Happy. Mood changes tips, and a Patron at zero makes a Normal Departure.
+_Avoid_: Happiness, morale, patience
 
 **Prepared Drink**:
 A physical drink waiting at the bar or being carried to a patron.
@@ -50,9 +84,29 @@ _Avoid_: Poison
 A patron need increased by drinking that creates a rising chance of choosing a bathroom trip once at least half full.
 _Avoid_: Bathroom meter
 
+**Bathroom Line**:
+The single waiting position for a Patron who intends to use the occupied bathroom.
+_Avoid_: Bathroom Action Queue, waiting room
+
 **Intoxication**:
 A slowly decaying four-level condition increased by finishing drinks; its highest level is **Max Drunk**.
 _Avoid_: Drunkenness meter
+
+**Ideal Intoxication**:
+A per-Patron preferred Intoxication level sampled for the current Night. A Patron does not place an Order at or above this level but can accept an offered drink.
+_Avoid_: Ideal Drunkness, drink limit
+
+**Excess Drink**:
+A drink finished while a Patron is already Max Drunk. Excess Drinks accumulate for the Night even if the Patron's Intoxication later falls.
+_Avoid_: Extra Order, overflow drink
+
+**Overdrink Limit**:
+A hidden per-Patron threshold of one through five Excess Drinks. Reaching it causes Overdrink Collapse.
+_Avoid_: Alcohol tolerance, knockout roll
+
+**Overdrink Collapse**:
+The unconscious state caused when a Patron reaches their Overdrink Limit. Patrons in the same room lose Mood instead of gaining Suspicion from the collapse or unattended body.
+_Avoid_: Drugged collapse, passing out roll
 
 ## Danger and capture
 
@@ -111,8 +165,20 @@ A validated Cultist command with a target, duration, interruptibility, and commi
 _Avoid_: Task, job
 
 **Action Queue**:
-One active Action followed by up to three pending Actions belonging to one Cultist.
+One active Action followed by up to three pending Actions belonging to one Cultist. A normal command clears the queue, while Shift+command appends the Action.
 _Avoid_: Behavior tree
+
+**Move Action**:
+A player-commanded Action that sends the Selected Cultist to a floor destination through the Action Queue. A normal right-click clears the queue, while Shift+right-click appends the Move Action.
+_Avoid_: Direct movement, locomotion override
+
+**Talk Action**:
+A player-commanded Action that lets the Selected Cultist speak with an Inspected Patron and identify that Patron when the Action completes.
+_Avoid_: Chat, interview
+
+**Offer Drink Action**:
+A player-commanded Action that offers a carried Prepared Drink to an Inspected Patron without an Order.
+_Avoid_: Free Order, forced drink
 
 **Commitment Point**:
 The moment after which cancelling an Action cannot undo its gameplay consequence.

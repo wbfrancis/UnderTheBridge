@@ -1,0 +1,35 @@
+{
+  "cultists": {
+    "cultist_01": {
+      "distance_to_target": 0.290217936038971,
+      "position": [
+        -3.27045702934265,
+        0.180000007152557,
+        2.10525894165039
+      ],
+      "repaths": 0
+    },
+    "cultist_02": {
+      "distance_to_target": 0.295198917388916,
+      "position": [
+        -0.00000047665378133388,
+        0.180000007152557,
+        7.70480108261108
+      ],
+      "repaths": 0
+    },
+    "cultist_03": {
+      "distance_to_target": 0.369747549295425,
+      "position": [
+        7.68009376525879,
+        0.180000007152557,
+        3.81459975242615
+      ],
+      "repaths": 0
+    }
+  },
+  "frames": 101,
+  "navigation_ready": true,
+  "passed": true,
+  "selected_cultist": "cultist_01"
+}

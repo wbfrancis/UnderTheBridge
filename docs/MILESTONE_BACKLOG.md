@@ -56,7 +56,7 @@ Exit condition: the 2.5D look is readable and the import is reproducible without
 
 - Greybox room, hallway, bar, bathroom, and exit.
 - Move 11 agents with `NavigationAgent3D` at 1x and 4x.
-- Add seat/bar reservations and two authored bathroom queue positions.
+- Add seat/bar reservations and one authored Bathroom Line position.
 - Exercise cancellation and reservation cleanup.
 
 Exit condition: a ten-minute stress run completes without a stuck agent, duplicate slot ownership, or unreleased reservation.
@@ -89,15 +89,15 @@ Milestone definition of done:
 
 Backlog:
 
-- M2-01 Selection, Cultist switching, selected-Cultist HUD queue, per-row `x` removal/cancellation, append, do-now, Commitment Point disabling, and failure reasons.
+- M2-01 Selection, Cultist switching, selected-Cultist HUD queue, per-row `x` removal/cancellation, normal queue replacement, Shift-append, Commitment Point disabling, and failure reasons.
 - M2-02 Camera pan/zoom and mouse/keyboard input map.
 - M2-03 `InteractionRegistry` for seats, bar positions, bathroom, queues, and front exit.
 - M2-04 Fixed Arrival Group schedule and seating.
 - M2-05 Patron normal loop: seat, Order, drink, socialize, Bladder, seeded 5-second bathroom-choice checks, bathroom, Intoxication decay, and Normal Departure.
 - M2-06 `OrderSystem`: automatic Orders, 5-second preparation, physical drinks, delivery, payment, tips, impatience, cancellation.
-- M2-07 Safe service autonomy for empty Cultist queues.
+- M2-07 Idle behavior for empty Cultist queues; Cultists never move or serve autonomously.
 - M2-08 Pause, 1x, 2x, 4x, Closing, results shell, and clean restart.
-- M2-09 Separate normal/debug Patron data views and minimal selected-Patron/selected-Cultist UI; normal play must not expose Bladder or hidden numeric state.
+- M2-09 Separate normal/debug Patron data views and minimal Inspected Patron/Selected Cultist UI; normal play must not expose Bladder or hidden numeric state.
 
 Key verification:
 
@@ -153,7 +153,7 @@ Backlog:
 - M4-01 Finish the authored eight-Patron profiles, companion links, mood/value/risk labels, and arrival data.
 - M4-02 Add minimal sprite variants and required animation states.
 - M4-03 Complete room dressing needed for readable routes; preserve greybox where polish adds no evaluation value.
-- M4-04 Finalize HUD, urgent icons, critical Escape alert, exact persuasion chance, and results metrics.
+- M4-04 Finalize HUD, critical Escape alert, exact persuasion chance, and results metrics. Defer overhead intent icons to the later emote-bubble system.
 - M4-05 Tune service cadence, movement speed, bathroom pressure, Suspicion recovery, and capture timings without changing core rules.
 - M4-06 Run ten clean restart cycles and fix state leakage.
 - M4-07 Package a Windows evaluation build and playtest instructions.

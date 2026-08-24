@@ -14,11 +14,14 @@ func append(
 		target_id: StringName,
 		duration_seconds: float = 1.0,
 		commitment_seconds: float = 0.5,
-		target_is_valid: bool = true
+		target_is_valid: bool = true,
+		payload: Dictionary = {}
 ) -> int:
 	if not _active.is_empty() and _pending.size() >= MAX_PENDING_ACTIONS:
 		return -1
-	var action := _make_action(name, target_id, duration_seconds, commitment_seconds, target_is_valid)
+	var action := _make_action(
+		name, target_id, duration_seconds, commitment_seconds, target_is_valid, payload
+	)
 	if _active.is_empty():
 		_active = action
 	else:
@@ -50,13 +53,41 @@ func do_now(
 		target_id: StringName,
 		duration_seconds: float = 1.0,
 		commitment_seconds: float = 0.5,
-		target_is_valid: bool = true
+		target_is_valid: bool = true,
+		payload: Dictionary = {}
+) -> int:
+	return _replace(
+		name, target_id, duration_seconds, commitment_seconds, target_is_valid, payload, &"do_now"
+	)
+
+
+func replace(
+		name: StringName,
+		target_id: StringName,
+		duration_seconds: float = 1.0,
+		commitment_seconds: float = 0.5,
+		target_is_valid: bool = true,
+		payload: Dictionary = {}
+) -> int:
+	return _replace(
+		name, target_id, duration_seconds, commitment_seconds, target_is_valid, payload, &"replace"
+	)
+
+
+func _replace(
+		name: StringName,
+		target_id: StringName,
+		duration_seconds: float,
+		commitment_seconds: float,
+		target_is_valid: bool,
+		payload: Dictionary,
+		reason: StringName
 ) -> int:
 	var urgent_action := _make_action(
-		name, target_id, duration_seconds, commitment_seconds, target_is_valid
+		name, target_id, duration_seconds, commitment_seconds, target_is_valid, payload
 	)
 	for action in _pending:
-		_record_event(action, &"cancelled", &"do_now")
+		_record_event(action, &"cancelled", reason)
 	_pending.clear()
 
 	if _active.is_empty():
@@ -64,7 +95,7 @@ func do_now(
 	elif _is_active_committed():
 		_pending.append(urgent_action)
 	else:
-		_record_event(_active, &"cancelled", &"do_now")
+		_record_event(_active, &"cancelled", reason)
 		_active = urgent_action
 	return urgent_action["id"]
 
@@ -73,6 +104,22 @@ func cancel_active() -> bool:
 	if _active.is_empty() or _is_active_committed():
 		return false
 	_record_event(_active, &"cancelled", &"player_request")
+	_activate_next()
+	return true
+
+
+func complete_active() -> bool:
+	if _active.is_empty():
+		return false
+	_record_event(_active, &"completed")
+	_activate_next()
+	return true
+
+
+func fail_active(reason: StringName) -> bool:
+	if _active.is_empty():
+		return false
+	_record_event(_active, &"failed", reason)
 	_activate_next()
 	return true
 
@@ -106,7 +153,8 @@ func _make_action(
 		target_id: StringName,
 		duration_seconds: float,
 		commitment_seconds: float,
-		target_is_valid: bool
+		target_is_valid: bool,
+		payload: Dictionary = {}
 ) -> Dictionary:
 	var action := {
 		"id": _next_action_id,
@@ -116,6 +164,7 @@ func _make_action(
 		"commitment_seconds": maxf(commitment_seconds, 0.0),
 		"elapsed_seconds": 0.0,
 		"target_is_valid": target_is_valid,
+		"payload": payload.duplicate(true),
 		"state": &"validating",
 	}
 	_next_action_id += 1

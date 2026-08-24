@@ -9,6 +9,11 @@ extends Node3D
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
 const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
+const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_actor_3d.gd")
+const MOVEMENT_PLAN_SCRIPT := preload("res://scripts/actions/cultist_movement_plan.gd")
+const NAVIGATION_MESH: NavigationMesh = preload(
+	"res://assets/navigation/speakeasy_navigation.tres"
+)
 const BARTENDER_TEXTURE: Texture2D = preload("res://assets/characters/prototype_visual/Bartender.png")
 const VISUAL_SPIKE_SOURCE := "res://assets/environment/prototype_visual/Speakeasy_VisualSpike.blend"
 const VISUAL_SPIKE_EXPECTED_SHA256 := "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
@@ -52,6 +57,8 @@ const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
 const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
 const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
 const PLAY_SCALE := 4.0
+const NAVIGATION_FLOOR_Y := 0.18
+const MAX_DESTINATION_SNAP_METERS := 1.5
 const PATRON_COLORS := {
 	&"patron_june": Color("e3a57a"), &"patron_mara": Color("7fc7c4"),
 	&"patron_elias": Color("b79ad8"), &"patron_ruth": Color("d9c56f"),
@@ -126,8 +133,15 @@ var _presentation_prototype: bool = false
 var _presentation_closeup: bool = false
 var _patron_nodes: Dictionary = {}
 var _cultist_nodes: Dictionary = {}
+var _movement_plans: Dictionary = {}
+var _selected_cultist_id: StringName = &"cultist_01"
 var _actor_root: Node3D
 var _cultist_root: Node3D
+var _move_marker_root: Node3D
+var _navigation_region: NavigationRegion3D
+var _navigation_ready := false
+var _movement_feedback := "Select a Cultist, then right-click the floor to move. Hold Shift to queue."
+var _movement_report_path := ""
 var _body_root: Node3D
 var _event_root: Node3D
 var _camera: Camera3D
@@ -148,17 +162,20 @@ func _ready() -> void:
 	_presentation_prototype = review_presentation or _command_line_flag("--presentation-prototype") or _presentation_closeup
 	_debug_visible = review_debug_visible
 	_build_environment()
+	_build_navigation_world()
 	_build_hud()
 	_session.snapshot_changed.connect(_refresh)
 	_set_scenario(_command_line_value("--stage=", review_stage))
 	var capture_path := _command_line_value("--capture=")
 	var report_path := _command_line_value("--report=")
+	_movement_report_path = _command_line_value("--movement-report=")
 	if not capture_path.is_empty():
 		_capture_mode = true
 		_capture_after_render.call_deferred(capture_path)
 	elif not report_path.is_empty():
 		_capture_mode = true
 		_write_validation_report.call_deferred(report_path)
+	_bake_navigation_world.call_deferred()
 
 
 func _process(delta: float) -> void:
@@ -180,12 +197,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_queue_trackpad_pan(event.delta)
 	elif event is InputEventMouseButton and event.pressed:
-		var wheel_pan := _wheel_pan_delta(event)
-		if not wheel_pan.is_zero_approx():
-			if event.meta_pressed:
-				_zoom_camera_smooth(wheel_pan.y * TRACKPAD_ZOOM_SENSITIVITY)
-			else:
-				_queue_trackpad_pan(wheel_pan)
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_select_cultist_at(event.position)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			_issue_move_at(event.position, event.shift_pressed)
+		else:
+			var wheel_pan := _wheel_pan_delta(event)
+			if not wheel_pan.is_zero_approx():
+				if event.meta_pressed:
+					_zoom_camera_smooth(wheel_pan.y * TRACKPAD_ZOOM_SENSITIVITY)
+				else:
+					_queue_trackpad_pan(wheel_pan)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_EQUAL:
 			_zoom_camera_smooth(-2.0)
@@ -230,6 +252,134 @@ func _pan_camera(shift: Vector3) -> void:
 	_camera.position += shift
 	_camera_target += shift
 	_camera.look_at(_camera_target, Vector3.UP)
+
+
+func _select_cultist_at(screen_position: Vector2) -> void:
+	var ray_origin := _camera.project_ray_origin(screen_position)
+	var ray_end := ray_origin + _camera.project_ray_normal(screen_position) * 250.0
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end, 2)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return
+	var collider: Object = hit["collider"]
+	if not collider.has_meta("is_cultist") or not bool(collider.get_meta("is_cultist")):
+		return
+	_select_cultist(StringName(collider.get_meta("actor_id")))
+
+
+func _select_cultist(cultist_id: StringName) -> void:
+	if not _cultist_nodes.has(cultist_id):
+		return
+	_selected_cultist_id = cultist_id
+	for id: StringName in _cultist_nodes:
+		var actor := _cultist_nodes[id] as NavigableActor3D
+		actor.set_selected(id == cultist_id)
+	_movement_feedback = "%s selected." % _cultist_display_name(cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
+
+
+func _issue_move_at(screen_position: Vector2, append_to_queue: bool) -> void:
+	if not _navigation_ready:
+		_movement_feedback = "Navigation is not ready."
+		return
+	if not _cultist_nodes.has(_selected_cultist_id):
+		_movement_feedback = "Select a Cultist first."
+		return
+	var destination: Variant = _floor_destination(screen_position)
+	if destination == null:
+		_movement_feedback = "That floor destination is not reachable."
+		return
+	var plan = _movement_plans[_selected_cultist_id]
+	var action_id: int = plan.issue_move(destination, append_to_queue)
+	if action_id < 0:
+		_movement_feedback = "The Action Queue is full."
+		return
+	_movement_feedback = (
+		"Move queued for %s." if append_to_queue else "Move started for %s."
+	) % _cultist_display_name(_selected_cultist_id)
+	_sync_cultist_navigation(_selected_cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
+
+
+func _floor_destination(screen_position: Vector2) -> Variant:
+	var ray_origin := _camera.project_ray_origin(screen_position)
+	var ray_direction := _camera.project_ray_normal(screen_position)
+	var floor_plane := Plane(Vector3.UP, NAVIGATION_FLOOR_Y)
+	var intersection: Variant = floor_plane.intersects_ray(ray_origin, ray_direction)
+	if intersection == null:
+		return null
+	var raw_destination: Vector3 = intersection
+	var navigation_map := get_world_3d().navigation_map
+	var reachable := NavigationServer3D.map_get_closest_point(navigation_map, raw_destination)
+	if raw_destination.distance_to(reachable) > MAX_DESTINATION_SNAP_METERS:
+		return null
+	return reachable
+
+
+func _sync_cultist_navigation(cultist_id: StringName) -> void:
+	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+	var plan = _movement_plans[cultist_id]
+	if not plan.has_active_move():
+		actor.cancel_navigation()
+		return
+	var action_id: int = plan.active_action_id()
+	if actor.active_action_id() != action_id:
+		actor.navigate(action_id, plan.active_destination())
+
+
+func _on_cultist_destination_reached(cultist_id: StringName, action_id: int) -> void:
+	var plan = _movement_plans[cultist_id]
+	if plan.active_action_id() != action_id:
+		return
+	plan.complete_active_move()
+	_sync_cultist_navigation(cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
+
+
+func _on_cultist_navigation_stuck(cultist_id: StringName, action_id: int) -> void:
+	var plan = _movement_plans[cultist_id]
+	if plan.active_action_id() != action_id:
+		return
+	plan.fail_active_move(&"path_stuck")
+	_movement_feedback = "%s could not reach that destination." % _cultist_display_name(cultist_id)
+	_sync_cultist_navigation(cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
+
+
+func _refresh_move_markers() -> void:
+	if _move_marker_root == null:
+		return
+	for child in _move_marker_root.get_children():
+		child.queue_free()
+	if not _movement_plans.has(_selected_cultist_id):
+		return
+	var destinations: Array[Vector3] = _movement_plans[_selected_cultist_id].destination_markers()
+	for index in range(destinations.size()):
+		var marker := MeshInstance3D.new()
+		var cylinder := CylinderMesh.new()
+		cylinder.top_radius = 0.25
+		cylinder.bottom_radius = 0.25
+		cylinder.height = 0.04
+		cylinder.material = _flat_material(CULTIST_COLORS[_selected_cultist_id], 0.85)
+		marker.mesh = cylinder
+		marker.position = destinations[index] + Vector3(0.0, 0.04, 0.0)
+		var label := Label3D.new()
+		label.text = str(index + 1)
+		label.position.y = 0.12
+		label.font_size = 28
+		label.pixel_size = 0.006
+		label.outline_size = 8
+		label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		marker.add_child(label)
+		_move_marker_root.add_child(marker)
+
+
+func _cultist_display_name(cultist_id: StringName) -> String:
+	return String(cultist_id).replace("cultist_", "Cultist ")
 
 
 # --- World -------------------------------------------------------------------
@@ -278,6 +428,9 @@ func _build_environment() -> void:
 	_cultist_root = Node3D.new()
 	_cultist_root.name = "Cultists"
 	add_child(_cultist_root)
+	_move_marker_root = Node3D.new()
+	_move_marker_root.name = "MoveMarkers"
+	add_child(_move_marker_root)
 	_body_root = Node3D.new()
 	_body_root.name = "Bodies"
 	add_child(_body_root)
@@ -301,6 +454,121 @@ func _add_presentation_prototype() -> void:
 	var main_room := MAIN_ROOM_PRESENTATION_SCRIPT.new() as Node3D
 	main_room.name = "FullScaleSpeakeasyPresentation"
 	add_child(main_room)
+
+
+func _build_navigation_world() -> void:
+	_navigation_region = NavigationRegion3D.new()
+	_navigation_region.name = "ProductionNavigationRegion"
+	_navigation_region.navigation_mesh = NAVIGATION_MESH.duplicate(true)
+	add_child(_navigation_region)
+
+	_add_navigation_box(Vector3(-0.5, 0.09, 4.0), Vector3(27.0, 0.18, 12.0))
+	_add_navigation_box(Vector3(-17.5, 0.09, 5.0), Vector3(7.0, 0.18, 14.0))
+	_add_navigation_box(Vector3(15.0, 0.09, 6.0), Vector3(4.0, 0.18, 6.0))
+	_add_navigation_box(Vector3(19.0, 0.09, 6.0), Vector3(4.0, 0.18, 6.0))
+	_add_navigation_box(Vector3(0.0, 0.68, 0.15), Vector3(12.45, 1.36, 1.65))
+	for x_position in [-11.2, -5.2, 5.2, 11.2]:
+		_add_navigation_box(Vector3(x_position, 0.43, 6.0), Vector3(1.56, 0.86, 1.56))
+	_add_navigation_box(Vector3(19.55, 0.48, 5.8), Vector3(0.9, 0.96, 1.1))
+	_add_navigation_box(Vector3(19.55, 0.5, 7.75), Vector3(1.1, 1.0, 0.75))
+
+
+func _add_navigation_box(position: Vector3, size: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.position = position
+	body.collision_layer = 1
+	body.collision_mask = 2
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	collision.shape = shape
+	body.add_child(collision)
+	_navigation_region.add_child(body)
+
+
+func _bake_navigation_world() -> void:
+	var navigation_map := get_world_3d().navigation_map
+	NavigationServer3D.map_set_cell_size(navigation_map, 0.2)
+	NavigationServer3D.map_set_cell_height(navigation_map, 0.1)
+	var wait_frames := 0
+	var sample_point := Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)
+	while (
+		NavigationServer3D.map_get_iteration_id(navigation_map) == 0
+		or NavigationServer3D.map_get_closest_point(navigation_map, sample_point).distance_to(sample_point) > 1.0
+	) and wait_frames < 180:
+		await get_tree().physics_frame
+		wait_frames += 1
+	_navigation_ready = (
+		NavigationServer3D.map_get_iteration_id(navigation_map) > 0
+		and NavigationServer3D.map_get_closest_point(navigation_map, sample_point).distance_to(sample_point) <= 1.0
+	)
+	_movement_feedback = (
+		"Navigation ready. Left-click a Cultist; right-click the floor to move."
+		if _navigation_ready
+		else "Navigation failed to initialize."
+	)
+	_select_cultist(_selected_cultist_id)
+	_refresh_hud(_session.snapshot())
+	if not _movement_report_path.is_empty():
+		_run_movement_validation.call_deferred(_movement_report_path)
+
+
+func _run_movement_validation(report_path: String) -> void:
+	var targets := {
+		&"cultist_01": [Vector3(-8.0, NAVIGATION_FLOOR_Y, 4.0), Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)],
+		&"cultist_02": [Vector3(0.0, NAVIGATION_FLOOR_Y, 8.0)],
+		&"cultist_03": [Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)],
+	}
+	if _navigation_ready:
+		for cultist_id: StringName in CULTIST_IDS:
+			var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+			actor.set_simulation_scale(4.0)
+			var plan = _movement_plans[cultist_id]
+			var destinations: Array = targets[cultist_id]
+			plan.issue_move(destinations[0], false)
+			for index in range(1, destinations.size()):
+				plan.issue_move(destinations[index], true)
+			_sync_cultist_navigation(cultist_id)
+
+	var frame_count := 0
+	while _navigation_ready and frame_count < 900:
+		var all_complete := true
+		for cultist_id: StringName in CULTIST_IDS:
+			if _movement_plans[cultist_id].has_active_move():
+				all_complete = false
+				break
+		if all_complete:
+			break
+		await get_tree().physics_frame
+		frame_count += 1
+
+	var final_positions := {}
+	var passed := _navigation_ready
+	for cultist_id: StringName in CULTIST_IDS:
+		var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+		var destinations: Array = targets[cultist_id]
+		var expected: Vector3 = destinations[-1]
+		var distance := actor.global_position.distance_to(expected)
+		final_positions[cultist_id] = {
+			"position": [actor.global_position.x, actor.global_position.y, actor.global_position.z],
+			"distance_to_target": distance,
+			"repaths": actor.repath_count,
+		}
+		passed = passed and distance <= 0.55 and not _movement_plans[cultist_id].has_active_move()
+
+	var report := {
+		"passed": passed,
+		"navigation_ready": _navigation_ready,
+		"frames": frame_count,
+		"selected_cultist": String(_selected_cultist_id),
+		"cultists": final_positions,
+	}
+	var absolute_path := ProjectSettings.globalize_path(report_path)
+	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
+	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(report, "  "))
+	get_tree().quit(0 if passed else 1)
 
 
 func _build_room_zone(room_id: StringName) -> Node3D:
@@ -493,9 +761,10 @@ func _actor_shadow() -> MeshInstance3D:
 func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	if _cultist_nodes.has(cultist_id):
 		return _cultist_nodes[cultist_id]
-	var pivot := Node3D.new()
-	pivot.name = String(cultist_id)
-	pivot.position = CULTIST_POSITIONS[cultist_id]
+	var pivot := NAVIGABLE_ACTOR_SCRIPT.new() as NavigableActor3D
+	pivot.configure(cultist_id, true)
+	pivot.position = CULTIST_POSITIONS[cultist_id] + Vector3(0.0, NAVIGATION_FLOOR_Y, 0.0)
+	pivot.set_simulation_scale(PLAY_SCALE if _playing else 0.0)
 	var sprite := _pixel_actor_sprite()
 	sprite.name = "Body"
 	sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
@@ -512,8 +781,13 @@ func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	label.outline_modulate = Color("0b1016")
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	pivot.add_child(label)
+	pivot.add_selection_ring(CULTIST_COLORS[cultist_id])
+	pivot.destination_reached.connect(_on_cultist_destination_reached)
+	pivot.navigation_stuck.connect(_on_cultist_navigation_stuck)
 	_cultist_root.add_child(pivot)
 	_cultist_nodes[cultist_id] = pivot
+	_movement_plans[cultist_id] = MOVEMENT_PLAN_SCRIPT.new()
+	pivot.set_selected(cultist_id == _selected_cultist_id)
 	return pivot
 
 
@@ -566,9 +840,12 @@ func _refresh_cultists(state: Dictionary) -> void:
 		var pivot := _cultist_pivot(cultist_id)
 		var cultist: Dictionary = state["cultists"][cultist_id]
 		var label := pivot.get_node("Name") as Label3D
+		var activity: String = _humanize(cultist["activity"])
+		if _movement_plans[cultist_id].has_active_move():
+			activity = "Moving"
 		label.text = "%s\n%s" % [
 			String(cultist_id).replace("cultist_", "CULTIST "),
-			_humanize(cultist["activity"]),
+			activity,
 		]
 
 
@@ -843,6 +1120,10 @@ func _add_control_button(row: HBoxContainer, text: String, action: Callable) -> 
 func _toggle_play() -> void:
 	_playing = _play_button.button_pressed
 	_play_button.text = "PAUSE" if _playing else "PLAY"
+	for cultist_id: StringName in _cultist_nodes:
+		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(
+			PLAY_SCALE if _playing else 0.0
+		)
 
 
 func _refresh_hud(state: Dictionary) -> void:
@@ -852,6 +1133,14 @@ func _refresh_hud(state: Dictionary) -> void:
 	var text := "[color=#e2a56e][b]%s[/b][/color]   [color=#8195a2]t=%.1fs[/color]\n%s\n" % [
 		SCENARIOS[_scenario], seconds, _scenario_trace,
 	]
+	text += "\n[color=#8fc4af][b]%s[/b][/color]  %s" % [
+		_cultist_display_name(_selected_cultist_id), _movement_feedback,
+	]
+	if _movement_plans.has(_selected_cultist_id):
+		var movement_state: Dictionary = _movement_plans[_selected_cultist_id].snapshot()
+		text += "  [color=#8195a2]Queue %d/4[/color]" % [
+			(0 if movement_state["active"].is_empty() else 1) + movement_state["pending"].size()
+		]
 	if _debug_visible:
 		for patron_id: StringName in PATRON_IDS:
 			var debug: Dictionary = state["debug_patron_views"][patron_id]

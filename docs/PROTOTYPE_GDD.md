@@ -51,6 +51,8 @@ The slice uses a fixed cast for reproducible tuning and bug reports.
 
 Each Arrival Group has authored companion relationships. Every Patron begins with zero Friendship toward every Cultist. The sad solo Patron guarantees access to the Friendship Capture route.
 
+An Arrival Group reserves its complete authored seat set before entering. If the full set is unavailable, the group waits outside. After entry, Patrons walk to their assigned seats and remain near them for ordering, drinking, and socializing until another behavior makes them move.
+
 A group normally prepares to leave nine minutes after being seated. An active Order, drink, bathroom visit, or conversation delays departure until that activity resolves. A missing Companion blocks Normal Departure and begins the missing-friend process.
 
 ### Staying behind
@@ -67,10 +69,13 @@ Normal Patrons arrive, find a seat, order, drink, socialize, use the bathroom as
 
 ### Normal play
 
-The selected Patron panel shows only information the player can reasonably observe or has created:
+Hovering any Cultist or Patron opens a small Hover Summary beside that person after a short delay. Leaving the actor closes the Hover Summary. Left-clicking a Cultist makes them the Selected Cultist. Left-clicking a Patron opens the persistent Patron Info Panel without changing the Selected Cultist.
 
+Before the Cultists identify a Patron, profile fields show question marks. Observable Status remains visible: activity, Mood, Suspicion band, Intoxication, Order state, and player-created drug state. A completed Talk Action identifies the Patron for the whole crew and reveals the limited Patron Profile:
+
+- name and Ideal Intoxication
 - current visible activity or intent
-- qualitative mood
+- qualitative Mood
 - Suspicion band, without an exact value
 - qualitative Intoxication level
 - Arrival Group and companion relationships
@@ -79,24 +84,41 @@ The selected Patron panel shows only information the player can reasonably obser
 - known Drugged Drink status and countdown
 - qualitative victim value and risk
 
-Bladder level, bathroom probability, exact patience, exact Suspicion, hidden causes, and internal timers are not shown during normal play. Overhead icons appear only for urgent observable intentions: ordering, choosing or queueing for the bathroom, Investigation, or Escape.
+Bladder level, bathroom probability, exact patience, exact Suspicion, hidden causes, and internal timers are not shown during normal play. The Order list, Hover Summary, and Patron Info Panel expose urgent intentions during this phase. Overhead intent icons belong to the later emote-bubble system.
+
+The Patron Info Panel stays open until the player closes it, inspects another Patron, or the Patron leaves play. Its Talk and Offer Drink commands use the Selected Cultist.
 
 ### Debug mode
 
-Debug mode may expose exact Bladder and bathroom probability, Intoxication and decay time, mood and patience, Suspicion value/cause/recovery, the complete Friendship matrix, lifecycle/activity state, drug timer, current target and reservation, navigation destination, Action progress, Night seed, and recent random rolls. Debug presentation exists for development and evaluation diagnosis, not as the intended player experience.
+Debug mode may expose exact Bladder and bathroom probability, Intoxication and decay time, Ideal Intoxication, Overdrink Limit, Excess Drink count, Mood and patience, Suspicion value/cause/recovery, the complete Friendship matrix, lifecycle/activity state, drug timer, current target and reservation, navigation destination, Action progress, Night seed, and recent random rolls. Debug presentation exists for development and evaluation diagnosis, not as the intended player experience.
+
+### Mood
+
+Mood is a hidden 0-100 value that begins at 75. Normal play shows Miserable at 0-24, Unhappy at 25-49, Content at 50-79, and Happy at 80-100. Mood does not recover passively.
+
+- Prompt Order service adds 5 Mood.
+- The first completed Talk Action for each Cultist-Patron pair adds 5 Mood. Later Talks can still build Friendship.
+- A failed Order removes 20 Mood.
+- An Overdrink Collapse removes 15 Mood once from each Patron in the same room when they first notice that body.
+
+Tips use the Patron's Mood band when payment occurs: Miserable pays no tip, Unhappy pays half, Content pays the base tip, and Happy pays one-and-a-half times the base tip. Reaching zero Mood causes Normal Departure.
 
 ## 7. Drink service
 
-1. A seated Patron creates an Order automatically.
+1. An eligible seated Patron below Ideal Intoxication creates an Order automatically.
 2. The Order enters a shared visible list.
 3. A Cultist prepares the generic drink at the bar in 5 seconds.
 4. The Prepared Drink waits physically on the bar.
 5. A Cultist carries one drink and serves its Patron.
 6. Payment occurs on delivery; faster service adds a small tip.
 
-At 30 seconds, an unserved Patron becomes visibly impatient. At 60 seconds, the Order is cancelled, the Patron pays nothing, loses mood, and gains 15 Suspicion. A second failed Order causes Normal Departure.
+At 30 seconds, an unserved Patron becomes visibly impatient. At 60 seconds, the Order is cancelled, the Patron pays nothing, loses 20 Mood, and gains 5 Suspicion. A second failed Order causes Normal Departure.
 
 After drinking for about 30 seconds, the Patron socializes for a variable interval before they may order again. There are no recipes, tabs, change-making, supplies, or inventory economy.
+
+Each Patron has an Ideal Intoxication sampled for the Night. A Patron places an Order only while below that level. After finishing a drink, an eligible Patron socializes for a seeded 20-40 seconds before ordering again. If Intoxication later decays below Ideal Intoxication, ordering can resume. A rare Patron with Sober Ideal Intoxication sits and socializes without ordering.
+
+The Offer Drink Action is available only while the Selected Cultist carries a Prepared Drink and the Inspected Patron can receive it without an active Order. It pays nothing. The Patron uses a seeded 80% acceptance roll, including for a hidden Drugged Drink. A refusal blocks another offer for 60 seconds, and the rejected drink remains with the Cultist.
 
 ## 8. Bladder, bathroom, and Trapdoor
 
@@ -107,8 +129,8 @@ Finishing drinks raises Bladder. Patrons do not wait for a full meter and are no
 Clamp the result from 1% at 50% Bladder to 90% at 100%. Patrons below 50% do not roll. A Patron already committed to another terminal or bathroom-related state does not roll. Choosing the trip creates the bathroom intent and stops further checks until that visit resolves. Completing seated bathroom use empties Bladder to 0%.
 
 - One Patron may occupy the bathroom.
-- Two authored first-in/first-out queue positions sit outside.
-- Additional Patrons defer and retry after roughly 10 seconds.
+- One authored first-in/first-out Bathroom Line position sits outside.
+- Additional Patrons retain bathroom intent at their seats. The earliest waiting intent claims the line when it opens.
 - Queue waiting raises impatience, not Suspicion.
 
 Bathroom use lasts about 13 seconds:
@@ -124,6 +146,10 @@ The external control opens the Trapdoor for a 2-second pulse followed by a 3-sec
 ## 9. Intoxication
 
 Intoxication has four levels: sober (0), buzzed (1), drunk (2), and Max Drunk (3). Finishing an ordinary or Drugged Drink raises Intoxication by one, capped at 3, and resets its decay timer. After four simulated minutes without finishing another drink, Intoxication falls by one level; it continues falling by one level every four minutes until sober.
+
+Ideal Intoxication uses the same four-level scale. At the start of each Night, sample a normal distribution with mean 2 and standard deviation 0.6, round it, and clamp it to 0-3. This makes Sober possible but rare.
+
+Each Patron also receives a seeded uniform Overdrink Limit from one through five. A drink finished while the Patron is already Max Drunk adds one to the cumulative Excess Drink count. The drink that first raises the Patron to Max Drunk does not count. The count does not reset after Intoxication decays. Reaching the Overdrink Limit causes immediate Overdrink Collapse and the same unconscious state used by a Drugged Drink. If that drink was drugged, immediate collapse makes its later countdown irrelevant.
 
 While Max Drunk, every Hard Evidence event is downgraded to +25 soft Suspicion instead of setting Suspicion to 100 permanently. The downgrade is evaluated when the event is witnessed and is not upgraded retroactively when the Patron sobers. Separate Hard Evidence events may accumulate, and reaching 100 through those soft increases still causes the normal maximum-Suspicion behavior. Non-Hard-Evidence stimuli retain their listed values.
 
@@ -144,7 +170,9 @@ Time the 2-second opening pulse while a Patron or Investigator is standing. Fall
 - The drink raises Bladder and Intoxication normally.
 - Seeing the dosing is Hard Evidence and normally sets the witness to 100 Suspicion; Max Drunk applies the downgrade in section 9.
 
-If the victim has a conscious Companion, the strongest friend becomes the Helper after a 2-second reaction. The Helper spends 4 seconds supporting the victim, then moves toward the front exit at 60% speed. One Cultist may attempt a 6-second Rescue Persuasion before they cross the exit.
+After any collapse, each conscious Companion in the same room independently makes a seeded 50% Mood-reaction roll. A successful roll removes 20 Mood. An Overdrink Collapse also removes the normal 15 Mood from every Patron in the room. Drugged Drink and knockout collapse keep their normal Suspicion effects without giving non-Companions the Overdrink Mood loss.
+
+After a 2-second reaction, the least Intoxicated conscious, non-Miserable Companion in the same room becomes the Helper; authored group order breaks ties. A Companion who was already Miserable cannot help. The Helper spends 4 seconds supporting the victim, then moves toward the front exit at 60% speed. One Cultist may attempt a 6-second Rescue Persuasion before they cross the exit.
 
 On success, the Helper carries the victim while following the Cultist to the Tunnel Intake; crossing it captures both Patrons. On failure, the Helper gains 25 Suspicion and resumes leaving. Only one Rescue Persuasion is allowed for that collapse. Reaching the front causes both Patrons to leave; it causes immediate defeat only if the Helper has maximum Suspicion.
 
@@ -200,13 +228,16 @@ Suspicion is personal and tracked internally from 0-100.
 
 | Event | Effect |
 |---|---:|
-| Cancelled Order | +15 |
+| Cancelled Order | +5 |
 | Hearing nearby Trapdoor | +10 |
 | Hearing nearby knockout | +25 |
 | Seeing unexplained collapse | +10 |
 | Failed Rescue Persuasion | +25 |
 | First seeing a Cultist drag a body | +50 |
 | Continuing to see a body dragged | +10 every 5 seconds |
+| First seeing a Cultist drag an Overdrink body | +25 |
+| Continuing to see an Overdrink body dragged | +5 every 5 seconds |
+| Seeing a body cross the Tunnel Intake | +25 |
 | Seeing a drink dosed | Hard Evidence rule |
 | Witnessing knockout | Hard Evidence rule |
 | Witnessing Trapdoor Capture | Hard Evidence rule |
@@ -223,7 +254,9 @@ Soft Suspicion begins recovering after 20 quiet seconds at 5 points per 10 secon
 
 ### Unattended Bodies
 
-After a 3-second grace period, every Unattended Body adds 5 Suspicion to every active Patron every 5 seconds. Bodies stack. Pressure stops while a Helper supports the victim or a Cultist drags them; dropping or abandoning the victim starts a new grace period.
+After a 3-second grace period, each non-Overdrink Unattended Body adds 5 Suspicion every 5 seconds to each Patron who can see it. Bodies stack. Pressure stops while a Helper supports the victim or a Cultist drags them; dropping or abandoning the victim starts a new grace period.
+
+An Overdrink body never creates collapse or Unattended Body Suspicion. Patrons in the same room lose 15 Mood once when they first notice it, including Patrons who enter later. Openly dragging or capturing that body remains suspicious, but uses half the normal drag values. Faster dragging can prevent recurring five-second increases but cannot prevent the first-seen increase for a witness.
 
 ### Companion influence
 
@@ -239,7 +272,7 @@ Each escaping Patron permits one Intercept Action. A Cultist who reaches them st
 
 ## 14. Cultist commands and autonomy
 
-Each Cultist owns one active Action and three pending Actions. Normal commands append. A "do now" command clears pending Actions and interrupts the current Action only before its Commitment Point.
+Each Cultist owns one active Action and three pending Actions. A normal command clears pending Actions and interrupts the current Action only before its Commitment Point. If the current Action is committed, it finishes before the new command. Holding Shift while issuing a command appends it instead.
 
 The HUD shows the complete ordered Action Queue for the selected Cultist: active Action first, followed by up to three pending Actions. Each row shows the Action name, target when relevant, and a small `x` control.
 
@@ -249,13 +282,27 @@ The HUD shows the complete ordered Action Queue for the selected Cultist: active
 
 Cancellation loses elapsed time but no abstract resource. Invalid targets fail with a visible reason and the Cultist continues to the next Action. Dragging can always be interrupted by dropping the body. Cultist switching is instantaneous, and the queue panel updates to the newly selected Cultist.
 
-When the queue is empty, safe autonomy may continue assigned service work or idle. Autonomy never creates capture-related Actions.
+When the queue is empty, the Cultist idles. Cultists never move or serve through safe autonomy.
+
+### Movement and navigation
+
+Left-clicking a Cultist selects them. A normal right-click on reachable floor clears pending Actions and creates a Move Action; it redirects an active Move immediately. Shift+right-click appends a Move Action. Small numbered floor markers show queued destinations without drawing path lines. A click near inaccessible geometry moves to the nearest reachable floor point; a distant correction is rejected with visible feedback.
+
+Cultists move at 1.5 meters per second and Patrons at 1.3 meters per second. Escape uses 140% Patron speed, Helper movement uses 60%, and dragging uses 50% Cultist speed. Characters use soft avoidance and cannot permanently block one another. Exclusive work points and waiting positions use reservations.
+
+Four seconds without route progress requests a new path. A Cultist Move Action fails visibly after fifteen seconds without progress, then the next queued Action starts. A blocked Patron moves to the nearest valid waiting position and retries; emergency behavior never ends because a path temporarily fails.
+
+Talk, Offer Drink, and service timers begin only after the Cultist reaches and reserves the required interaction position. If the target starts leaving, the Action cancels, releases its reservation, and preserves any carried Prepared Drink.
+
+Conflicting Patron behaviors use this priority: Capture or unconsciousness, Escape, Investigation, Helper duty, Normal Departure, bathroom, Order, then socializing. Collapse and Capture apply immediately. Escape, Investigation, and Helper duty interrupt socializing, Talk, and Order waiting. A Patron finishes an active bathroom phase before Escape. Bathroom urgency interrupts Talk but waits for drinking to finish. Normal Departure waits for an active Order, drink, bathroom visit, or Talk to finish.
 
 ## 15. Win, loss, and results
 
 The player succeeds by capturing at least three Patrons and reaching the results screen without a maximum-suspicion Patron escaping. Meeting the quota early does not end the Night.
 
 Immediate defeat occurs only when a maximum-suspicion Patron crosses the front exit. Ordinary dissatisfied Patrons may leave without ending the Night. Reaching Closing with fewer than three Captures produces a failed-operation result rather than an earlier forced stop.
+
+At Closing, no Patron creates a new Order and every eligible Patron starts Normal Departure after their committed activity resolves. The results screen waits until every Patron exits or reaches a terminal state, up to a 60-second maximum closing period.
 
 The results screen reports:
 
