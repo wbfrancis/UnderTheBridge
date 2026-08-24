@@ -178,6 +178,10 @@ func patron_destination_reached(patron_id: StringName) -> bool:
 	return reached
 
 
+func patron_view(patron_id: StringName, selected_cultist_id: StringName) -> Dictionary:
+	return _ordinary_visits.normal_patron_view(patron_id, selected_cultist_id)
+
+
 func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
 	if _phase == &"results":
 		return false

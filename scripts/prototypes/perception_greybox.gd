@@ -138,6 +138,9 @@ var _latest_state: Dictionary = {}
 var _cultist_nodes: Dictionary = {}
 var _movement_plans: Dictionary = {}
 var _selected_cultist_id: StringName = &"cultist_01"
+var _hovered_actor_id: StringName = &""
+var _hovered_is_cultist := false
+var _inspected_patron_id: StringName = &""
 var _actor_root: Node3D
 var _cultist_root: Node3D
 var _move_marker_root: Node3D
@@ -158,6 +161,10 @@ var _events: Array = []
 var _scenario_buttons: Dictionary = {}
 var _play_button: Button
 var _debug_label: RichTextLabel
+var _hover_panel: PanelContainer
+var _hover_label: RichTextLabel
+var _info_panel: PanelContainer
+var _info_label: RichTextLabel
 
 
 func _ready() -> void:
@@ -172,6 +179,20 @@ func _ready() -> void:
 	var capture_path := _command_line_value("--capture=")
 	var report_path := _command_line_value("--report=")
 	_movement_report_path = _command_line_value("--movement-report=")
+	var identify_patron := StringName(_command_line_value("--identify-patron="))
+	if not identify_patron.is_empty():
+		_session.begin_conversation(&"cultist_01", identify_patron)
+		_session.end_conversation(&"cultist_01")
+	var inspect_patron := StringName(_command_line_value("--inspect-patron="))
+	if not inspect_patron.is_empty():
+		_inspected_patron_id = inspect_patron
+		_refresh(_session.snapshot())
+	var hover_actor := StringName(_command_line_value("--hover-actor="))
+	if not hover_actor.is_empty():
+		_hovered_actor_id = hover_actor
+		_hovered_is_cultist = String(hover_actor).begins_with("cultist_")
+		_hover_panel.position = Vector2(540.0, 210.0)
+		_refresh_character_panels(_session.snapshot())
 	if not _movement_report_path.is_empty():
 		_capture_mode = true
 	if not capture_path.is_empty():
@@ -196,14 +217,16 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _presentation_prototype or _capture_mode:
 		return
-	if event is InputEventPanGesture:
+	if event is InputEventMouseMotion:
+		_update_character_hover(event.position)
+	elif event is InputEventPanGesture:
 		if event.meta_pressed:
 			_zoom_camera_smooth(event.delta.y * TRACKPAD_ZOOM_SENSITIVITY)
 		else:
 			_queue_trackpad_pan(event.delta)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			_select_cultist_at(event.position)
+			_handle_character_left_click(event.position)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			_issue_move_at(event.position, event.shift_pressed)
 		else:
@@ -259,17 +282,45 @@ func _pan_camera(shift: Vector3) -> void:
 	_camera.look_at(_camera_target, Vector3.UP)
 
 
-func _select_cultist_at(screen_position: Vector2) -> void:
+func _character_at(screen_position: Vector2) -> Dictionary:
 	var ray_origin := _camera.project_ray_origin(screen_position)
 	var ray_end := ray_origin + _camera.project_ray_normal(screen_position) * 250.0
 	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end, 2)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
-		return
+		return {}
 	var collider: Object = hit["collider"]
-	if not collider.has_meta("is_cultist") or not bool(collider.get_meta("is_cultist")):
+	if not collider.has_meta("actor_id") or not collider.has_meta("is_cultist"):
+		return {}
+	return {
+		"id": StringName(collider.get_meta("actor_id")),
+		"is_cultist": bool(collider.get_meta("is_cultist")),
+	}
+
+
+func _handle_character_left_click(screen_position: Vector2) -> void:
+	var character := _character_at(screen_position)
+	if character.is_empty():
 		return
-	_select_cultist(StringName(collider.get_meta("actor_id")))
+	if character["is_cultist"]:
+		_select_cultist(character["id"])
+	else:
+		_inspected_patron_id = character["id"]
+		_refresh_character_panels(_session.snapshot())
+
+
+func _update_character_hover(screen_position: Vector2) -> void:
+	var character := _character_at(screen_position)
+	if character.is_empty():
+		_hovered_actor_id = &""
+		if _hover_panel != null:
+			_hover_panel.visible = false
+		return
+	_hovered_actor_id = character["id"]
+	_hovered_is_cultist = character["is_cultist"]
+	if _hover_panel != null:
+		_hover_panel.position = screen_position + Vector2(16.0, 18.0)
+	_refresh_character_panels(_session.snapshot())
 
 
 func _select_cultist(cultist_id: StringName) -> void:
@@ -865,6 +916,7 @@ func _refresh(state: Dictionary) -> void:
 	_refresh_events(state)
 	_refresh_cultists(state)
 	_refresh_hud(state)
+	_refresh_character_panels(state)
 
 
 func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
@@ -1205,6 +1257,60 @@ func _build_hud() -> void:
 	_debug_label.custom_minimum_size = Vector2(408.0, 130.0)
 	panel.add_child(_debug_label)
 
+	_hover_panel = PanelContainer.new()
+	_hover_panel.visible = false
+	_hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_panel.custom_minimum_size = Vector2(235.0, 112.0)
+	_hover_panel.add_theme_stylebox_override("panel", _inspection_panel_style(0.94))
+	canvas.add_child(_hover_panel)
+	_hover_label = RichTextLabel.new()
+	_hover_label.bbcode_enabled = true
+	_hover_label.fit_content = true
+	_hover_label.scroll_active = false
+	_hover_label.custom_minimum_size = Vector2(213.0, 90.0)
+	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_panel.add_child(_hover_label)
+
+	_info_panel = PanelContainer.new()
+	_info_panel.visible = false
+	_info_panel.anchor_left = 1.0
+	_info_panel.anchor_right = 1.0
+	_info_panel.offset_left = -318.0
+	_info_panel.offset_right = -18.0
+	_info_panel.offset_top = 104.0
+	_info_panel.offset_bottom = 424.0
+	_info_panel.add_theme_stylebox_override("panel", _inspection_panel_style(0.96))
+	canvas.add_child(_info_panel)
+	var info_column := VBoxContainer.new()
+	_info_panel.add_child(info_column)
+	var info_header := HBoxContainer.new()
+	info_column.add_child(info_header)
+	var title := Label.new()
+	title.text = "PATRON INFO"
+	title.add_theme_color_override("font_color", Color("e2a56e"))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info_header.add_child(title)
+	var close := Button.new()
+	close.text = "CLOSE"
+	close.pressed.connect(func(): _inspected_patron_id = &""; _info_panel.visible = false)
+	info_header.add_child(close)
+	_info_label = RichTextLabel.new()
+	_info_label.bbcode_enabled = true
+	_info_label.fit_content = true
+	_info_label.scroll_active = false
+	_info_label.custom_minimum_size = Vector2(278.0, 255.0)
+	info_column.add_child(_info_label)
+
+
+func _inspection_panel_style(alpha: float) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.035, 0.045, 0.06, alpha)
+	style.border_color = Color("8b6a48")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(10)
+	return style
+
 
 func _add_control_button(row: HBoxContainer, text: String, action: Callable) -> void:
 	var button := Button.new()
@@ -1256,6 +1362,66 @@ func _refresh_hud(state: Dictionary) -> void:
 					entry["at"], _humanize(entry["source"]), _humanize(entry["recipient"]), _humanize(entry["cause"]),
 				]
 	_debug_label.text = text
+
+
+func _refresh_character_panels(state: Dictionary) -> void:
+	if _hover_panel == null or _info_panel == null:
+		return
+	if not _hovered_actor_id.is_empty():
+		if _hovered_is_cultist and state["cultists"].has(_hovered_actor_id):
+			_hover_label.text = _cultist_summary_text(_hovered_actor_id, state)
+			_hover_panel.visible = true
+		elif state["debug_patron_views"].has(_hovered_actor_id):
+			var debug: Dictionary = state["debug_patron_views"][_hovered_actor_id]
+			if debug["lifecycle"] not in [&"not_arrived", &"captured", &"exited"]:
+				_hover_label.text = _patron_summary_text(_hovered_actor_id, state)
+				_hover_panel.visible = true
+			else:
+				_hover_panel.visible = false
+	if _inspected_patron_id.is_empty() or not state["debug_patron_views"].has(_inspected_patron_id):
+		_info_panel.visible = false
+		return
+	var inspected_debug: Dictionary = state["debug_patron_views"][_inspected_patron_id]
+	if inspected_debug["lifecycle"] in [&"not_arrived", &"captured", &"exited"]:
+		_inspected_patron_id = &""
+		_info_panel.visible = false
+		return
+	_info_label.text = _patron_info_text(_inspected_patron_id, state)
+	_info_panel.visible = true
+
+
+func _cultist_summary_text(cultist_id: StringName, state: Dictionary) -> String:
+	var cultist: Dictionary = state["cultists"][cultist_id]
+	var queue_count := 0
+	if _movement_plans.has(cultist_id):
+		var movement: Dictionary = _movement_plans[cultist_id].snapshot()
+		queue_count = (0 if movement["active"].is_empty() else 1) + movement["pending"].size()
+	return "[color=#8fc4af][b]%s[/b][/color]\nStatus  %s\nMove queue  %d/4" % [
+		_cultist_display_name(cultist_id), _humanize(cultist["activity"]), queue_count,
+	]
+
+
+func _patron_summary_text(patron_id: StringName, state: Dictionary) -> String:
+	var view: Dictionary = _session.patron_view(patron_id, _selected_cultist_id)
+	return "[color=#e2a56e][b]%s[/b][/color]\n%s · %s\nMood  %s\nIntoxication  %s\nOrder  %s" % [
+		view["name"], view["visible_activity"], view["suspicion_band"],
+		_humanize(view["mood"]), view["intoxication"], _humanize(view["order_state"]),
+	]
+
+
+func _patron_info_text(patron_id: StringName, state: Dictionary) -> String:
+	var view: Dictionary = _session.patron_view(patron_id, _selected_cultist_id)
+	var companions := (
+		"???"
+		if view["companions"] is String
+		else ", ".join(Array(view["companions"]).map(func(id): return String(id).trim_prefix("patron_").capitalize()))
+	)
+	return "[color=#e2a56e][font_size=22][b]%s[/b][/font_size][/color]\n\n[b]Observable Status[/b]\nActivity  %s\nMood  %s\nSuspicion  %s\nIntoxication  %s\nOrder  %s\n\n[b]Profile[/b]\nArrival Group  %s\nCompanions  %s\nFriendship  %s\nValue / Risk  %s / %s" % [
+		view["name"], view["visible_activity"], _humanize(view["mood"]),
+		view["suspicion_band"], view["intoxication"], _humanize(view["order_state"]),
+		_humanize(view["arrival_group"]), companions, view["friendship"],
+		view["victim_value"], view["victim_risk"],
+	]
 
 
 # --- Helpers -----------------------------------------------------------------

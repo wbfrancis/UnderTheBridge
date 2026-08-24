@@ -572,19 +572,20 @@ func normal_patron_view(
 	var suspicion = _suspicion_states[patron_id]
 	return {
 		"id": patron_id,
-		"name": patron["name"],
+		"identified": patron["identified"],
+		"name": patron["name"] if patron["identified"] else "???",
 		"visible_activity": _visible_activity(patron["activity"]),
 		"mood": "content",
 		"suspicion_band": suspicion.normal_band(),
 		"suspicion_cue": suspicion.normal_cue(),
 		"intoxication": _intoxication_label(patron["intoxication"]),
-		"arrival_group": patron["group_id"],
-		"companions": patron["companions"].duplicate(),
-		"friendship": _friendship_band(patron["friendship"].get(selected_cultist_id, 0)),
+		"arrival_group": patron["group_id"] if patron["identified"] else "???",
+		"companions": patron["companions"].duplicate() if patron["identified"] else "???",
+		"friendship": _friendship_band(patron["friendship"].get(selected_cultist_id, 0)) if patron["identified"] else "???",
 		"order_state": _patron_order_state(patron),
 		"known_drugged_drink": "None",
-		"victim_value": patron["victim_value"],
-		"victim_risk": patron["victim_risk"],
+		"victim_value": patron["victim_value"] if patron["identified"] else "???",
+		"victim_risk": patron["victim_risk"] if patron["identified"] else "???",
 		"urgent_intention": _urgent_intention(patron),
 	}
 
@@ -642,6 +643,8 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 	var probability := bathroom_probability(float(patron["bladder"]))
 	return {
 		"id": patron_id,
+		"name": patron["name"],
+		"identified": patron["identified"],
 		"bladder": patron["bladder"],
 		"bathroom_probability": probability,
 		"next_bathroom_check_in": maxf(0.0, float(patron["next_bathroom_check_at"]) - _simulated_seconds) if patron["bathroom_checks_active"] else -1.0,
@@ -829,6 +832,7 @@ func _new_patron(
 		"recent_bathroom_rolls": [],
 		"navigation_destination": &"entrance" if lifecycle == &"not_arrived" else &"seat",
 		"navigation_arrived": true,
+		"identified": false,
 		"friendship": {&"cultist_01": 0.0, &"cultist_02": 0.0, &"cultist_03": 0.0},
 		"friendship_capturable": friendship_capturable,
 		"victim_value": victim_value,
@@ -1869,7 +1873,15 @@ func end_conversation(cultist_id: StringName) -> bool:
 	_conversations.erase(cultist_id)
 	if _patrons.has(patron_id):
 		var patron: Dictionary = _patrons[patron_id]
-		_complete_activity(patron, &"socializing", &"seat")
+		if not patron["identified"]:
+			patron["identified"] = true
+			_record(&"patron_identified", patron_id, {"cultist_id": cultist_id})
+		var fallback: StringName = (
+			&"awaiting_drink"
+			if not StringName(patron["order_id"]).is_empty() and _order_system.is_open(patron["order_id"])
+			else &"socializing"
+		)
+		_complete_activity(patron, fallback, &"seat")
 		_patrons[patron_id] = patron
 	_record(&"conversation_ended", patron_id, {"cultist_id": cultist_id})
 	_emit_snapshot()

@@ -60,6 +60,26 @@ func test_normal_view_excludes_hidden_values_and_debug_view_exposes_them() -> vo
 	assert_true(normal.has("order_state"))
 
 
+func test_completed_talk_identifies_patron_profile_for_the_whole_crew() -> void:
+	var session = SESSION_SCRIPT.new()
+	session.start(707)
+	session.advance(1.1)
+	var unknown: Dictionary = session.normal_patron_view(&"patron_june", &"cultist_01")
+	assert_eq(unknown["name"], "???")
+	assert_eq(unknown["arrival_group"], "???")
+	assert_eq(unknown["victim_value"], "???")
+	assert_eq(unknown["visible_activity"], "Waiting for drink")
+	assert_true(session.begin_conversation(&"cultist_01", &"patron_june"))
+	assert_true(session.end_conversation(&"cultist_01"))
+	var known_by_other_cultist: Dictionary = session.normal_patron_view(
+		&"patron_june", &"cultist_03"
+	)
+	assert_true(known_by_other_cultist["identified"])
+	assert_eq(known_by_other_cultist["name"], "June")
+	assert_eq(known_by_other_cultist["arrival_group"], &"arrival_group_pair_01")
+	assert_eq(known_by_other_cultist["victim_value"], "Ordinary")
+
+
 func test_group_makes_normal_departure_and_releases_seats() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)
