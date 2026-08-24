@@ -16,6 +16,7 @@ var base_speed := 1.3
 var simulation_scale := 1.0
 var speed_multiplier := 1.0
 var repath_count := 0
+var arrival_distance := ARRIVAL_DISTANCE
 
 var _active_action_id := -1
 var _target_position := Vector3.ZERO
@@ -27,8 +28,11 @@ func configure(id: StringName, is_cultist: bool) -> void:
 	actor_id = id
 	name = String(id)
 	base_speed = 1.5 if is_cultist else 1.3
+	arrival_distance = ARRIVAL_DISTANCE if is_cultist else 0.7
 	collision_layer = 2
-	collision_mask = 3
+	# Patron-to-Patron separation is handled by RVO. Hard body collision made a
+	# seated Patron permanently block the next Patron's authored seat approach.
+	collision_mask = 3 if is_cultist else 1
 	set_meta("actor_id", actor_id)
 	set_meta("is_cultist", is_cultist)
 
@@ -46,7 +50,7 @@ func configure(id: StringName, is_cultist: bool) -> void:
 	navigation_agent.radius = 0.34
 	navigation_agent.height = 1.5
 	navigation_agent.path_desired_distance = 0.24
-	navigation_agent.target_desired_distance = ARRIVAL_DISTANCE
+	navigation_agent.target_desired_distance = arrival_distance
 	navigation_agent.path_max_distance = 1.2
 	navigation_agent.neighbor_distance = 2.7
 	navigation_agent.max_neighbors = 10
@@ -123,11 +127,14 @@ func _physics_process(delta: float) -> void:
 		return
 	if NavigationServer3D.map_get_iteration_id(navigation_agent.get_navigation_map()) == 0:
 		return
-	if global_position.distance_to(_target_position) <= ARRIVAL_DISTANCE:
+	if global_position.distance_to(_target_position) <= arrival_distance:
 		_finish_navigation()
 		return
 	if navigation_agent.is_navigation_finished():
-		_repath()
+		if global_position.distance_to(_target_position) <= arrival_distance + 0.12:
+			_finish_navigation()
+		else:
+			_repath()
 		return
 
 	var next_path_position := navigation_agent.get_next_path_position()

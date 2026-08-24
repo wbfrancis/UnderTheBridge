@@ -7,6 +7,7 @@ const INTERACTION_REGISTRY_SCRIPT := preload("res://scripts/interactions/interac
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
 const PATRON_SUSPICION_SCRIPT := preload("res://scripts/patrons/patron_suspicion.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
+const PATRON_BEHAVIOR_MACHINE_SCRIPT := preload("res://scripts/patrons/patron_behavior_machine.gd")
 # Which room each activity places a Patron in, for line of sight and room hearing.
 const ACTIVITY_ROOMS := {
 	&"not_arrived": &"front",
@@ -16,6 +17,7 @@ const ACTIVITY_ROOMS := {
 	&"drinking": &"main_hall",
 	&"socializing": &"main_hall",
 	&"entering_bathroom": &"hallway",
+	&"bathroom_queued": &"hallway",
 	&"seated_bathroom_use": &"bathroom",
 	&"standing_bathroom_exit": &"hallway",
 	&"investigation_search": &"bathroom",
@@ -44,6 +46,7 @@ const SEAT_POSITIONS := {
 const STEP_SECONDS := 0.1
 const GROUP_ID := &"arrival_group_pair_01"
 const BATHROOM_SLOT := &"bathroom_occupant"
+const BATHROOM_LINE_SLOT := &"bathroom_line_01"
 const INTERCEPT_SLOT := &"intercept_position"
 const DEPARTURE_AFTER_SEATED_SECONDS := 540.0
 const DRINK_SECONDS := 30.0
@@ -188,13 +191,13 @@ var _seated_at: float = -1.0
 var _full_night: bool = false
 var _closing: bool = false
 var _patrons: Dictionary = {}
+var _behavior_machines: Dictionary = {}
 var _groups: Dictionary = {}
 var _seat_owners: Dictionary = {}
 var _interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 var _order_system = ORDER_SYSTEM_SCRIPT.new()
 var _events: Array[Dictionary] = []
 var _autonomy_events: Array[Dictionary] = []
-var _next_service_cultist_index: int = 0
 var _suspicion_states: Dictionary = {}
 var _perception = PATRON_PERCEPTION_SCRIPT.new()
 var _perception_log: Dictionary = {}
@@ -214,6 +217,7 @@ var _follows: Dictionary = {}
 var _peak_suspicion: float = 0.0
 var _interceptions: int = 0
 var _unattended_body_seconds: float = 0.0
+var _physical_navigation_enabled := false
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -225,13 +229,13 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_closing = false
 	_events.clear()
 	_autonomy_events.clear()
-	_next_service_cultist_index = 0
 	_seat_owners.clear()
 	var seat_count := 8 if full_night else 2
 	for index in range(seat_count):
 		_seat_owners[StringName("seat_%02d" % (index + 1))] = &""
 	_interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_interaction_registry.register_slot(BATHROOM_SLOT, &"bathroom")
+	_interaction_registry.register_slot(BATHROOM_LINE_SLOT, &"bathroom_line")
 	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_order_system = ORDER_SYSTEM_SCRIPT.new()
 	_patrons.clear()
@@ -240,6 +244,11 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_initialize_full_night_cast()
 	else:
 		_initialize_legacy_pair()
+	_behavior_machines.clear()
+	for patron_id: StringName in _patrons:
+		_behavior_machines[patron_id] = PATRON_BEHAVIOR_MACHINE_SCRIPT.new(
+			_patrons[patron_id]["activity"]
+		)
 	_suspicion_states.clear()
 	for patron_id: StringName in _patrons:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
@@ -314,17 +323,43 @@ func finish_night() -> void:
 	_closing = true
 	for patron_id: StringName in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
+		if patron["lifecycle"] == &"leaving":
+			patron["lifecycle"] = &"exited"
+			_behavior_machines[patron_id].submit(&"exited")
+			_patrons[patron_id] = patron
+			continue
 		if patron["lifecycle"] != &"active":
 			continue
 		_depart_patron(patron_id, patron, &"night_ended")
 	_interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_interaction_registry.register_slot(BATHROOM_SLOT, &"bathroom")
+	_interaction_registry.register_slot(BATHROOM_LINE_SLOT, &"bathroom_line")
 	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_emit_snapshot()
 
 
 func restart(seed: int = _seed, full_night: bool = _full_night) -> void:
 	start(seed, full_night)
+
+
+func set_physical_navigation_enabled(enabled: bool) -> void:
+	_physical_navigation_enabled = enabled
+	for patron_id: StringName in _patrons:
+		_patrons[patron_id]["navigation_arrived"] = true
+
+
+func patron_destination_reached(patron_id: StringName) -> bool:
+	if not _patrons.has(patron_id):
+		return false
+	_patrons[patron_id]["navigation_arrived"] = true
+	if (
+		_patrons[patron_id]["lifecycle"] == &"leaving"
+		and _patrons[patron_id]["activity"] == &"normal_departure"
+	):
+		_patrons[patron_id]["lifecycle"] = &"exited"
+		_behavior_machines[patron_id].submit(&"exited")
+		_record(&"front_exit_crossed", patron_id)
+	return true
 
 
 func apply_suspicion_stimulus(
@@ -560,7 +595,7 @@ func _urgent_intention(patron: Dictionary) -> StringName:
 	match patron["activity"]:
 		&"awaiting_drink":
 			return &"ordering"
-		&"entering_bathroom", &"waiting_investigation":
+		&"bathroom_queued", &"entering_bathroom", &"waiting_investigation":
 			return &"bathroom"
 		&"investigation_search":
 			return &"investigating"
@@ -624,6 +659,7 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"friendship": patron["friendship"].duplicate(true),
 		"lifecycle": patron["lifecycle"],
 		"activity": patron["activity"],
+		"behavior": _behavior_machines[patron_id].snapshot(),
 		"seat": patron["seat"],
 		"reservation": _interaction_registry.actor_slot(patron_id),
 		"navigation_destination": patron["navigation_destination"],
@@ -664,6 +700,7 @@ func snapshot() -> Dictionary:
 		"seated_at": _seated_at,
 		"seat_owners": _seat_owners.duplicate(true),
 		"bathroom_owner": _interaction_registry.slot_owner(BATHROOM_SLOT),
+		"bathroom_line_owner": _interaction_registry.slot_owner(BATHROOM_LINE_SLOT),
 		"normal_views": normal_views,
 		"debug_views": debug_views,
 		"orders": _order_system.snapshot(),
@@ -728,6 +765,7 @@ func _initialize_legacy_pair() -> void:
 		"seated_at": -1.0,
 		"departed": false,
 	}
+	_reserve_group_seats(GROUP_ID)
 	_record(&"arrival_group_arrived", GROUP_ID)
 
 
@@ -790,6 +828,7 @@ func _new_patron(
 		"next_bathroom_check_at": -1.0,
 		"recent_bathroom_rolls": [],
 		"navigation_destination": &"entrance" if lifecycle == &"not_arrived" else &"seat",
+		"navigation_arrived": true,
 		"friendship": {&"cultist_01": 0.0, &"cultist_02": 0.0, &"cultist_03": 0.0},
 		"friendship_capturable": friendship_capturable,
 		"victim_value": victim_value,
@@ -819,6 +858,8 @@ func _activate_due_groups() -> void:
 		var group: Dictionary = _groups[group_id]
 		if group["arrived"] or _simulated_seconds + 0.0001 < float(group["arrival_at"]):
 			continue
+		if not _reserve_group_seats(group_id):
+			continue
 		group["arrived"] = true
 		_groups[group_id] = group
 		for patron_id: StringName in group["patrons"]:
@@ -840,18 +881,22 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 	_advance_intoxication(patron_id, patron, delta)
 	match patron["activity"]:
 		&"entering":
-			if patron["activity_elapsed"] >= 1.0:
+			if _movement_complete(patron, 1.0):
 				_assign_seat(patron_id, patron)
-		&"awaiting_drink":
-			if patron["activity_elapsed"] >= float(patron["service_delay"]):
-				_serve_patron(patron_id, patron)
 		&"drinking":
 			if patron["activity_elapsed"] >= DRINK_SECONDS:
 				_finish_drink(patron_id, patron)
 		&"socializing":
 			_advance_bathroom_checks(patron_id, patron)
+		&"bathroom_queued":
+			if _bathroom_occupant().is_empty():
+				_interaction_registry.release_actor(patron_id)
+				if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+					_set_activity(patron, &"entering_bathroom", &"bathroom")
+					_start_missing_companion_clock(patron_id)
+					_record(&"bathroom_line_promoted", patron_id)
 		&"entering_bathroom":
-			if patron["activity_elapsed"] >= 2.0:
+			if _movement_complete(patron, 2.0):
 				_set_activity(patron, &"seated_bathroom_use", &"bathroom")
 				_record(&"bathroom_seated", patron_id)
 		&"seated_bathroom_use":
@@ -860,7 +905,7 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 				_set_activity(patron, &"standing_bathroom_exit", &"bathroom_exit")
 				_record(&"bladder_emptied", patron_id)
 		&"standing_bathroom_exit":
-			if patron["activity_elapsed"] >= 3.0:
+			if _movement_complete(patron, 3.0):
 				_interaction_registry.release_actor(patron_id)
 				_clear_missing_companion_clock(patron_id)
 				_record(&"bathroom_visit_completed", patron_id)
@@ -869,21 +914,36 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 					_patrons[patron_id] = patron
 					_begin_escape(patron_id)
 					return
-				_set_activity(patron, &"socializing", &"seat")
+				_complete_activity(patron, &"socializing", &"seat")
 	_patrons[patron_id] = patron
 
 
 func _assign_seat(patron_id: StringName, patron: Dictionary) -> void:
-	for seat_id: StringName in _seat_owners:
-		if not StringName(_seat_owners[seat_id]).is_empty():
-			continue
-		_seat_owners[seat_id] = patron_id
-		patron["seat"] = seat_id
-		_set_activity(patron, &"awaiting_drink", &"seat")
-		patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds)
-		_record(&"seat_acquired", patron_id, {"seat": seat_id, "order_id": patron["order_id"]})
-		_update_group_seated_at(patron["group_id"])
+	var seat_id: StringName = patron["seat"]
+	if seat_id.is_empty() or _seat_owners.get(seat_id, &"") != patron_id:
 		return
+	_set_activity(patron, &"awaiting_drink", &"seat")
+	patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds)
+	_record(&"seat_acquired", patron_id, {"seat": seat_id, "order_id": patron["order_id"]})
+	_update_group_seated_at(patron["group_id"])
+
+
+func _reserve_group_seats(group_id: StringName) -> bool:
+	var group: Dictionary = _groups[group_id]
+	var members: Array = group["patrons"]
+	var available: Array[StringName] = []
+	for seat_id: StringName in _seat_owners:
+		if StringName(_seat_owners[seat_id]).is_empty():
+			available.append(seat_id)
+	if available.size() < members.size():
+		return false
+	for index in range(members.size()):
+		var patron_id: StringName = members[index]
+		var seat_id: StringName = available[index]
+		_seat_owners[seat_id] = patron_id
+		_patrons[patron_id]["seat"] = seat_id
+	_record(&"arrival_group_seats_reserved", group_id, {"seat_count": members.size()})
+	return true
 
 
 func _update_group_seated_at(group_id: StringName) -> void:
@@ -900,20 +960,18 @@ func _update_group_seated_at(group_id: StringName) -> void:
 	_record(&"arrival_group_seated", group_id)
 
 
-func _serve_patron(patron_id: StringName, patron: Dictionary) -> void:
+func serve_patron_order(patron_id: StringName) -> bool:
+	if not _patrons.has(patron_id):
+		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] != &"active" or patron["activity"] != &"awaiting_drink":
+		return false
+	return _serve_patron(patron_id, patron)
+
+
+func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
 	if not _order_system.serve_order(patron["order_id"], _simulated_seconds):
-		return
-	var cultist_id: StringName = CULTIST_IDS[_next_service_cultist_index]
-	_next_service_cultist_index = (_next_service_cultist_index + 1) % CULTIST_IDS.size()
-	var autonomy_event := {
-		"at": _simulated_seconds,
-		"cultist_id": cultist_id,
-		"action": &"serve_order",
-		"target_id": patron_id,
-		"capture_related": false,
-	}
-	_autonomy_events.append(autonomy_event)
-	_record(&"safe_autonomy_service", cultist_id, {"patron_id": patron_id})
+		return false
 	_set_activity(patron, &"drinking", &"drink")
 	# First sip: a prepared dose starts this consumer's countdown.
 	if patron["dosed_pending"]:
@@ -922,13 +980,15 @@ func _serve_patron(patron_id: StringName, patron: Dictionary) -> void:
 		patron["drug_drowsy_reported"] = false
 		_record(&"drugged_drink_sipped", patron_id)
 	_record(&"order_served", patron_id, {"order_id": patron["order_id"]})
+	_patrons[patron_id] = patron
+	return true
 
 
 func _finish_drink(patron_id: StringName, patron: Dictionary) -> void:
 	patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
 	patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
 	patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
-	_set_activity(patron, &"socializing", &"seat")
+	_complete_activity(patron, &"socializing", &"seat")
 	if patron["bladder"] >= 50.0:
 		patron["bathroom_checks_active"] = true
 		patron["next_bathroom_check_at"] = _simulated_seconds + BATHROOM_CHECK_SECONDS
@@ -945,12 +1005,18 @@ func _advance_bathroom_checks(patron_id: StringName, patron: Dictionary) -> void
 		patron["recent_bathroom_rolls"].append(roll_event)
 		_record(&"bathroom_check", patron_id, roll_event)
 		patron["next_bathroom_check_at"] = float(patron["next_bathroom_check_at"]) + BATHROOM_CHECK_SECONDS
-		if roll <= probability and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
-			patron["bathroom_checks_active"] = false
-			_set_activity(patron, &"entering_bathroom", &"bathroom")
-			_start_missing_companion_clock(patron_id)
-			_record(&"bathroom_chosen", patron_id, {"roll": roll, "probability": probability})
-			return
+		if roll <= probability:
+			if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+				patron["bathroom_checks_active"] = false
+				_set_activity(patron, &"entering_bathroom", &"bathroom")
+				_start_missing_companion_clock(patron_id)
+				_record(&"bathroom_chosen", patron_id, {"roll": roll, "probability": probability})
+				return
+			if _interaction_registry.request_slot(patron_id, BATHROOM_LINE_SLOT):
+				patron["bathroom_checks_active"] = false
+				_set_activity(patron, &"bathroom_queued", &"bathroom_line")
+				_record(&"bathroom_line_joined", patron_id, {"roll": roll, "probability": probability})
+				return
 
 
 # --- Danger chain (Trapdoor, missing Companion, Investigation, Escape, Intercept) ---
@@ -1032,15 +1098,18 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
-	if patron["lifecycle"] != &"active" or not _bathroom_occupant().is_empty():
+	if patron["lifecycle"] != &"active":
 		return false
 	_interaction_registry.release_actor(patron_id)
-	if not _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
-		return false
 	patron["bathroom_checks_active"] = false
-	_set_activity(patron, &"entering_bathroom", &"bathroom")
+	if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+		_set_activity(patron, &"entering_bathroom", &"bathroom")
+		_start_missing_companion_clock(patron_id)
+	elif _interaction_registry.request_slot(patron_id, BATHROOM_LINE_SLOT):
+		_set_activity(patron, &"bathroom_queued", &"bathroom_line")
+	else:
+		return false
 	_patrons[patron_id] = patron
-	_start_missing_companion_clock(patron_id)
 	_record(&"debug_bathroom_forced", patron_id)
 	_emit_snapshot()
 	return true
@@ -1108,6 +1177,8 @@ func _advance_investigations(step: float) -> void:
 			continue
 		if patron["activity"] != &"investigation_search":
 			continue
+		if _physical_navigation_enabled and not patron["navigation_arrived"]:
+			continue
 		patron["activity_elapsed"] = float(patron["activity_elapsed"]) + step
 		_patrons[patron_id] = patron
 		if patron["activity_elapsed"] >= INVESTIGATION_SECONDS:
@@ -1143,6 +1214,10 @@ func _advance_escape(step: float) -> void:
 			continue
 		if patron["activity"] != &"escaping":
 			continue
+		if _physical_navigation_enabled:
+			if not patron["navigation_arrived"]:
+				continue
+			patron["escape_remaining"] = 0.0
 		patron["escape_remaining"] = maxf(0.0, float(patron["escape_remaining"]) - step)
 		if patron["escape_remaining"] <= TIME_EPSILON:
 			_interaction_registry.release_actor(patron_id)
@@ -1377,9 +1452,14 @@ func _advance_collapses(step: float) -> void:
 					collapse["phase"] = &"carrying"
 					collapse["remaining"] = HELPER_CARRY_SECONDS
 					_set_helper_activity(collapse["helper_id"], &"helper_carrying")
+					_patrons[victim_id]["navigation_destination"] = &"front_exit"
+					_patrons[victim_id]["navigation_arrived"] = not _physical_navigation_enabled
 					_record(&"helper_carrying", collapse["helper_id"], {"victim_id": victim_id})
 			&"carrying":
-				collapse["remaining"] = float(collapse["remaining"]) - step
+				var helper_id: StringName = collapse["helper_id"]
+				if _physical_navigation_enabled and not _patrons[helper_id]["navigation_arrived"]:
+					continue
+				collapse["remaining"] = 0.0 if _physical_navigation_enabled else float(collapse["remaining"]) - step
 				if collapse["remaining"] <= TIME_EPSILON:
 					_collapses[victim_id] = collapse
 					_helper_reaches_front(victim_id)
@@ -1720,7 +1800,9 @@ func _advance_drags(step: float) -> void:
 					_patrons[victim_id] = patron
 					_record(&"body_drag_started", victim_id, {"cultist_id": drag["cultist_id"]})
 			&"dragging":
-				drag["remaining"] = float(drag["remaining"]) - step
+				if _physical_navigation_enabled and not _patrons[victim_id]["navigation_arrived"]:
+					continue
+				drag["remaining"] = 0.0 if _physical_navigation_enabled else float(drag["remaining"]) - step
 				if float(drag["remaining"]) <= TIME_EPSILON:
 					_drags[victim_id] = drag
 					_capture_dragged_body(victim_id)
@@ -1770,6 +1852,10 @@ func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
 		return false
 	if _conversation_partner(patron_id) != &"":
 		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if not _set_activity(patron, &"conversing", &"seat"):
+		return false
+	_patrons[patron_id] = patron
 	_conversations[cultist_id] = patron_id
 	_record(&"conversation_started", patron_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
@@ -1781,6 +1867,10 @@ func end_conversation(cultist_id: StringName) -> bool:
 		return false
 	var patron_id: StringName = _conversations[cultist_id]
 	_conversations.erase(cultist_id)
+	if _patrons.has(patron_id):
+		var patron: Dictionary = _patrons[patron_id]
+		_complete_activity(patron, &"socializing", &"seat")
+		_patrons[patron_id] = patron
 	_record(&"conversation_ended", patron_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
 	return true
@@ -1886,7 +1976,9 @@ func _advance_conversations(step: float) -> void:
 func _advance_follows(step: float) -> void:
 	for patron_id: StringName in _follows.keys():
 		var follow: Dictionary = _follows[patron_id]
-		follow["remaining"] = float(follow["remaining"]) - step
+		if _physical_navigation_enabled and not _patrons[patron_id]["navigation_arrived"]:
+			continue
+		follow["remaining"] = 0.0 if _physical_navigation_enabled else float(follow["remaining"]) - step
 		if float(follow["remaining"]) <= TIME_EPSILON:
 			_capture_follower(patron_id, follow["cultist_id"])
 			continue
@@ -1989,17 +2081,84 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 	var order_id: StringName = patron["order_id"]
 	if not order_id.is_empty() and _order_system.is_open(order_id):
 		_order_system.cancel_order(order_id, _simulated_seconds, reason)
-	patron["lifecycle"] = &"exited"
+	patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
 	patron["bathroom_checks_active"] = false
 	_set_activity(patron, &"normal_departure", &"front_exit")
+	if not _physical_navigation_enabled:
+		_behavior_machines[patron_id].submit(&"exited")
 	_patrons[patron_id] = patron
 	_record(&"normal_departure", patron_id, {"reason": reason})
 
 
-func _set_activity(patron: Dictionary, activity: StringName, destination: StringName) -> void:
+func _set_activity(patron: Dictionary, activity: StringName, destination: StringName) -> bool:
+	var patron_id: StringName = patron["id"]
+	if _behavior_machines.has(patron_id):
+		var result: Dictionary = _behavior_machines[patron_id].submit(activity)
+		if result["decision"] != PATRON_BEHAVIOR_MACHINE_SCRIPT.ACCEPT:
+			var event_name: StringName = (
+				&"behavior_intent_deferred"
+				if result["decision"] == PATRON_BEHAVIOR_MACHINE_SCRIPT.DEFER
+				else &"behavior_intent_rejected"
+			)
+			_record(event_name, patron_id, {
+				"from": result["from"], "to": activity, "reason": result["reason"],
+			})
+			return false
 	patron["activity"] = activity
 	patron["activity_elapsed"] = 0.0
 	patron["navigation_destination"] = destination
+	patron["navigation_arrived"] = not _physical_navigation_enabled or not _activity_requires_movement(activity)
+	return true
+
+
+func _complete_activity(patron: Dictionary, fallback: StringName, destination: StringName) -> void:
+	var patron_id: StringName = patron["id"]
+	if not _behavior_machines.has(patron_id):
+		_set_activity(patron, fallback, destination)
+		return
+	var result: Dictionary = _behavior_machines[patron_id].complete_committed(fallback)
+	var next_state: StringName = result["to"]
+	patron["activity"] = next_state
+	patron["activity_elapsed"] = 0.0
+	patron["navigation_destination"] = (
+		destination if next_state == fallback else _destination_for_activity(next_state, patron)
+	)
+	patron["navigation_arrived"] = not _physical_navigation_enabled or not _activity_requires_movement(next_state)
+
+
+func _movement_complete(patron: Dictionary, fallback_seconds: float) -> bool:
+	return (
+		bool(patron["navigation_arrived"])
+		if _physical_navigation_enabled
+		else float(patron["activity_elapsed"]) >= fallback_seconds
+	)
+
+
+func _activity_requires_movement(activity: StringName) -> bool:
+	return activity in [
+		&"entering", &"entering_bathroom", &"standing_bathroom_exit",
+		&"investigation_search", &"escaping", &"helper_carrying",
+		&"being_dragged", &"following", &"normal_departure",
+	]
+
+
+func _destination_for_activity(activity: StringName, patron: Dictionary) -> StringName:
+	match activity:
+		&"entering", &"finding_seat", &"awaiting_drink", &"drinking", &"socializing", &"conversing":
+			return &"seat"
+		&"bathroom_queued":
+			return &"bathroom_line"
+		&"entering_bathroom", &"seated_bathroom_use", &"investigation_search", &"waiting_investigation":
+			return &"bathroom"
+		&"standing_bathroom_exit":
+			return &"bathroom_exit"
+		&"shock", &"escaping", &"intercepted", &"normal_departure", &"helper_carrying", &"helper_persuading":
+			return &"front_exit"
+		&"unconscious":
+			return &"collapsed"
+		&"being_dragged", &"following", &"captured":
+			return &"tunnel"
+	return patron.get("navigation_destination", &"seat")
 
 
 func _patron_order_state(patron: Dictionary) -> StringName:
@@ -2016,6 +2175,7 @@ func _visible_activity(activity: StringName) -> String:
 		&"awaiting_drink": "Waiting for drink",
 		&"drinking": "Drinking",
 		&"socializing": "Socializing",
+		&"bathroom_queued": "Waiting for bathroom",
 		&"entering_bathroom": "Going to bathroom",
 		&"seated_bathroom_use": "Using bathroom",
 		&"standing_bathroom_exit": "Leaving bathroom",

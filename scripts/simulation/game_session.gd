@@ -154,6 +154,30 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	return forced
 
 
+func serve_patron_order(patron_id: StringName, cultist_id: StringName) -> bool:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return false
+	var served: bool = _ordinary_visits.serve_patron_order(patron_id)
+	if served:
+		_record(&"order_served_by_command", {
+			"patron_id": patron_id,
+			"cultist_id": cultist_id,
+		})
+		_emit_snapshot()
+	return served
+
+
+func set_physical_patron_navigation_enabled(enabled: bool) -> void:
+	_ordinary_visits.set_physical_navigation_enabled(enabled)
+
+
+func patron_destination_reached(patron_id: StringName) -> bool:
+	var reached := _ordinary_visits.patron_destination_reached(patron_id)
+	if reached:
+		_emit_snapshot()
+	return reached
+
+
 func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
 	if _phase == &"results":
 		return false
@@ -348,6 +372,7 @@ func snapshot() -> Dictionary:
 		"arrival_groups": visit["groups"],
 		"seat_owners": visit["seat_owners"],
 		"bathroom_owner": visit["bathroom_owner"],
+		"bathroom_line_owner": visit["bathroom_line_owner"],
 		"visit_events": visit["events"],
 		"cultist_queues": queues,
 		"results": _results(orders, patrons, captures.size(), visit),

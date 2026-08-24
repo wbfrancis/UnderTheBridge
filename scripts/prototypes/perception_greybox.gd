@@ -132,6 +132,9 @@ var _capture_mode: bool = false
 var _presentation_prototype: bool = false
 var _presentation_closeup: bool = false
 var _patron_nodes: Dictionary = {}
+var _patron_visual_targets: Dictionary = {}
+var _next_patron_move_id := 1
+var _latest_state: Dictionary = {}
 var _cultist_nodes: Dictionary = {}
 var _movement_plans: Dictionary = {}
 var _selected_cultist_id: StringName = &"cultist_01"
@@ -169,6 +172,8 @@ func _ready() -> void:
 	var capture_path := _command_line_value("--capture=")
 	var report_path := _command_line_value("--report=")
 	_movement_report_path = _command_line_value("--movement-report=")
+	if not _movement_report_path.is_empty():
+		_capture_mode = true
 	if not capture_path.is_empty():
 		_capture_mode = true
 		_capture_after_render.call_deferred(capture_path)
@@ -529,6 +534,8 @@ func _run_movement_validation(report_path: String) -> void:
 			for index in range(1, destinations.size()):
 				plan.issue_move(destinations[index], true)
 			_sync_cultist_navigation(cultist_id)
+		for patron_id: StringName in _patron_nodes:
+			(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(4.0)
 
 	var frame_count := 0
 	while _navigation_ready and frame_count < 900:
@@ -538,11 +545,17 @@ func _run_movement_validation(report_path: String) -> void:
 				all_complete = false
 				break
 		if all_complete:
+			for patron_id: StringName in _patron_nodes:
+				if (_patron_nodes[patron_id] as NavigableActor3D).is_navigating():
+					all_complete = false
+					break
+		if all_complete:
 			break
 		await get_tree().physics_frame
 		frame_count += 1
 
 	var final_positions := {}
+	var patron_positions := {}
 	var passed := _navigation_ready
 	for cultist_id: StringName in CULTIST_IDS:
 		var actor := _cultist_nodes[cultist_id] as NavigableActor3D
@@ -555,6 +568,16 @@ func _run_movement_validation(report_path: String) -> void:
 			"repaths": actor.repath_count,
 		}
 		passed = passed and distance <= 0.55 and not _movement_plans[cultist_id].has_active_move()
+	for patron_id: StringName in _patron_nodes:
+		var actor := _patron_nodes[patron_id] as NavigableActor3D
+		var expected: Vector3 = _patron_visual_targets.get(patron_id, actor.global_position)
+		var distance := actor.global_position.distance_to(expected)
+		patron_positions[patron_id] = {
+			"position": [actor.global_position.x, actor.global_position.y, actor.global_position.z],
+			"distance_to_target": distance,
+			"repaths": actor.repath_count,
+		}
+		passed = passed and distance <= 0.82 and not actor.is_navigating()
 
 	var report := {
 		"passed": passed,
@@ -562,6 +585,7 @@ func _run_movement_validation(report_path: String) -> void:
 		"frames": frame_count,
 		"selected_cultist": String(_selected_cultist_id),
 		"cultists": final_positions,
+		"patrons": patron_positions,
 	}
 	var absolute_path := ProjectSettings.globalize_path(report_path)
 	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
@@ -683,8 +707,15 @@ func _ring_mesh(radius: float, thickness: float) -> ArrayMesh:
 func _actor_pivot(patron_id: StringName) -> Node3D:
 	if _patron_nodes.has(patron_id):
 		return _patron_nodes[patron_id]
-	var pivot := Node3D.new()
-	pivot.name = String(patron_id)
+	var pivot := NAVIGABLE_ACTOR_SCRIPT.new() as NavigableActor3D
+	pivot.configure(patron_id, false)
+	var entrance_index := maxi(0, ALL_PATRON_IDS.find(patron_id))
+	pivot.position = Vector3(
+		-20.2,
+		NAVIGATION_FLOOR_Y,
+		1.1 + float(entrance_index) * 1.1
+	)
+	pivot.set_simulation_scale(PLAY_SCALE if _playing else 0.0)
 	if _presentation_prototype:
 		var sprite := _pixel_actor_sprite()
 		sprite.name = "Body"
@@ -728,6 +759,8 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	pivot.add_child(label)
 	_actor_root.add_child(pivot)
+	pivot.destination_reached.connect(_on_patron_destination_reached)
+	pivot.navigation_stuck.connect(_on_patron_navigation_stuck)
 	_patron_nodes[patron_id] = pivot
 	return pivot
 
@@ -792,6 +825,7 @@ func _cultist_pivot(cultist_id: StringName) -> Node3D:
 
 
 func _refresh(state: Dictionary) -> void:
+	_latest_state = state
 	for scenario_id: String in _scenario_buttons:
 		_scenario_buttons[scenario_id].button_pressed = scenario_id == _scenario
 	var visible_patron_ids: Array[StringName] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
@@ -799,14 +833,14 @@ func _refresh(state: Dictionary) -> void:
 		var pivot := _actor_pivot(patron_id)
 		var debug: Dictionary = state["debug_patron_views"][patron_id]
 		var normal: Dictionary = state["normal_patron_views"][patron_id]
-		var active: bool = debug["lifecycle"] not in [&"not_arrived", &"captured", &"exited"]
+		var active: bool = debug["lifecycle"] != &"not_arrived"
 		pivot.visible = active
 		if not active:
 			continue
-		var position: Vector2 = debug["position"]
 		var facing: Vector2 = debug["facing"]
-		pivot.position = Vector3(position.x, 0.0, position.y)
-		pivot.look_at(pivot.position + Vector3(facing.x, 0.0, facing.y), Vector3.UP)
+		_sync_patron_navigation(patron_id, debug)
+		if not (pivot as NavigableActor3D).is_navigating():
+			pivot.look_at(pivot.position + Vector3(facing.x, 0.0, facing.y), Vector3.UP)
 		var band_color: Color = BAND_COLORS.get(normal["suspicion_band"], Color.WHITE)
 		var body := pivot.get_node("Body")
 		if _presentation_prototype:
@@ -831,6 +865,68 @@ func _refresh(state: Dictionary) -> void:
 	_refresh_events(state)
 	_refresh_cultists(state)
 	_refresh_hud(state)
+
+
+func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
+	var actor := _patron_nodes[patron_id] as NavigableActor3D
+	actor.set_simulation_scale(
+		PLAY_SCALE if _playing or not _movement_report_path.is_empty() else 0.0
+	)
+	actor.set_speed_multiplier(_patron_speed_multiplier(debug["activity"]))
+	var target := _patron_target(debug)
+	var previous: Vector3 = _patron_visual_targets.get(patron_id, Vector3.INF)
+	if previous.is_equal_approx(target):
+		return
+	_patron_visual_targets[patron_id] = target
+	actor.navigate(_next_patron_move_id, target)
+	_next_patron_move_id += 1
+
+
+func _patron_target(debug: Dictionary) -> Vector3:
+	var destination: StringName = debug["navigation_destination"]
+	if destination in [&"seat", &"drink"] and SEAT_POSITIONS.has(debug["seat"]):
+		var seat: Vector2 = SEAT_POSITIONS[debug["seat"]]
+		return Vector3(seat.x, NAVIGATION_FLOOR_Y, seat.y)
+	match destination:
+		&"entrance", &"front_exit": return Vector3(-20.2, NAVIGATION_FLOOR_Y, 5.0)
+		&"bathroom_line": return Vector3(15.5, NAVIGATION_FLOOR_Y, 6.0)
+		&"bathroom", &"bathroom_exit": return Vector3(18.2, NAVIGATION_FLOOR_Y, 6.0)
+		&"tunnel": return Vector3(15.0, NAVIGATION_FLOOR_Y, 3.65)
+		&"collapsed":
+			var at: Vector2 = debug["position"]
+			return Vector3(at.x, NAVIGATION_FLOOR_Y, at.y)
+	var fallback: Vector2 = debug["position"]
+	return Vector3(fallback.x, NAVIGATION_FLOOR_Y, fallback.y)
+
+
+func _patron_speed_multiplier(activity: StringName) -> float:
+	if activity in [&"shock", &"escaping"]:
+		return 1.4
+	if activity in [&"helper_reacting", &"helper_lifting", &"helper_carrying"]:
+		return 0.6
+	if activity == &"being_dragged":
+		return 0.58
+	return 1.0
+
+
+func _on_patron_destination_reached(patron_id: StringName, _action_id: int) -> void:
+	_session.patron_destination_reached(patron_id)
+	if _latest_state.is_empty() or not _latest_state["debug_patron_views"].has(patron_id):
+		return
+	var debug: Dictionary = _latest_state["debug_patron_views"][patron_id]
+	if debug["lifecycle"] in [&"captured", &"exited"]:
+		(_patron_nodes[patron_id] as Node3D).visible = false
+
+
+func _on_patron_navigation_stuck(patron_id: StringName, _action_id: int) -> void:
+	if not _patron_visual_targets.has(patron_id):
+		return
+	var actor := _patron_nodes[patron_id] as NavigableActor3D
+	var target: Vector3 = _patron_visual_targets[patron_id]
+	var navigation_map := get_world_3d().navigation_map
+	var retry_target := NavigationServer3D.map_get_closest_point(navigation_map, target)
+	actor.navigate(_next_patron_move_id, retry_target)
+	_next_patron_move_id += 1
 
 
 func _refresh_cultists(state: Dictionary) -> void:
@@ -1011,6 +1107,7 @@ func _set_scenario(scenario_id: String) -> void:
 			_stage_body(&"body_01", &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
+	_session.set_physical_patron_navigation_enabled(true)
 	_update_camera_for_scenario()
 	_refresh(_session.snapshot())
 
@@ -1122,6 +1219,10 @@ func _toggle_play() -> void:
 	_play_button.text = "PAUSE" if _playing else "PLAY"
 	for cultist_id: StringName in _cultist_nodes:
 		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(
+			PLAY_SCALE if _playing else 0.0
+		)
+	for patron_id: StringName in _patron_nodes:
+		(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(
 			PLAY_SCALE if _playing else 0.0
 		)
 

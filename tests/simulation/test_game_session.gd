@@ -3,6 +3,15 @@ extends GutTest
 const GAME_SESSION_PATH := "res://scripts/simulation/game_session.gd"
 
 
+func _advance_and_serve_night(session) -> void:
+	# Every service call is an explicit player command; no Cultist acts on its own.
+	for checkpoint in [95.0, 185.0, 305.0, 425.0]:
+		session.advance(checkpoint - float(session.snapshot()["simulated_seconds"]))
+		for patron_id: StringName in session.snapshot()["debug_patron_views"]:
+			session.serve_patron_order(patron_id, &"cultist_01")
+	session.advance(1080.0 - float(session.snapshot()["simulated_seconds"]))
+
+
 func test_time_controls_advance_without_rendering() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	assert_not_null(game_session_script, "GameSession should be available through its public script.")
@@ -67,8 +76,7 @@ func test_all_authored_arrival_groups_complete_non_capture_visits() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.set_time_scale(4.0)
-	session.advance(270.0)
+	_advance_and_serve_night(session)
 
 	var state: Dictionary = session.snapshot()
 	assert_eq(state["patrons"]["authored_count"], 8)
@@ -80,21 +88,19 @@ func test_all_authored_arrival_groups_complete_non_capture_visits() -> void:
 	assert_eq(state["captures"], 0)
 
 
-func test_safe_autonomy_serves_or_idles_and_never_starts_capture() -> void:
+func test_cultists_never_serve_or_capture_without_player_commands() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
 	session.advance(210.0)
 
 	var state: Dictionary = session.snapshot()
-	assert_gt(state["safe_autonomy"]["events"].size(), 0)
+	assert_true(state["safe_autonomy"]["events"].is_empty())
 	assert_eq(state["safe_autonomy"]["capture_actions_started"], 0)
 	assert_eq(state["cultists"].size(), 3)
 	for cultist_id: StringName in state["cultists"]:
-		assert_true(
-			state["cultists"][cultist_id]["activity"] in [&"safe_service", &"idle"],
-			"Safe autonomy may only perform service or idle behavior."
-		)
+		assert_eq(state["cultists"][cultist_id]["activity"], &"idle")
+	assert_eq(state["orders"]["served_count"], 0)
 
 
 func test_cultist_snapshot_exposes_active_capture_activity_and_target() -> void:
@@ -151,8 +157,7 @@ func test_restart_constructs_a_clean_second_night() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.set_time_scale(4.0)
-	session.advance(270.0)
+	_advance_and_serve_night(session)
 	assert_gt(session.snapshot()["orders"]["served_count"], 0)
 
 	session.restart_night(808)
@@ -200,6 +205,8 @@ func test_soft_suspicion_recovers_only_after_quiet_period_at_approved_rate() -> 
 	var session = game_session_script.new()
 	session.start_night(707)
 	session.advance(100.0)
+	assert_true(session.serve_patron_order(&"patron_june", &"cultist_01"))
+	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
 	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
 	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
 
@@ -554,6 +561,22 @@ func test_only_max_suspicion_front_exit_crossing_causes_immediate_defeat() -> vo
 	assert_almost_eq(float(loss["time_scale"]), 0.0, 0.0001, "The results phase pauses the clock.")
 
 
+func test_physical_escape_does_not_resolve_before_the_front_exit_threshold() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(200.0)
+	session.set_physical_patron_navigation_enabled(true)
+	assert_true(session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
+	session.advance(2.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["activity"], &"escaping")
+	session.advance(30.0)
+	assert_false(session.snapshot()["defeat"])
+	assert_true(session.patron_destination_reached(&"patron_elias"))
+	session.advance(0.1)
+	assert_true(session.snapshot()["defeat"])
+
+
 func test_night_starts_with_two_doses_and_drugged_drink_runs_consumer_countdown() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
@@ -567,6 +590,7 @@ func test_night_starts_with_two_doses_and_drugged_drink_runs_consumer_countdown(
 	assert_eq(session.snapshot()["doses_remaining"], 2, "The dose is only spent when preparation completes.")
 	session.advance(8.1)
 	assert_eq(session.snapshot()["doses_remaining"], 1, "Preparation completes and spends one dose.")
+	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
 
 	# The consumer-owned countdown begins at Mara's first sip.
 	session.advance(1.5)
@@ -591,7 +615,9 @@ func test_collapse_assigns_least_intoxicated_conscious_companion_as_helper() -> 
 	session.start_night(707)
 	session.advance(95.0)
 	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"))
-	session.advance(30.1)  # preparation, first sip, and the 20-second countdown to collapse
+	session.advance(8.1)
+	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
+	session.advance(22.0)  # first sip and the 20-second countdown to collapse
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["lifecycle"], &"unconscious")
 
 	# After a 2-second reaction the conscious Companion (June) becomes the Helper and lifts.
@@ -617,7 +643,9 @@ func _carry_session(game_session_script, helper_suspicion_stimulus: StringName, 
 	if not helper_suspicion_stimulus.is_empty():
 		session.report_patron_stimulus(&"patron_june", helper_suspicion_stimulus)
 	session.prepare_drugged_drink(&"patron_mara", &"cultist_01")
-	session.advance(30.1)  # to collapse
+	session.advance(8.1)
+	session.serve_patron_order(&"patron_mara", &"cultist_02")
+	session.advance(22.0)  # to collapse
 	session.advance(6.1)   # reaction (2s) + lift (4s) => carrying
 	return session
 
@@ -956,6 +984,7 @@ func _drive_all_four_routes(session) -> void:
 		session.offer_cigarette(&"cultist_02", &"patron_clara")
 	session.prepare_drugged_drink(&"patron_vincent", &"cultist_02")
 	session.advance(8.2)
+	session.serve_patron_order(&"patron_vincent", &"cultist_03")
 	session.advance(31.0)
 	session.attempt_rescue_persuasion(&"cultist_02")
 	session.advance(6.2)
@@ -1079,7 +1108,9 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	carry.start_night(707)
 	carry.advance(95.0)
 	carry.prepare_drugged_drink(&"patron_mara", &"cultist_01")
-	carry.advance(36.2)  # collapse, reaction, and lift into the carry
+	carry.advance(8.1)
+	carry.serve_patron_order(&"patron_mara", &"cultist_02")
+	carry.advance(28.1)  # collapse, reaction, and lift into the carry
 	var odds: float = carry.snapshot()["rescue_odds"]
 	assert_gte(odds, 0.0, "A carry exposes the exact Rescue Persuasion odds.")
 	assert_almost_eq(odds, carry.rescue_persuasion_chance(&"cultist_01"), 0.001,

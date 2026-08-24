@@ -28,8 +28,82 @@
       "repaths": 0
     }
   },
-  "frames": 101,
+  "frames": 396,
   "navigation_ready": true,
   "passed": true,
+  "patrons": {
+    "patron_clara": {
+      "distance_to_target": 0.660363137722015,
+      "position": [
+        12.3387222290039,
+        0.180000007152557,
+        6.56687450408936
+      ],
+      "repaths": 0
+    },
+    "patron_elias": {
+      "distance_to_target": 0.665330111980438,
+      "position": [
+        -6.64935493469238,
+        0.180000007152557,
+        5.85507822036743
+      ],
+      "repaths": 0
+    },
+    "patron_june": {
+      "distance_to_target": 0.692277371883392,
+      "position": [
+        -12.6657629013062,
+        0.180000007152557,
+        5.81024312973022
+      ],
+      "repaths": 0
+    },
+    "patron_mara": {
+      "distance_to_target": 0.650860488414764,
+      "position": [
+        -10.0540676116943,
+        0.180940419435501,
+        5.52590847015381
+      ],
+      "repaths": 0
+    },
+    "patron_nell": {
+      "distance_to_target": 0.637748241424561,
+      "position": [
+        6.33434677124023,
+        0.180940419435501,
+        6.54307842254639
+      ],
+      "repaths": 0
+    },
+    "patron_ruth": {
+      "distance_to_target": 0.679974019527435,
+      "position": [
+        -3.99211668968201,
+        0.180935919284821,
+        6.45212650299072
+      ],
+      "repaths": 0
+    },
+    "patron_vincent": {
+      "distance_to_target": 0.660676062107086,
+      "position": [
+        9.85169792175293,
+        0.180000007152557,
+        6.12726831436157
+      ],
+      "repaths": 0
+    },
+    "patron_walter": {
+      "distance_to_target": 0.662512302398682,
+      "position": [
+        3.83784031867981,
+        0.180940419435501,
+        5.9784083366394
+      ],
+      "repaths": 0
+    }
+  },
   "selected_cultist": "cultist_01"
 }
