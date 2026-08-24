@@ -31,16 +31,17 @@ func create_order(patron_id: StringName, requested_at: float) -> StringName:
 	return order_id
 
 
-func serve_order(order_id: StringName, delivered_at: float) -> bool:
+func serve_order(order_id: StringName, delivered_at: float, tip_multiplier: float = 1.0) -> bool:
 	if not is_open(order_id):
 		return false
 	var order: Dictionary = _orders[order_id]
 	var elapsed := maxf(0.0, delivered_at - float(order["requested_at"]))
-	var tip := 0
+	var base_tip := 0
 	if elapsed <= 30.0:
-		tip = FAST_TIP
+		base_tip = FAST_TIP
 	elif elapsed <= 45.0:
-		tip = STANDARD_TIP
+		base_tip = STANDARD_TIP
+	var tip := roundi(float(base_tip) * maxf(0.0, tip_multiplier))
 	order["state"] = &"served"
 	order["terminal_at"] = delivered_at
 	order["terminal_reason"] = &"delivered"

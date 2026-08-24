@@ -1416,10 +1416,10 @@ func _patron_info_text(patron_id: StringName, state: Dictionary) -> String:
 		if view["companions"] is String
 		else ", ".join(Array(view["companions"]).map(func(id): return String(id).trim_prefix("patron_").capitalize()))
 	)
-	return "[color=#e2a56e][font_size=22][b]%s[/b][/font_size][/color]\n\n[b]Observable Status[/b]\nActivity  %s\nMood  %s\nSuspicion  %s\nIntoxication  %s\nOrder  %s\n\n[b]Profile[/b]\nArrival Group  %s\nCompanions  %s\nFriendship  %s\nValue / Risk  %s / %s" % [
+	return "[color=#e2a56e][font_size=22][b]%s[/b][/font_size][/color]\n\n[b]Observable Status[/b]\nActivity  %s\nMood  %s\nSuspicion  %s\nIntoxication  %s\nOrder  %s\n\n[b]Profile[/b]\nIdeal Intoxication  %s\nArrival Group  %s\nCompanions  %s\nFriendship  %s\nValue / Risk  %s / %s" % [
 		view["name"], view["visible_activity"], _humanize(view["mood"]),
 		view["suspicion_band"], view["intoxication"], _humanize(view["order_state"]),
-		_humanize(view["arrival_group"]), companions, view["friendship"],
+		view["ideal_intoxication"], _humanize(view["arrival_group"]), companions, view["friendship"],
 		view["victim_value"], view["victim_risk"],
 	]
 

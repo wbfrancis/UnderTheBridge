@@ -8,6 +8,7 @@ const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
 const PATRON_SUSPICION_SCRIPT := preload("res://scripts/patrons/patron_suspicion.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
 const PATRON_BEHAVIOR_MACHINE_SCRIPT := preload("res://scripts/patrons/patron_behavior_machine.gd")
+const PATRON_MOOD_SCRIPT := preload("res://scripts/patrons/patron_mood.gd")
 # Which room each activity places a Patron in, for line of sight and room hearing.
 const ACTIVITY_ROOMS := {
 	&"not_arrived": &"front",
@@ -50,6 +51,12 @@ const BATHROOM_LINE_SLOT := &"bathroom_line_01"
 const INTERCEPT_SLOT := &"intercept_position"
 const DEPARTURE_AFTER_SEATED_SECONDS := 540.0
 const DRINK_SECONDS := 30.0
+const ORDER_IMPATIENT_SECONDS := 30.0
+const ORDER_FAILURE_SECONDS := 60.0
+const SOCIAL_MIN_SECONDS := 20.0
+const SOCIAL_MAX_SECONDS := 40.0
+const OFFER_ACCEPTANCE_PERCENT := 80.0
+const OFFER_REFUSAL_COOLDOWN_SECONDS := 60.0
 const INTOXICATION_DECAY_SECONDS := 240.0
 const BATHROOM_CHECK_SECONDS := 5.0
 # Danger-chain timings, ported from the bathroom danger spike and TECHNICAL_DESIGN §6/§7.1.
@@ -192,6 +199,8 @@ var _full_night: bool = false
 var _closing: bool = false
 var _patrons: Dictionary = {}
 var _behavior_machines: Dictionary = {}
+var _moods: Dictionary = {}
+var _patron_rngs: Dictionary = {}
 var _groups: Dictionary = {}
 var _seat_owners: Dictionary = {}
 var _interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
@@ -239,16 +248,19 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_order_system = ORDER_SYSTEM_SCRIPT.new()
 	_patrons.clear()
+	_patron_rngs.clear()
 	_groups.clear()
 	if full_night:
 		_initialize_full_night_cast()
 	else:
 		_initialize_legacy_pair()
 	_behavior_machines.clear()
+	_moods.clear()
 	for patron_id: StringName in _patrons:
 		_behavior_machines[patron_id] = PATRON_BEHAVIOR_MACHINE_SCRIPT.new(
 			_patrons[patron_id]["activity"]
 		)
+		_moods[patron_id] = PATRON_MOOD_SCRIPT.new()
 	_suspicion_states.clear()
 	for patron_id: StringName in _patrons:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
@@ -575,10 +587,11 @@ func normal_patron_view(
 		"identified": patron["identified"],
 		"name": patron["name"] if patron["identified"] else "???",
 		"visible_activity": _visible_activity(patron["activity"]),
-		"mood": "content",
+		"mood": _moods[patron_id].band(),
 		"suspicion_band": suspicion.normal_band(),
 		"suspicion_cue": suspicion.normal_cue(),
 		"intoxication": _intoxication_label(patron["intoxication"]),
+		"ideal_intoxication": _intoxication_label(patron["ideal_intoxication"]) if patron["identified"] else "???",
 		"arrival_group": patron["group_id"] if patron["identified"] else "???",
 		"companions": patron["companions"].duplicate() if patron["identified"] else "???",
 		"friendship": _friendship_band(patron["friendship"].get(selected_cultist_id, 0)) if patron["identified"] else "???",
@@ -649,8 +662,13 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"bathroom_probability": probability,
 		"next_bathroom_check_in": maxf(0.0, float(patron["next_bathroom_check_at"]) - _simulated_seconds) if patron["bathroom_checks_active"] else -1.0,
 		"intoxication_level": patron["intoxication"],
+		"ideal_intoxication_level": patron["ideal_intoxication"],
+		"overdrink_limit": patron["overdrink_limit"],
+		"excess_drinks": patron["excess_drinks"],
+		"collapse_cause": patron["collapse_cause"],
 		"intoxication_decay_in": patron["intoxication_decay_in"],
-		"mood_value": 75,
+		"mood_value": _moods[patron_id].value(),
+		"mood_band": _moods[patron_id].band(),
 		"suspicion": suspicion["score"],
 		"suspicion_cause": suspicion["cause"],
 		"latest_suspicion_stimulus": suspicion["latest_stimulus"],
@@ -812,6 +830,10 @@ func _new_patron(
 		victim_risk: String = "Low",
 		friendship_capturable: bool = false
 ) -> Dictionary:
+	var patron_rng := RandomNumberGenerator.new()
+	patron_rng.seed = hash("%d:%s:patron" % [_seed, id])
+	_patron_rngs[id] = patron_rng
+	var ideal_intoxication := clampi(int(round(patron_rng.randfn(2.0, 0.6))), 0, 3)
 	return {
 		"id": id,
 		"name": display_name,
@@ -826,7 +848,15 @@ func _new_patron(
 		"bladder_gain": bladder_gain,
 		"service_delay": service_delay,
 		"intoxication": 0,
+		"ideal_intoxication": ideal_intoxication,
+		"overdrink_limit": patron_rng.randi_range(1, 5),
+		"excess_drinks": 0,
+		"collapse_cause": &"",
 		"intoxication_decay_in": -1.0,
+		"social_interval": patron_rng.randf_range(SOCIAL_MIN_SECONDS, SOCIAL_MAX_SECONDS),
+		"order_impatient": false,
+		"failed_orders": 0,
+		"offer_refused_until": -1.0,
 		"bathroom_checks_active": false,
 		"next_bathroom_check_at": -1.0,
 		"recent_bathroom_rolls": [],
@@ -882,16 +912,26 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 	if recovered > 0.0:
 		_record(&"suspicion_recovered", patron_id, {"amount": recovered})
 	patron["activity_elapsed"] += delta
+	_apply_overdrink_body_mood(patron_id, patron)
 	_advance_intoxication(patron_id, patron, delta)
 	match patron["activity"]:
 		&"entering":
 			if _movement_complete(patron, 1.0):
 				_assign_seat(patron_id, patron)
+		&"awaiting_drink":
+			_advance_open_order(patron_id, patron)
 		&"drinking":
 			if patron["activity_elapsed"] >= DRINK_SECONDS:
 				_finish_drink(patron_id, patron)
 		&"socializing":
 			_advance_bathroom_checks(patron_id, patron)
+			if (
+				patron["activity"] == &"socializing"
+				and not _closing
+				and float(patron["activity_elapsed"]) >= float(patron["social_interval"])
+				and _patron_can_order(patron)
+			):
+				_start_order(patron_id, patron)
 		&"bathroom_queued":
 			if _bathroom_occupant().is_empty():
 				_interaction_registry.release_actor(patron_id)
@@ -926,10 +966,55 @@ func _assign_seat(patron_id: StringName, patron: Dictionary) -> void:
 	var seat_id: StringName = patron["seat"]
 	if seat_id.is_empty() or _seat_owners.get(seat_id, &"") != patron_id:
 		return
-	_set_activity(patron, &"awaiting_drink", &"seat")
-	patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds)
+	if _patron_can_order(patron):
+		_start_order(patron_id, patron)
+	else:
+		_set_activity(patron, &"socializing", &"seat")
 	_record(&"seat_acquired", patron_id, {"seat": seat_id, "order_id": patron["order_id"]})
 	_update_group_seated_at(patron["group_id"])
+
+
+func _patron_can_order(patron: Dictionary) -> bool:
+	return (
+		patron["lifecycle"] == &"active"
+		and int(patron["intoxication"]) < int(patron["ideal_intoxication"])
+		and (StringName(patron["order_id"]).is_empty() or not _order_system.is_open(patron["order_id"]))
+	)
+
+
+func _start_order(patron_id: StringName, patron: Dictionary) -> void:
+	_set_activity(patron, &"awaiting_drink", &"seat")
+	patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds)
+	patron["order_impatient"] = false
+	_record(&"order_created", patron_id, {"order_id": patron["order_id"]})
+
+
+func _advance_open_order(patron_id: StringName, patron: Dictionary) -> void:
+	var order_id: StringName = patron["order_id"]
+	if order_id.is_empty() or not _order_system.is_open(order_id):
+		return
+	var elapsed := _simulated_seconds - float(_order_system.order_snapshot(order_id)["requested_at"])
+	if elapsed >= ORDER_IMPATIENT_SECONDS and not patron["order_impatient"]:
+		patron["order_impatient"] = true
+		_record(&"order_impatient", patron_id, {"order_id": order_id})
+	if elapsed < ORDER_FAILURE_SECONDS:
+		return
+	_order_system.cancel_order(order_id, _simulated_seconds, &"failed_service")
+	patron["failed_orders"] = int(patron["failed_orders"]) + 1
+	_moods[patron_id].change(-20.0, &"failed_order")
+	_suspicion_states[patron_id].apply_stimulus(&"cancelled_order")
+	_record(&"order_failed", patron_id, {
+		"order_id": order_id,
+		"failed_orders": patron["failed_orders"],
+		"mood": _moods[patron_id].value(),
+	})
+	if int(patron["failed_orders"]) >= 2 or _moods[patron_id].value() <= 0.0:
+		_depart_patron(patron_id, patron, &"failed_orders")
+	else:
+		patron["social_interval"] = _patron_rngs[patron_id].randf_range(
+			SOCIAL_MIN_SECONDS, SOCIAL_MAX_SECONDS
+		)
+		_set_activity(patron, &"socializing", &"seat")
 
 
 func _reserve_group_seats(group_id: StringName) -> bool:
@@ -973,8 +1058,91 @@ func serve_patron_order(patron_id: StringName) -> bool:
 	return _serve_patron(patron_id, patron)
 
 
+func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = false) -> Dictionary:
+	var result := {"accepted": false, "reason": &"invalid_target", "roll": -1.0}
+	if not _patrons.has(patron_id) or cultist_id.is_empty():
+		return result
+	var patron: Dictionary = _patrons[patron_id]
+	if (
+		patron["lifecycle"] != &"active"
+		or _order_system.is_open(patron["order_id"])
+		or patron["activity"] != &"socializing"
+	):
+		return result
+	if _simulated_seconds < float(patron["offer_refused_until"]):
+		result["reason"] = &"refusal_cooldown"
+		return result
+	var roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
+	result["roll"] = roll
+	if roll > OFFER_ACCEPTANCE_PERCENT:
+		patron["offer_refused_until"] = _simulated_seconds + OFFER_REFUSAL_COOLDOWN_SECONDS
+		_patrons[patron_id] = patron
+		result["reason"] = &"refused"
+		_record(&"offered_drink_refused", patron_id, {"cultist_id": cultist_id, "roll": roll})
+		return result
+	_set_activity(patron, &"drinking", &"drink")
+	if drugged:
+		patron["drug_countdown"] = 0.0
+		patron["drug_drowsy_reported"] = false
+	_patrons[patron_id] = patron
+	result["accepted"] = true
+	result["reason"] = &"accepted"
+	_record(&"offered_drink_accepted", patron_id, {
+		"cultist_id": cultist_id, "roll": roll, "drugged": drugged,
+	})
+	return result
+
+
+func debug_set_patron_drink_state(
+	patron_id: StringName,
+	intoxication: int,
+	overdrink_limit: int,
+	excess_drinks: int = 0,
+	ideal_intoxication: int = -1
+) -> bool:
+	if not _patrons.has(patron_id):
+		return false
+	_patrons[patron_id]["intoxication"] = clampi(intoxication, 0, 3)
+	_patrons[patron_id]["overdrink_limit"] = clampi(overdrink_limit, 1, 5)
+	_patrons[patron_id]["excess_drinks"] = maxi(0, excess_drinks)
+	if ideal_intoxication >= 0:
+		_patrons[patron_id]["ideal_intoxication"] = clampi(ideal_intoxication, 0, 3)
+	var order_id: StringName = _patrons[patron_id]["order_id"]
+	if not order_id.is_empty() and _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"debug_setup")
+	var patron: Dictionary = _patrons[patron_id]
+	_set_activity(patron, &"socializing", &"seat")
+	_patrons[patron_id] = patron
+	return true
+
+
+func debug_change_patron_mood(patron_id: StringName, amount: float) -> bool:
+	if not _moods.has(patron_id):
+		return false
+	_moods[patron_id].change(amount, &"debug_setup")
+	return true
+
+
+func debug_force_finish_drink(patron_id: StringName) -> bool:
+	if not _patrons.has(patron_id):
+		return false
+	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] != &"active":
+		return false
+	_finish_drink(patron_id, patron)
+	return true
+
+
 func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
-	if not _order_system.serve_order(patron["order_id"], _simulated_seconds):
+	var order: Dictionary = _order_system.order_snapshot(patron["order_id"])
+	if order.is_empty() or not _order_system.is_open(patron["order_id"]):
+		return false
+	var elapsed := _simulated_seconds - float(order["requested_at"])
+	if elapsed <= ORDER_IMPATIENT_SECONDS:
+		_moods[patron_id].change(5.0, &"prompt_service")
+	if not _order_system.serve_order(
+		patron["order_id"], _simulated_seconds, _moods[patron_id].tip_multiplier()
+	):
 		return false
 	_set_activity(patron, &"drinking", &"drink")
 	# First sip: a prepared dose starts this consumer's countdown.
@@ -989,9 +1157,22 @@ func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
 
 
 func _finish_drink(patron_id: StringName, patron: Dictionary) -> void:
+	var was_max_drunk := int(patron["intoxication"]) >= 3
 	patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
 	patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
 	patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
+	if was_max_drunk:
+		patron["excess_drinks"] = int(patron["excess_drinks"]) + 1
+		_record(&"excess_drink_finished", patron_id, {
+			"count": patron["excess_drinks"], "limit": patron["overdrink_limit"],
+		})
+		if int(patron["excess_drinks"]) >= int(patron["overdrink_limit"]):
+			_patrons[patron_id] = patron
+			_collapse_patron(patron_id, &"overdrink", false)
+			return
+	patron["social_interval"] = _patron_rngs[patron_id].randf_range(
+		SOCIAL_MIN_SECONDS, SOCIAL_MAX_SECONDS
+	)
 	_complete_activity(patron, &"socializing", &"seat")
 	if patron["bladder"] >= 50.0:
 		patron["bathroom_checks_active"] = true
@@ -1478,13 +1659,20 @@ func _advance_collapses(step: float) -> void:
 			_collapses[victim_id] = collapse
 
 
-func _collapse_patron(patron_id: StringName) -> void:
+func _collapse_patron(
+	patron_id: StringName,
+	cause: StringName = &"drugged_drink",
+	apply_drink_effect: bool = true
+) -> void:
 	var patron: Dictionary = _patrons[patron_id]
+	var collapse_room := _patron_room(patron)
 	# The drink still raises Bladder and Intoxication before the Patron goes under.
-	patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
-	patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
-	patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
-	patron["drug_countdown"] = DRUG_COLLAPSE_SECONDS
+	if apply_drink_effect:
+		patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
+		patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
+		patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
+	patron["drug_countdown"] = DRUG_COLLAPSE_SECONDS if cause == &"drugged_drink" else -1.0
+	patron["collapse_cause"] = cause
 	patron["bathroom_checks_active"] = false
 	patron["lifecycle"] = &"unconscious"
 	_set_activity(patron, &"unconscious", &"collapsed")
@@ -1507,8 +1695,59 @@ func _collapse_patron(patron_id: StringName) -> void:
 		"last_chance": 0.0,
 		"last_roll": -1.0,
 		"last_success": false,
+		"cause": cause,
+		"room": collapse_room,
+		"overdrink_noticed": {},
 	}
-	_record(&"drugged_drink_collapse", patron_id)
+	_apply_collapse_mood_reactions(patron_id, collapse_room, cause)
+	_record(&"overdrink_collapse" if cause == &"overdrink" else &"drugged_drink_collapse", patron_id)
+
+
+func _apply_collapse_mood_reactions(
+	victim_id: StringName,
+	room: StringName,
+	cause: StringName
+) -> void:
+	var collapse: Dictionary = _collapses[victim_id]
+	for patron_id: StringName in _patrons:
+		if patron_id == victim_id or _patrons[patron_id]["lifecycle"] != &"active":
+			continue
+		if _patron_room(_patrons[patron_id]) != room:
+			continue
+		if cause == &"overdrink":
+			_moods[patron_id].change(-15.0, &"overdrink_body")
+			collapse["overdrink_noticed"][patron_id] = true
+			_record(&"mood_changed", patron_id, {
+				"cause": &"overdrink_body", "amount": -15.0, "value": _moods[patron_id].value(),
+			})
+		var companion_roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
+		if patron_id in _patrons[victim_id]["companions"] and companion_roll <= 50.0:
+			_moods[patron_id].change(-20.0, &"companion_collapse")
+			_record(&"companion_collapse_mood", patron_id, {
+				"victim_id": victim_id, "value": _moods[patron_id].value(),
+			})
+		if _moods[patron_id].value() <= 0.0:
+			_depart_patron(patron_id, _patrons[patron_id], &"mood_zero")
+	_collapses[victim_id] = collapse
+
+
+func _apply_overdrink_body_mood(patron_id: StringName, patron: Dictionary) -> void:
+	for victim_id: StringName in _collapses:
+		var collapse: Dictionary = _collapses[victim_id]
+		if collapse.get("cause", &"") != &"overdrink":
+			continue
+		if collapse["overdrink_noticed"].has(patron_id):
+			continue
+		if _patron_room(patron) != StringName(collapse["room"]):
+			continue
+		_moods[patron_id].change(-15.0, &"overdrink_body")
+		collapse["overdrink_noticed"][patron_id] = true
+		_collapses[victim_id] = collapse
+		_record(&"mood_changed", patron_id, {
+			"cause": &"overdrink_body", "amount": -15.0, "value": _moods[patron_id].value(),
+		})
+		if _moods[patron_id].value() <= 0.0:
+			_depart_patron(patron_id, patron, &"mood_zero")
 
 
 func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
@@ -1545,6 +1784,10 @@ func _select_helper(victim_id: StringName) -> StringName:
 	var best_index := 999
 	for companion_id: StringName in _patrons[victim_id]["companions"]:
 		if not _patrons.has(companion_id) or _patrons[companion_id]["lifecycle"] != &"active":
+			continue
+		if _moods[companion_id].band() == "Miserable":
+			continue
+		if _patron_room(_patrons[companion_id]) != StringName(_collapses[victim_id].get("room", &"main_hall")):
 			continue
 		var intoxication := int(_patrons[companion_id]["intoxication"])
 		var index := _definition_index(companion_id)
@@ -1876,6 +2119,10 @@ func end_conversation(cultist_id: StringName) -> bool:
 		if not patron["identified"]:
 			patron["identified"] = true
 			_record(&"patron_identified", patron_id, {"cultist_id": cultist_id})
+		if _moods[patron_id].complete_talk(cultist_id):
+			_record(&"mood_changed", patron_id, {
+				"cause": &"first_talk", "amount": 5.0, "value": _moods[patron_id].value(),
+			})
 		var fallback: StringName = (
 			&"awaiting_drink"
 			if not StringName(patron["order_id"]).is_empty() and _order_system.is_open(patron["order_id"])
@@ -2093,9 +2340,12 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 	var order_id: StringName = patron["order_id"]
 	if not order_id.is_empty() and _order_system.is_open(order_id):
 		_order_system.cancel_order(order_id, _simulated_seconds, reason)
-	patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
 	patron["bathroom_checks_active"] = false
-	_set_activity(patron, &"normal_departure", &"front_exit")
+	var departure_started := _set_activity(patron, &"normal_departure", &"front_exit")
+	if not departure_started and patron["activity"] == &"awaiting_drink":
+		# Cancelling the open Order completes that phase, so its deferred Departure can start.
+		_complete_activity(patron, &"normal_departure", &"front_exit")
+	patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
 	if not _physical_navigation_enabled:
 		_behavior_machines[patron_id].submit(&"exited")
 	_patrons[patron_id] = patron

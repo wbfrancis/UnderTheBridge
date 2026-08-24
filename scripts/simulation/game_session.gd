@@ -167,6 +167,30 @@ func serve_patron_order(patron_id: StringName, cultist_id: StringName) -> bool:
 	return served
 
 
+func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = false) -> Dictionary:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return {"accepted": false, "reason": &"invalid_cultist", "roll": -1.0}
+	var result: Dictionary = _ordinary_visits.offer_drink(patron_id, cultist_id, drugged)
+	_emit_snapshot()
+	return result
+
+
+func debug_set_patron_drink_state(
+	patron_id: StringName,
+	intoxication: int,
+	overdrink_limit: int,
+	excess_drinks: int = 0,
+	ideal_intoxication: int = -1
+) -> bool:
+	return _ordinary_visits.debug_set_patron_drink_state(
+		patron_id, intoxication, overdrink_limit, excess_drinks, ideal_intoxication
+	)
+
+
+func debug_change_patron_mood(patron_id: StringName, amount: float) -> bool:
+	return _ordinary_visits.debug_change_patron_mood(patron_id, amount)
+
+
 func set_physical_patron_navigation_enabled(enabled: bool) -> void:
 	_ordinary_visits.set_physical_navigation_enabled(enabled)
 

@@ -31,3 +31,14 @@ func test_cancelled_order_is_terminal_and_pays_nothing() -> void:
 	assert_eq(order["payment"], 0)
 	assert_eq(order["tip"], 0)
 	assert_eq(orders.snapshot()["revenue"], 0)
+
+
+func test_tip_uses_the_mood_multiplier_at_delivery() -> void:
+	var order_system_script := load(ORDER_SYSTEM_PATH)
+	var orders = order_system_script.new()
+	var happy_order: StringName = orders.create_order(&"patron_june", 0.0)
+	assert_true(orders.serve_order(happy_order, 9.0, 1.5))
+	assert_eq(orders.order_snapshot(happy_order)["tip"], 3)
+	var miserable_order: StringName = orders.create_order(&"patron_mara", 10.0)
+	assert_true(orders.serve_order(miserable_order, 12.0, 0.0))
+	assert_eq(orders.order_snapshot(miserable_order)["tip"], 0)

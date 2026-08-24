@@ -5,10 +5,12 @@ const GAME_SESSION_PATH := "res://scripts/simulation/game_session.gd"
 
 func _advance_and_serve_night(session) -> void:
 	# Every service call is an explicit player command; no Cultist acts on its own.
+	var served_patrons: Dictionary = {}
 	for checkpoint in [95.0, 185.0, 305.0, 425.0]:
 		session.advance(checkpoint - float(session.snapshot()["simulated_seconds"]))
 		for patron_id: StringName in session.snapshot()["debug_patron_views"]:
-			session.serve_patron_order(patron_id, &"cultist_01")
+			if not served_patrons.has(patron_id) and session.serve_patron_order(patron_id, &"cultist_01"):
+				served_patrons[patron_id] = true
 	session.advance(1080.0 - float(session.snapshot()["simulated_seconds"]))
 
 
@@ -190,12 +192,12 @@ func test_personal_suspicion_is_independent_and_hidden_behind_normal_bands() -> 
 	var mara_normal: Dictionary = state["normal_patron_views"][&"patron_mara"]
 	var june_debug: Dictionary = state["debug_patron_views"][&"patron_june"]
 
-	assert_eq(june_normal["suspicion_band"], "Uneasy")
+	assert_eq(june_normal["suspicion_band"], "Calm")
 	assert_eq(june_normal["suspicion_cue"], "Cancelled Order")
 	assert_eq(mara_normal["suspicion_band"], "Calm")
 	assert_eq(mara_normal["suspicion_cue"], "No concern")
 	assert_false(june_normal.has("suspicion"), "Normal play must not expose exact Suspicion.")
-	assert_eq(june_debug["suspicion"], 30.0)
+	assert_eq(june_debug["suspicion"], 10.0)
 	assert_eq(june_debug["suspicion_cause"], &"soft")
 	assert_eq(june_debug["latest_suspicion_stimulus"], &"cancelled_order")
 
@@ -204,30 +206,29 @@ func test_soft_suspicion_recovers_only_after_quiet_period_at_approved_rate() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
-	assert_true(session.serve_patron_order(&"patron_june", &"cultist_01"))
-	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
-	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
-	session.report_patron_stimulus(&"patron_june", &"cancelled_order")
+	session.advance(181.1)
+	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 0, 5, 0, 0))
+	session.report_patron_stimulus(&"patron_elias", &"cancelled_order")
+	session.report_patron_stimulus(&"patron_elias", &"cancelled_order")
 
 	session.advance(29.9)
-	var waiting: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
-	assert_eq(waiting["suspicion"], 30.0)
+	var waiting: Dictionary = session.snapshot()["debug_patron_views"][&"patron_elias"]
+	assert_eq(waiting["suspicion"], 10.0)
 	assert_almost_eq(waiting["suspicion_next_recovery_in"], 0.1, 0.001)
 	session.advance(0.1)
-	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 25.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["suspicion"], 5.0)
 	session.advance(10.0)
-	var debug: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
-	assert_eq(debug["suspicion"], 20.0)
-	assert_eq(debug["suspicion_cause"], &"soft")
-	assert_true(debug["suspicion_recoverable"])
+	var debug: Dictionary = session.snapshot()["debug_patron_views"][&"patron_elias"]
+	assert_eq(debug["suspicion"], 0.0)
+	assert_eq(debug["suspicion_cause"], &"none")
+	assert_false(debug["suspicion_recoverable"])
 
 	session.advance(40.0)
 	var recovered: Dictionary = session.snapshot()
-	assert_eq(recovered["debug_patron_views"][&"patron_june"]["suspicion"], 0.0)
-	assert_false(recovered["debug_patron_views"][&"patron_june"]["suspicion_recoverable"])
-	assert_eq(recovered["normal_patron_views"][&"patron_june"]["suspicion_band"], "Calm")
-	assert_eq(recovered["normal_patron_views"][&"patron_june"]["suspicion_cue"], "No concern")
+	assert_eq(recovered["debug_patron_views"][&"patron_elias"]["suspicion"], 0.0)
+	assert_false(recovered["debug_patron_views"][&"patron_elias"]["suspicion_recoverable"])
+	assert_eq(recovered["normal_patron_views"][&"patron_elias"]["suspicion_band"], "Calm")
+	assert_eq(recovered["normal_patron_views"][&"patron_elias"]["suspicion_cue"], "No concern")
 
 
 func test_hard_evidence_creates_permanent_maximum_suspicion_and_escape_response() -> void:
@@ -378,6 +379,8 @@ func test_companion_influence_drifts_up_toward_highest_nearby_group_member() -> 
 	var session = game_session_script.new()
 	session.start_night(707)
 	session.advance(100.0)
+	assert_true(session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0))
+	assert_true(session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0))
 
 	# June and Mara share a table (within 5 m, same room, same Arrival Group).
 	# Pin June at a stable sub-maximum with two non-recoverable stimuli so he is a fixed
@@ -738,7 +741,12 @@ func test_knockout_visual_witnesses_get_hard_evidence_and_hearing_only_get_soft(
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(470.0)  # The full cast is seated in the main hall, all facing the bar.
+	for checkpoint in [100.0, 220.0, 340.0, 460.0]:
+		session.advance(checkpoint - float(session.snapshot()["simulated_seconds"]))
+		for patron_id: StringName in session.snapshot()["debug_patron_views"]:
+			if session.snapshot()["debug_patron_views"][patron_id]["lifecycle"] == &"active":
+				session.debug_set_patron_drink_state(patron_id, 0, 5, 0, 0)
+	session.advance(10.0)  # The full cast is seated in the main hall, all facing the bar.
 
 	# Knock out Mara: her neighbour June has her in line of sight, while the far-side
 	# Patrons are in the same room but beyond view range, so they only hear it.
@@ -901,20 +909,25 @@ func test_departure_anchor_leaves_and_others_roll_stay_independently_once() -> v
 	# The anchor always leaves; the other member rolls once. Seed 707 rolls a leave for Mara.
 	var leave_session = game_session_script.new()
 	leave_session.start_night(707)
-	leave_session.advance(700.0)  # past June & Mara's pre-closing departure (~640 s)
+	leave_session.advance(1.1)
+	leave_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
+	leave_session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
+	leave_session.advance(698.9)  # past June & Mara's pre-closing departure
 	var left: Dictionary = leave_session.snapshot()["debug_patron_views"]
 	assert_eq(left[&"patron_june"]["lifecycle"], &"exited", "The departure anchor always leaves.")
 	assert_false(left[&"patron_june"]["stay_rolled"], "The anchor does not roll to stay.")
 	assert_true(left[&"patron_mara"]["stay_rolled"], "The other member rolls exactly once.")
 	assert_eq(left[&"patron_mara"]["lifecycle"], &"exited", "At seed 707 Mara's roll leaves.")
 
-	# Seed 42 with a boosted stay chance rolls a stay: Mara becomes a solo Patron.
+	# Seed 13 with a boosted stay chance rolls a stay: Mara becomes a solo Patron.
 	var stay_session = game_session_script.new()
-	stay_session.start_night(42)
-	stay_session.advance(600.0)
+	stay_session.start_night(13)
+	stay_session.advance(1.1)
+	stay_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
+	stay_session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
 	for _i in range(10):
 		stay_session.offer_cigarette(&"cultist_01", &"patron_mara")  # lifts the stay chance to 60
-	stay_session.advance(60.0)  # cross the ~640 s departure
+	stay_session.advance(658.9)  # cross the pre-closing departure
 	var stayed: Dictionary = stay_session.snapshot()["debug_patron_views"]
 	assert_eq(stayed[&"patron_june"]["lifecycle"], &"exited", "The anchor leaves even when its friend stays.")
 	assert_true(stayed[&"patron_mara"]["stayed_behind"], "A successful roll keeps Mara behind.")
@@ -932,7 +945,13 @@ func test_stay_chance_uses_bartender_friendship_intoxication_and_suspicion() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(250.0)  # Elias has completed a drink, so his Intoxication is non-zero.
+	session.advance(181.1)
+	assert_true(session.serve_patron_order(&"patron_elias", &"cultist_01"))
+	session.advance(30.1)
+	var current_intoxication: int = session.snapshot()["debug_patron_views"][&"patron_elias"]["intoxication_level"]
+	assert_true(session.debug_set_patron_drink_state(
+		&"patron_elias", current_intoxication, 5, 0, 0
+	))
 
 	var intoxication: float = float(session.snapshot()["debug_patron_views"][&"patron_elias"]["intoxication_level"])
 	var base_expected := clampf(10.0 + 15.0 * intoxication, 0.0, 90.0)
