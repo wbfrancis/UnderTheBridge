@@ -22,12 +22,26 @@ isolate_profile "$PROJECT_ROOT/.godot/headless_profile"
 "$GODOT_BIN" --headless --fixed-fps=60 --path "$PROJECT_ROOT" \
   res://scenes/prototypes/ticket16_presentation_review.tscn -- \
   --stage=full_cast \
+  --movement-scale=1 \
+  --movement-report=res://artifacts/movement_navigation/validation_1x.json
+
+"$GODOT_BIN" --headless --fixed-fps=60 --path "$PROJECT_ROOT" \
+  res://scenes/prototypes/ticket16_presentation_review.tscn -- \
+  --stage=full_cast \
+  --movement-scale=4 \
   --movement-report=res://artifacts/movement_navigation/validation.json
 
-if ! grep -Eq '"passed"[[:space:]]*:[[:space:]]*true' \
-  "$PROJECT_ROOT/artifacts/movement_navigation/validation.json"; then
-  echo "Movement navigation validation failed." >&2
-  exit 1
-fi
+for report in validation_1x.json validation.json; do
+  if ! grep -Eq '"passed"[[:space:]]*:[[:space:]]*true' \
+    "$PROJECT_ROOT/artifacts/movement_navigation/$report"; then
+    echo "Movement navigation validation failed: $report" >&2
+    exit 1
+  fi
+  if ! grep -Eq '"actor_count"[[:space:]]*:[[:space:]]*11' \
+    "$PROJECT_ROOT/artifacts/movement_navigation/$report"; then
+    echo "Movement navigation actor count failed: $report" >&2
+    exit 1
+  fi
+done
 
-echo "Movement navigation validation passed."
+echo "Movement navigation validation passed at 1x and 4x for all 11 actors."

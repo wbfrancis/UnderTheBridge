@@ -179,6 +179,29 @@ func test_restart_constructs_a_clean_second_night() -> void:
 	assert_false(restarted["results"]["visible"])
 
 
+func test_ten_restarts_release_all_actor_and_interaction_state() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	for restart_index in range(10):
+		session.advance(100.0)
+		assert_true(session.debug_force_bathroom(&"patron_june"))
+		assert_true(session.debug_force_bathroom(&"patron_mara"))
+		session.restart_night(800 + restart_index)
+		var clean: Dictionary = session.snapshot()
+		assert_almost_eq(float(clean["simulated_seconds"]), 0.0, 0.0001)
+		assert_eq(clean["bathroom_owner"], &"")
+		assert_eq(clean["bathroom_line_owner"], &"")
+		assert_eq(clean["orders"]["all"].size(), 0)
+		assert_eq(clean["captures"], 0)
+		assert_eq(clean["patrons"]["active_count"], 0)
+		for seat_owner: StringName in clean["seat_owners"].values():
+			assert_true(seat_owner.is_empty())
+		for queue: Dictionary in clean["cultist_queues"].values():
+			assert_true(queue["active"].is_empty())
+			assert_true(queue["pending"].is_empty())
+
+
 func test_personal_suspicion_is_independent_and_hidden_behind_normal_bands() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
@@ -839,6 +862,58 @@ func test_dropping_restarts_unattended_pressure_and_intake_crossing_captures_onc
 	assert_eq(captured["debug_patron_views"][&"patron_elias"]["lifecycle"], &"captured")
 	session.advance(10.0)
 	assert_eq(session.snapshot()["captures"], 1, "The crossing completes the Capture exactly once.")
+
+
+func test_overdrink_drag_uses_half_suspicion_and_exit_crossing_adds_twenty_five() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(1.1)
+	session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
+	session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
+	session.advance(180.0)
+	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 3, 1, 0, 3))
+	assert_true(session.debug_force_finish_drink(&"patron_elias"))
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 0.0)
+
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	session.advance(1.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 25.0,
+		"The first seen Overdrink drag increase is half the normal +50.")
+	session.advance(5.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 30.0,
+		"Each five-second continuing increase is half the normal +10.")
+	session.advance(8.6)
+	var before_exit: float = session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	session.advance(0.3)
+	var after_exit: Dictionary = session.snapshot()
+	assert_eq(
+		float(after_exit["debug_patron_views"][&"patron_june"]["suspicion"]),
+		before_exit + 25.0,
+		"A seen crossing of the door labelled Exit adds +25 Suspicion."
+	)
+	assert_eq(after_exit["capture_log"][-1]["cause"], &"overdrink")
+
+
+func test_dropped_overdrink_body_keeps_mood_record_without_body_suspicion() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	session.advance(1.1)
+	session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
+	session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
+	session.advance(180.0)
+	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 3, 1, 0, 3))
+	assert_true(session.debug_force_finish_drink(&"patron_elias"))
+
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	assert_eq(session.snapshot()["collapses"][&"patron_elias"]["phase"], &"cultist_dragged")
+	assert_true(session.drop_body(&"cultist_01"))
+	var dropped: Dictionary = session.snapshot()
+	assert_eq(dropped["collapses"][&"patron_elias"]["phase"], &"unattended")
+	session.advance(10.0)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 0.0,
+		"An overdrink body never becomes normal Unattended Body pressure after a drop.")
 
 
 func test_friendship_is_stored_per_cultist_banded_and_does_not_decay() -> void:

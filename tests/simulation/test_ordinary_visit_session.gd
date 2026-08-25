@@ -113,6 +113,21 @@ func test_physical_bathroom_phases_wait_for_navigation_thresholds() -> void:
 	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"socializing")
 
 
+func test_physical_closing_departure_has_a_sixty_second_failsafe() -> void:
+	var session = SESSION_SCRIPT.new()
+	session.start(707)
+	session.advance(1.1)
+	session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
+	session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
+	session.set_physical_navigation_enabled(true)
+	session.begin_closing()
+	assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"leaving")
+	session.advance(59.9)
+	assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"leaving")
+	session.advance(0.2)
+	assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"exited")
+
+
 func test_bathroom_line_has_one_waiting_position_and_promotes_its_owner() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)

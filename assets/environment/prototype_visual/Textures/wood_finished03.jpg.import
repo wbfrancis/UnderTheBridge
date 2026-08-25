@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cpr07lrw8h8ed"
 path.s3tc="res://.godot/imported/wood_finished03.jpg-f2e5c0a500add40c146b8416932bed88.s3tc.ctex"
+path.etc2="res://.godot/imported/wood_finished03.jpg-f2e5c0a500add40c146b8416932bed88.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/environment/prototype_visual/Textures/wood_finished03.jpg"
-dest_files=["res://.godot/imported/wood_finished03.jpg-f2e5c0a500add40c146b8416932bed88.s3tc.ctex"]
+dest_files=["res://.godot/imported/wood_finished03.jpg-f2e5c0a500add40c146b8416932bed88.s3tc.ctex", "res://.godot/imported/wood_finished03.jpg-f2e5c0a500add40c146b8416932bed88.etc2.ctex"]
 
 [params]
 

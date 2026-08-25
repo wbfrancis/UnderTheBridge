@@ -138,6 +138,8 @@ func normal_cue() -> String:
 			return "Saw Body Drag"
 		&"overdrink_body_drag_seen_first", &"overdrink_body_drag_seen_continuing":
 			return "Saw Drunk Patron Moved"
+		&"body_intake_seen":
+			return "Saw Patron Taken Through Exit"
 		&"unattended_body_pressure":
 			return "Unattended Body"
 		&"drink_dosed_seen", &"knockout_witnessed", &"trapdoor_capture_witnessed", &"trapdoor_open_seen_seated":
@@ -160,6 +162,8 @@ func _stimulus_effect(stimulus: StringName) -> Dictionary:
 			return {"amount": 25.0, "cause": &"general_danger", "recoverable": true}
 		&"overdrink_body_drag_seen_continuing":
 			return {"amount": 5.0, "cause": &"general_danger", "recoverable": true}
+		&"body_intake_seen":
+			return {"amount": 25.0, "cause": &"general_danger", "recoverable": true}
 		&"trapdoor_heard":
 			return {"amount": 10.0, "cause": &"general_danger", "recoverable": true}
 		&"knockout_heard":

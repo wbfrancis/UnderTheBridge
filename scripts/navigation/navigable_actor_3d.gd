@@ -20,6 +20,7 @@ var arrival_distance := ARRIVAL_DISTANCE
 
 var _active_action_id := -1
 var _target_position := Vector3.ZERO
+var _remaining_waypoints: Array[Vector3] = []
 var _progress = PROGRESS_TRACKER_SCRIPT.new()
 var _selection_ring: MeshInstance3D
 
@@ -100,15 +101,24 @@ func set_speed_multiplier(value: float) -> void:
 
 
 func navigate(action_id: int, target: Vector3) -> void:
+	navigate_path(action_id, [target])
+
+
+func navigate_path(action_id: int, waypoints: Array[Vector3]) -> void:
+	if waypoints.is_empty():
+		cancel_navigation()
+		return
 	_active_action_id = action_id
-	_target_position = target
+	_remaining_waypoints = waypoints.duplicate()
+	_target_position = _remaining_waypoints.pop_front()
 	_progress.reset(global_position)
 	if navigation_agent != null:
-		navigation_agent.target_position = target
+		navigation_agent.target_position = _target_position
 
 
 func cancel_navigation() -> void:
 	_active_action_id = -1
+	_remaining_waypoints.clear()
 	velocity = Vector3.ZERO
 	if navigation_agent != null:
 		navigation_agent.velocity = Vector3.ZERO
@@ -164,6 +174,11 @@ func _repath() -> void:
 
 
 func _finish_navigation() -> void:
+	if not _remaining_waypoints.is_empty():
+		_target_position = _remaining_waypoints.pop_front()
+		_progress.reset(global_position)
+		navigation_agent.target_position = _target_position
+		return
 	var completed_action_id := _active_action_id
 	_active_action_id = -1
 	velocity = Vector3.ZERO
@@ -174,6 +189,7 @@ func _finish_navigation() -> void:
 func _fail_navigation() -> void:
 	var failed_action_id := _active_action_id
 	_active_action_id = -1
+	_remaining_waypoints.clear()
 	velocity = Vector3.ZERO
 	navigation_agent.velocity = Vector3.ZERO
 	navigation_stuck.emit(actor_id, failed_action_id)
@@ -181,4 +197,9 @@ func _fail_navigation() -> void:
 
 func _update_max_speed() -> void:
 	if navigation_agent != null:
+		var avoidance_scale := maxf(simulation_scale, 1.0)
 		navigation_agent.max_speed = base_speed * speed_multiplier * simulation_scale
+		# At high simulation speed, agents must look proportionally farther ahead or
+		# two neighbours can reach a narrow seat approach before RVO can separate them.
+		navigation_agent.neighbor_distance = 6.0 * avoidance_scale
+		navigation_agent.time_horizon_agents = 1.5 * avoidance_scale

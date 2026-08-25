@@ -191,6 +191,10 @@ func debug_change_patron_mood(patron_id: StringName, amount: float) -> bool:
 	return _ordinary_visits.debug_change_patron_mood(patron_id, amount)
 
 
+func debug_force_finish_drink(patron_id: StringName) -> bool:
+	return _ordinary_visits.debug_force_finish_drink(patron_id)
+
+
 func set_physical_patron_navigation_enabled(enabled: bool) -> void:
 	_ordinary_visits.set_physical_navigation_enabled(enabled)
 

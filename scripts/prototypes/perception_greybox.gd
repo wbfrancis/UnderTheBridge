@@ -148,6 +148,9 @@ var _navigation_region: NavigationRegion3D
 var _navigation_ready := false
 var _movement_feedback := "Select a Cultist, then right-click the floor to move. Hold Shift to queue."
 var _movement_report_path := ""
+var _movement_capture_path := ""
+var _movement_validation_scale := 4.0
+var _capture_navigation_enabled := false
 var _body_root: Node3D
 var _event_root: Node3D
 var _camera: Camera3D
@@ -177,8 +180,14 @@ func _ready() -> void:
 	_session.snapshot_changed.connect(_refresh)
 	_set_scenario(_command_line_value("--stage=", review_stage))
 	var capture_path := _command_line_value("--capture=")
+	var capture_frames := maxi(6, int(_command_line_value("--capture-frames=", "6")))
+	_capture_navigation_enabled = not capture_path.is_empty() and capture_frames > 6
 	var report_path := _command_line_value("--report=")
 	_movement_report_path = _command_line_value("--movement-report=")
+	_movement_capture_path = _command_line_value("--movement-capture=")
+	_movement_validation_scale = clampf(
+		float(_command_line_value("--movement-scale=", "4.0")), 1.0, 4.0
+	)
 	var identify_patron := StringName(_command_line_value("--identify-patron="))
 	if not identify_patron.is_empty():
 		_session.begin_conversation(&"cultist_01", identify_patron)
@@ -197,7 +206,7 @@ func _ready() -> void:
 		_capture_mode = true
 	if not capture_path.is_empty():
 		_capture_mode = true
-		_capture_after_render.call_deferred(capture_path)
+		_capture_after_render.call_deferred(capture_path, capture_frames)
 	elif not report_path.is_empty():
 		_capture_mode = true
 		_write_validation_report.call_deferred(report_path)
@@ -575,18 +584,53 @@ func _run_movement_validation(report_path: String) -> void:
 		&"cultist_02": [Vector3(0.0, NAVIGATION_FLOOR_Y, 8.0)],
 		&"cultist_03": [Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)],
 	}
+	var patron_targets := {
+		&"patron_june": Vector3(-12.0, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_mara": Vector3(-10.5, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_elias": Vector3(-6.0, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_ruth": Vector3(-4.5, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_walter": Vector3(4.5, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_nell": Vector3(6.0, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_vincent": Vector3(10.5, NAVIGATION_FLOOR_Y, 6.0),
+		&"patron_clara": Vector3(12.0, NAVIGATION_FLOOR_Y, 6.0),
+	}
 	if _navigation_ready:
 		for cultist_id: StringName in CULTIST_IDS:
 			var actor := _cultist_nodes[cultist_id] as NavigableActor3D
-			actor.set_simulation_scale(4.0)
+			actor.set_simulation_scale(_movement_validation_scale)
 			var plan = _movement_plans[cultist_id]
 			var destinations: Array = targets[cultist_id]
 			plan.issue_move(destinations[0], false)
 			for index in range(1, destinations.size()):
 				plan.issue_move(destinations[index], true)
 			_sync_cultist_navigation(cultist_id)
-		for patron_id: StringName in _patron_nodes:
-			(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(4.0)
+		for patron_id: StringName in ALL_PATRON_IDS:
+			(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(
+				_movement_validation_scale
+			)
+		# Patrons arrive as authored pairs, so validate the same waves instead of
+		# forcing all eight through one seat approach in the same physics frame.
+		for group_start in range(0, ALL_PATRON_IDS.size(), 2):
+			var wave: Array[StringName] = [
+				ALL_PATRON_IDS[group_start], ALL_PATRON_IDS[group_start + 1],
+			]
+			for patron_id: StringName in wave:
+				var actor := _patron_nodes[patron_id] as NavigableActor3D
+				var target: Vector3 = patron_targets[patron_id]
+				_patron_visual_targets[patron_id] = target
+				actor.navigate_path(_next_patron_move_id, _seat_approach_route(target))
+				_next_patron_move_id += 1
+			var wave_frames := 0
+			while wave_frames < 900:
+				var wave_complete := true
+				for patron_id: StringName in wave:
+					if (_patron_nodes[patron_id] as NavigableActor3D).is_navigating():
+						wave_complete = false
+						break
+				if wave_complete:
+					break
+				await get_tree().physics_frame
+				wave_frames += 1
 
 	var frame_count := 0
 	while _navigation_ready and frame_count < 900:
@@ -634,6 +678,8 @@ func _run_movement_validation(report_path: String) -> void:
 		"passed": passed,
 		"navigation_ready": _navigation_ready,
 		"frames": frame_count,
+		"simulation_scale": _movement_validation_scale,
+		"actor_count": final_positions.size() + patron_positions.size(),
 		"selected_cultist": String(_selected_cultist_id),
 		"cultists": final_positions,
 		"patrons": patron_positions,
@@ -643,6 +689,11 @@ func _run_movement_validation(report_path: String) -> void:
 	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify(report, "  "))
+		file.close()
+	if not _movement_capture_path.is_empty():
+		var capture_path := ProjectSettings.globalize_path(_movement_capture_path)
+		DirAccess.make_dir_recursive_absolute(capture_path.get_base_dir())
+		get_viewport().get_texture().get_image().save_png(capture_path)
 	get_tree().quit(0 if passed else 1)
 
 
@@ -922,7 +973,9 @@ func _refresh(state: Dictionary) -> void:
 func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
 	actor.set_simulation_scale(
-		PLAY_SCALE if _playing or not _movement_report_path.is_empty() else 0.0
+		PLAY_SCALE
+		if _playing or not _movement_report_path.is_empty() or _capture_navigation_enabled
+		else 0.0
 	)
 	actor.set_speed_multiplier(_patron_speed_multiplier(debug["activity"]))
 	var target := _patron_target(debug)
@@ -930,8 +983,17 @@ func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
 	if previous.is_equal_approx(target):
 		return
 	_patron_visual_targets[patron_id] = target
-	actor.navigate(_next_patron_move_id, target)
+	if debug["navigation_destination"] in [&"seat", &"drink"]:
+		actor.navigate_path(_next_patron_move_id, _seat_approach_route(target))
+	else:
+		actor.navigate(_next_patron_move_id, target)
 	_next_patron_move_id += 1
+
+
+func _seat_approach_route(target: Vector3) -> Array[Vector3]:
+	# The south aisle keeps paired Patrons from blocking each other on opposite
+	# sides of a table. Only the last waypoint completes the simulation phase.
+	return [Vector3(target.x, NAVIGATION_FLOOR_Y, 3.8), target]
 
 
 func _patron_target(debug: Dictionary) -> Vector3:
@@ -962,6 +1024,8 @@ func _patron_speed_multiplier(activity: StringName) -> float:
 
 
 func _on_patron_destination_reached(patron_id: StringName, _action_id: int) -> void:
+	if not _movement_report_path.is_empty():
+		return
 	_session.patron_destination_reached(patron_id)
 	if _latest_state.is_empty() or not _latest_state["debug_patron_views"].has(patron_id):
 		return
@@ -1113,7 +1177,9 @@ func _set_scenario(scenario_id: String) -> void:
 	_staged_bodies.clear()
 	_events.clear()
 	_session.restart_night(707)
-	if scenario_id in ["full_cast", "front_exit"]:
+	if scenario_id == "full_cast":
+		_stage_full_cast()
+	elif scenario_id == "front_exit":
 		_session.advance(421.0)
 	elif scenario_id == "service_wing":
 		_session.advance(92.0)
@@ -1162,6 +1228,19 @@ func _set_scenario(scenario_id: String) -> void:
 	_session.set_physical_patron_navigation_enabled(true)
 	_update_camera_for_scenario()
 	_refresh(_session.snapshot())
+
+
+func _stage_full_cast() -> void:
+	var configured: Dictionary = {}
+	for checkpoint in [91.1, 181.1, 301.1, 421.1]:
+		_session.advance(checkpoint - float(_session.snapshot()["simulated_seconds"]))
+		for patron_id: StringName in _session.snapshot()["debug_patron_views"]:
+			var patron: Dictionary = _session.snapshot()["debug_patron_views"][patron_id]
+			if patron["lifecycle"] != &"active" or configured.has(patron_id):
+				continue
+			_session.serve_patron_order(patron_id, &"cultist_01")
+			_session.debug_set_patron_drink_state(patron_id, 0, 5, 0, 0)
+			configured[patron_id] = true
 
 
 func _update_camera_for_scenario() -> void:
@@ -1441,8 +1520,8 @@ func _command_line_flag(flag: String) -> bool:
 	return flag in OS.get_cmdline_user_args()
 
 
-func _capture_after_render(capture_path: String) -> void:
-	for _frame in 6:
+func _capture_after_render(capture_path: String, wait_frames: int = 6) -> void:
+	for _frame in wait_frames:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	var absolute_path := ProjectSettings.globalize_path(capture_path)

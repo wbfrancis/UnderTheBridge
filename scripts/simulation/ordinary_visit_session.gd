@@ -50,6 +50,7 @@ const BATHROOM_SLOT := &"bathroom_occupant"
 const BATHROOM_LINE_SLOT := &"bathroom_line_01"
 const INTERCEPT_SLOT := &"intercept_position"
 const DEPARTURE_AFTER_SEATED_SECONDS := 540.0
+const PHYSICAL_DEPARTURE_TIMEOUT_SECONDS := 60.0
 const DRINK_SECONDS := 30.0
 const ORDER_IMPATIENT_SECONDS := 30.0
 const ORDER_FAILURE_SECONDS := 60.0
@@ -86,6 +87,7 @@ const BODY_PICKUP_SECONDS := 1.0
 # 50%-speed drag to the Tunnel Intake; the same abstract front path as the Helper carry.
 const DRAG_TO_INTAKE_SECONDS := 14.0
 const DRAG_MOVEMENT_SCALE := 0.5
+const DRAG_WITNESS_INTERVAL_SECONDS := 5.0
 # Friendship Capture and stay-behind departures, from the GDD §5/§10.4/§11 and TECHNICAL_DESIGN §9.
 const FRIENDSHIP_CIGARETTE_BONUS := 10.0
 const FRIENDSHIP_CONVERSATION_PER_SECOND := 0.75
@@ -852,6 +854,8 @@ func _new_patron(
 		"overdrink_limit": patron_rng.randi_range(1, 5),
 		"excess_drinks": 0,
 		"collapse_cause": &"",
+		"body_room": &"",
+		"body_position": Vector2.ZERO,
 		"intoxication_decay_in": -1.0,
 		"social_interval": patron_rng.randf_range(SOCIAL_MIN_SECONDS, SOCIAL_MAX_SECONDS),
 		"order_impatient": false,
@@ -862,6 +866,7 @@ func _new_patron(
 		"recent_bathroom_rolls": [],
 		"navigation_destination": &"entrance" if lifecycle == &"not_arrived" else &"seat",
 		"navigation_arrived": true,
+		"departure_timeout": -1.0,
 		"identified": false,
 		"friendship": {&"cultist_01": 0.0, &"cultist_02": 0.0, &"cultist_03": 0.0},
 		"friendship_capturable": friendship_capturable,
@@ -906,6 +911,14 @@ func _activate_due_groups() -> void:
 
 func _advance_patron(patron_id: StringName, delta: float) -> void:
 	var patron: Dictionary = _patrons[patron_id]
+	if patron["lifecycle"] == &"leaving":
+		patron["departure_timeout"] = float(patron["departure_timeout"]) - delta
+		if float(patron["departure_timeout"]) <= TIME_EPSILON:
+			patron["lifecycle"] = &"exited"
+			_behavior_machines[patron_id].submit(&"exited")
+			_record(&"departure_timeout_expired", patron_id)
+		_patrons[patron_id] = patron
+		return
 	if patron["lifecycle"] != &"active":
 		return
 	var recovered: float = _suspicion_states[patron_id].advance(delta)
@@ -1666,6 +1679,7 @@ func _collapse_patron(
 ) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	var collapse_room := _patron_room(patron)
+	var collapse_position := _patron_position(patron)
 	# The drink still raises Bladder and Intoxication before the Patron goes under.
 	if apply_drink_effect:
 		patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
@@ -1673,6 +1687,8 @@ func _collapse_patron(
 		patron["intoxication_decay_in"] = INTOXICATION_DECAY_SECONDS
 	patron["drug_countdown"] = DRUG_COLLAPSE_SECONDS if cause == &"drugged_drink" else -1.0
 	patron["collapse_cause"] = cause
+	patron["body_room"] = collapse_room
+	patron["body_position"] = collapse_position
 	patron["bathroom_checks_active"] = false
 	patron["lifecycle"] = &"unconscious"
 	_set_activity(patron, &"unconscious", &"collapsed")
@@ -1931,6 +1947,14 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 		return false
 	if is_cultist_busy(cultist_id):
 		return false
+	if _collapses.has(victim_id):
+		var collapse: Dictionary = _collapses[victim_id]
+		if collapse["phase"] not in [&"reacting", &"unattended"]:
+			return false
+		collapse["phase"] = &"cultist_dragged"
+		collapse["remaining"] = 0.0
+		collapse["helper_id"] = &""
+		_collapses[victim_id] = collapse
 	_perception.set_body_state(victim_id, &"held")
 	_drags[victim_id] = {
 		"victim_id": victim_id,
@@ -1938,6 +1962,10 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 		"phase": &"pickup",
 		"remaining": BODY_PICKUP_SECONDS,
 		"movement_scale": DRAG_MOVEMENT_SCALE,
+		"witness_elapsed": 0.0,
+		"source_room": _patrons[victim_id].get("body_room", &"main_hall"),
+		"source_position": _patrons[victim_id].get("body_position", BAR_POSITION),
+		"overdrink": _patrons[victim_id].get("collapse_cause", &"") == &"overdrink",
 	}
 	_record(&"body_pickup_started", victim_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
@@ -1953,9 +1981,17 @@ func drop_body(cultist_id: StringName) -> bool:
 	_drags.erase(victim_id)
 	var patron: Dictionary = _patrons[victim_id]
 	_set_activity(patron, &"unconscious", &"collapsed")
-	_patrons[victim_id] = patron
 	# A fresh grace period: the abandoned body is Unattended again.
-	_perception.drop_body(victim_id, _patron_room(patron), _patron_position(patron))
+	patron["body_room"] = _patron_room(patron)
+	patron["body_position"] = _patron_position(patron)
+	if _collapses.has(victim_id):
+		var collapse: Dictionary = _collapses[victim_id]
+		collapse["phase"] = &"unattended"
+		collapse["room"] = patron["body_room"]
+		_collapses[victim_id] = collapse
+	if patron.get("collapse_cause", &"") != &"overdrink":
+		_perception.drop_body(victim_id, patron["body_room"], patron["body_position"])
+	_patrons[victim_id] = patron
 	_record(&"body_dropped", victim_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
 	return true
@@ -2004,6 +2040,9 @@ func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
 	_witness_knockout(victim_id, source_room, source_position)
 	patron["bathroom_checks_active"] = false
 	patron["lifecycle"] = &"unconscious"
+	patron["collapse_cause"] = &"knockout"
+	patron["body_room"] = source_room
+	patron["body_position"] = source_position
 	_set_activity(patron, &"unconscious", &"collapsed")
 	if not StringName(patron["seat"]).is_empty():
 		_seat_owners[patron["seat"]] = &""
@@ -2045,10 +2084,15 @@ func _advance_drags(step: float) -> void:
 					var patron: Dictionary = _patrons[victim_id]
 					_set_activity(patron, &"being_dragged", &"tunnel")
 					_patrons[victim_id] = patron
+					_apply_drag_witnessing(victim_id, drag, true)
 					_record(&"body_drag_started", victim_id, {"cultist_id": drag["cultist_id"]})
 			&"dragging":
 				if _physical_navigation_enabled and not _patrons[victim_id]["navigation_arrived"]:
 					continue
+				drag["witness_elapsed"] = float(drag["witness_elapsed"]) + step
+				while float(drag["witness_elapsed"]) + TIME_EPSILON >= DRAG_WITNESS_INTERVAL_SECONDS:
+					drag["witness_elapsed"] = float(drag["witness_elapsed"]) - DRAG_WITNESS_INTERVAL_SECONDS
+					_apply_drag_witnessing(victim_id, drag, false)
 				drag["remaining"] = 0.0 if _physical_navigation_enabled else float(drag["remaining"]) - step
 				if float(drag["remaining"]) <= TIME_EPSILON:
 					_drags[victim_id] = drag
@@ -2062,15 +2106,38 @@ func _advance_drags(step: float) -> void:
 # erased and the body removed, so a finished drag cannot capture the victim again.
 func _capture_dragged_body(victim_id: StringName) -> void:
 	var drag: Dictionary = _drags[victim_id]
+	_apply_intake_witnessing(victim_id, drag)
 	_drags.erase(victim_id)
+	_collapses.erase(victim_id)
 	_perception.remove_body(victim_id)
 	var patron: Dictionary = _patrons[victim_id]
 	_interaction_registry.release_actor(victim_id)
 	patron["lifecycle"] = &"captured"
 	_set_activity(patron, &"captured", &"tunnel")
 	_patrons[victim_id] = patron
-	_captures.append({"id": victim_id, "cause": &"knockout", "at": _simulated_seconds})
-	_record(&"capture", victim_id, {"cause": &"knockout", "cultist_id": drag["cultist_id"]})
+	var cause: StringName = &"overdrink" if drag["overdrink"] else &"knockout"
+	_captures.append({"id": victim_id, "cause": cause, "at": _simulated_seconds})
+	_record(&"capture", victim_id, {"cause": cause, "cultist_id": drag["cultist_id"]})
+
+
+func _apply_drag_witnessing(victim_id: StringName, drag: Dictionary, first: bool) -> void:
+	var stimulus: StringName
+	if drag["overdrink"]:
+		stimulus = &"overdrink_body_drag_seen_first" if first else &"overdrink_body_drag_seen_continuing"
+	else:
+		stimulus = &"body_drag_seen_first" if first else &"body_drag_seen_continuing"
+	var source_position: Vector2 = drag["source_position"] if first else BAR_POSITION
+	for patron_id: StringName in _perception.visual_recipients(
+		drag["source_room"], source_position, _active_perceivers()
+	):
+		_route_stimulus(patron_id, stimulus, &"visual", victim_id)
+
+
+func _apply_intake_witnessing(victim_id: StringName, drag: Dictionary) -> void:
+	for patron_id: StringName in _perception.visual_recipients(
+		drag["source_room"], BAR_POSITION, _active_perceivers()
+	):
+		_route_stimulus(patron_id, &"body_intake_seen", &"visual", victim_id)
 
 
 # --- Friendship building and Friendship Capture (GDD §10.4/§11) --------------
@@ -2346,6 +2413,9 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 		# Cancelling the open Order completes that phase, so its deferred Departure can start.
 		_complete_activity(patron, &"normal_departure", &"front_exit")
 	patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
+	patron["departure_timeout"] = (
+		PHYSICAL_DEPARTURE_TIMEOUT_SECONDS if _physical_navigation_enabled else -1.0
+	)
 	if not _physical_navigation_enabled:
 		_behavior_machines[patron_id].submit(&"exited")
 	_patrons[patron_id] = patron
