@@ -33,7 +33,7 @@ const OFFSETS: Array[Vector2] = [
 	Vector2(0.0, -84.0),
 ]
 
-const INDICATOR_SIZE := Vector2(38.0, 34.0)
+const INDICATOR_SIZE := Vector2(48.0, 34.0)
 ## Only an urgent state earns an edge marker: a persistent Escape, a persistent
 ## Investigation, and the transient danger reaction. Everything else is ordinary
 ## and stays inside the scene.
@@ -246,7 +246,7 @@ func _paint_indicator(
 	button.custom_minimum_size = rect.size
 	button.size = rect.size
 	button.visible = true
-	button.text = String(bubble["icon"])
+	button.text = "%s %s" % [_indicator_arrow(rect), bubble["icon"]]
 	button.tooltip_text = label
 	if "accessibility_name" in button:
 		button.set("accessibility_name", label)
@@ -255,6 +255,21 @@ func _paint_indicator(
 		button.add_theme_stylebox_override(state, style)
 	button.add_theme_color_override("font_color", Color(bubble["color"]))
 	button.set_meta("actor_id", actor_id)
+
+
+func _indicator_arrow(rect: Rect2) -> String:
+	var bounds := _usable_bounds()
+	var gaps := {
+		"left": absf(rect.position.x - bounds.position.x),
+		"right": absf(rect.end.x - bounds.end.x),
+		"top": absf(rect.position.y - bounds.position.y),
+		"bottom": absf(rect.end.y - bounds.end.y),
+	}
+	var edge := "left"
+	for candidate: String in gaps:
+		if float(gaps[candidate]) < float(gaps[edge]):
+			edge = candidate
+	return {"left": "←", "right": "→", "top": "↑", "bottom": "↓"}[edge]
 
 
 func _indicator(index: int) -> Button:

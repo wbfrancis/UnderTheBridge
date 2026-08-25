@@ -115,7 +115,7 @@ func navigate_path(action_id: int, waypoints: Array[Vector3]) -> void:
 		return
 	_active_action_id = action_id
 	_remaining_waypoints = waypoints.duplicate()
-	_planned_distance = _path_length(global_position, waypoints)
+	_planned_distance = _planned_route_length(global_position, waypoints)
 	_travelled_distance = 0.0
 	_last_travel_position = global_position
 	_target_position = _remaining_waypoints.pop_front()
@@ -151,11 +151,22 @@ func navigation_progress_ratio() -> Variant:
 	return clampf(_travelled_distance / _planned_distance, 0.0, 1.0)
 
 
-func _path_length(from: Vector3, waypoints: Array[Vector3]) -> float:
+func _planned_route_length(from: Vector3, waypoints: Array[Vector3]) -> float:
 	var total := 0.0
 	var cursor := from
+	var navigation_map := navigation_agent.get_navigation_map() if navigation_agent != null else RID()
 	for waypoint: Vector3 in waypoints:
-		total += cursor.distance_to(waypoint)
+		var path := PackedVector3Array()
+		if (
+			navigation_map.is_valid()
+			and NavigationServer3D.map_get_iteration_id(navigation_map) > 0
+		):
+			path = NavigationServer3D.map_get_path(navigation_map, cursor, waypoint, true)
+		if path.size() >= 2:
+			for index in range(1, path.size()):
+				total += path[index - 1].distance_to(path[index])
+		else:
+			total += cursor.distance_to(waypoint)
 		cursor = waypoint
 	return total
 

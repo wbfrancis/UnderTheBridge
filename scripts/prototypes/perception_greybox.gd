@@ -48,9 +48,9 @@ const SCENARIOS := {
 const CAMERA_POSITION := Vector3(3.0, 33.0, 33.0)
 const CAMERA_TARGET := Vector3(3.0, 0.0, 6.0)
 const CAMERA_FOV := 50.0
-const PRESENTATION_CAMERA_POSITION := Vector3(0.0, 10.0, 34.0)
-const PRESENTATION_CAMERA_TARGET := Vector3(0.0, 1.0, 3.0)
-const PRESENTATION_CAMERA_FOV := 30.0
+const PRESENTATION_CAMERA_POSITION := Vector3(0.0, 8.2, 34.0)
+const PRESENTATION_CAMERA_TARGET := Vector3(0.0, 0.0, 3.0)
+const PRESENTATION_CAMERA_FOV := 25.0
 const SERVICE_CAMERA_POSITION := Vector3(17.0, 10.0, 37.0)
 const SERVICE_CAMERA_TARGET := Vector3(17.0, 1.0, 6.0)
 const FRONT_CAMERA_POSITION := Vector3(-17.5, 10.0, 36.0)
@@ -250,8 +250,8 @@ func _ready() -> void:
 	_emote_report_path = _command_line_value("--emote-report=")
 	_emote_play_scale = float(_command_line_value("--emote-play=", "-1"))
 	_set_emote_accessibility(
-		_command_line_flag("--emote-labels"),
-		float(_command_line_value("--emote-scale=", "1.0"))
+		_emote_labels or _command_line_flag("--emote-labels"),
+		float(_command_line_value("--emote-scale=", str(_emote_ui_scale)))
 	)
 	_movement_validation_scale = clampf(
 		float(_command_line_value("--movement-scale=", "4.0")), 1.0, 4.0
@@ -1700,7 +1700,8 @@ func _refresh_scene(state: Dictionary) -> void:
 		cone.visible = _debug_visible
 		(pivot.get_node("CompanionRing") as MeshInstance3D).visible = _debug_visible
 		var label := pivot.get_node("Name") as Label3D
-		label.text = "%s\n%s · %s" % [normal["name"], normal["visible_activity"], normal["suspicion_band"]]
+		label.text = String(normal["name"])
+		label.visible = label.text != "???"
 		label.modulate = band_color
 
 	for cultist_id: StringName in _cultist_nodes:
@@ -1785,21 +1786,13 @@ func _on_patron_navigation_stuck(patron_id: StringName, _action_id: int) -> void
 	_next_patron_move_id += 1
 
 
-func _refresh_cultists(state: Dictionary) -> void:
+func _refresh_cultists(_state: Dictionary) -> void:
 	if not _presentation_prototype:
 		return
 	for cultist_id: StringName in CULTIST_IDS:
 		var pivot := _cultist_pivot(cultist_id)
-		var cultist: Dictionary = state["cultists"][cultist_id]
 		var label := pivot.get_node("Name") as Label3D
-		var activity: String = _humanize(cultist["activity"])
-		var request: Dictionary = _commands.active_request(cultist_id)
-		if not request.is_empty():
-			activity = String(COMMAND_SYSTEM_SCRIPT.CATALOG[request["command"]]["label"])
-		label.text = "%s\n%s" % [
-			String(cultist_id).replace("cultist_", "CULTIST "),
-			activity,
-		]
+		label.text = _cultist_display_name(cultist_id)
 
 
 func _refresh_bodies() -> void:
@@ -1983,11 +1976,29 @@ func _preview_hud_state(state_id: String) -> void:
 	if state_id.is_empty() or _bottom_hud == null:
 		return
 	_hud_preview = ""
+	_movement_feedback = ""
+	_feedback_serial += 1
 	match state_id:
+		"quiet":
+			_refresh_hud(_session.snapshot())
 		"settings":
 			_bottom_hud.activate(&"settings_menu")
 		"developer":
 			_bottom_hud.activate(&"developer_menu")
+		"clock_hover":
+			_bottom_hud.preview_clock_hover()
+		"speed_2":
+			_request_time_scale(2.0)
+		"speed_4":
+			_request_time_scale(4.0)
+		"reduced_motion":
+			_reduced_motion = true
+			_refresh_hud(_session.snapshot())
+			_bottom_hud.activate(&"settings_menu")
+		"offscreen":
+			_stage_emote_states()
+			_set_camera_view(SERVICE_CAMERA_POSITION, SERVICE_CAMERA_TARGET)
+			_advance_emotes(0.0)
 		"pause":
 			_open_pause_menu()
 		"queue":
@@ -2176,6 +2187,9 @@ func _hud_view(state: Dictionary) -> Dictionary:
 	var remaining := int(maxf(0.0, night_length - elapsed))
 	var results: Dictionary = state["results"]
 	var quota := maxi(1, int(results["capture_quota"]))
+	var displayed_captures := int(results["captures"])
+	if _hud_preview_outcome == &"victory":
+		displayed_captures = quota
 	return {
 		"selected_cultist": _selected_cultist_view(state),
 		"action_tiles": _action_tile_views(),
@@ -2195,9 +2209,9 @@ func _hud_view(state: Dictionary) -> Dictionary:
 			"visible": bool(results["visible"]) or not _hud_preview_outcome.is_empty(),
 			"kind": _outcome_kind(state, results),
 			"cause": _outcome_cause(state, results),
-			"captures": int(results["captures"]),
+			"captures": displayed_captures,
 			"capture_quota": quota,
-			"progress_ratio": clampf(float(results["captures"]) / float(quota), 0.0, 1.0),
+			"progress_ratio": clampf(float(displayed_captures) / float(quota), 0.0, 1.0),
 		},
 		"developer": {
 			"visible": _debug_visible,
@@ -2309,14 +2323,16 @@ func _scenario_entries() -> Array[Dictionary]:
 	return entries
 
 
-func _outcome_kind(state: Dictionary, results: Dictionary) -> StringName:
+func _outcome_kind(_state: Dictionary, results: Dictionary) -> StringName:
 	if not _hud_preview_outcome.is_empty():
 		return _hud_preview_outcome
-	if bool(state["defeat"]):
-		return &"exposed"
-	if int(results["captures"]) >= int(results["capture_quota"]):
-		return &"victory"
-	return &"failed"
+	match StringName(results.get("outcome", &"running")):
+		&"success":
+			return &"victory"
+		&"defeat":
+			return &"exposed"
+		_:
+			return &"failed"
 
 
 func _outcome_cause(state: Dictionary, results: Dictionary) -> String:

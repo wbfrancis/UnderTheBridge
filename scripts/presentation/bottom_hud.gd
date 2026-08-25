@@ -24,6 +24,9 @@ const WOOD_TEXTURE: Texture2D = preload(
 	"res://assets/environment/prototype_visual/Textures/wood_finished03.jpg"
 )
 const NIGHT_CLOCK_SCRIPT := preload("res://scripts/presentation/night_clock.gd")
+const EMPTY_PATRON_TEXTURE: Texture2D = preload(
+	"res://assets/ui/green_folio/empty_patron.svg"
+)
 const ICON_DIRECTORY := "res://assets/ui/green_folio/icons/"
 
 # The approved Green Folio palette.
@@ -45,7 +48,7 @@ const TILES_LEFT := 26.0
 const TILES_BOTTOM_GAP := 12.0
 const PORTRAIT_SIZE := Vector2(54.0, 62.0)
 const PORTRAIT_CAPTION_HEIGHT := 32.0
-const CLOCK_SIZE := 78.0
+const CLOCK_SIZE := 92.0
 const PLAYBACK_HEIGHT := 28.0
 const UTILITY_WIDTH := 46.0
 const MIN_UI_SCALE := 0.75
@@ -198,6 +201,15 @@ func render(view: Dictionary) -> void:
 	_render_menus()
 	_render_pause_menu()
 	_render_outcome()
+	_bind_press_feedback()
+
+
+## Opens the real clock Hover Summary for an automated approval frame.
+func preview_clock_hover() -> void:
+	var night: Dictionary = _view["night"]
+	_show_hover(_clock_hover, "%s   Closing %s   %s left" % [
+		night["clock_label"], night["closing_label"], night["remaining_label"],
+	])
 
 
 ## One entry point for player intent, whether it came from a control, a keyboard
@@ -243,6 +255,11 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 			_emit(&"set_ui_scale", {"scale": float(payload.get("scale", 1.0))})
 		&"set_reduced_motion":
 			_emit(&"set_reduced_motion", {"enabled": bool(payload.get("enabled", false))})
+		&"restart_scenario":
+			_close_menus()
+			_emit(&"select_scenario", {
+				"scenario_id": String(_view["developer"].get("scenario_id", "")),
+			})
 
 
 ## What the HUD currently shows. The world adapter and the interface tests read
@@ -280,6 +297,7 @@ func inspect() -> Dictionary:
 			"name": _patron_name.text,
 			"portrait_instance_id": _patron_portrait.get_instance_id(),
 			"portrait_rect": _patron_portrait.get_rect(),
+			"portrait_has_texture": _patron_portrait.texture != null,
 			"name_rect": _patron_name.get_rect(),
 			"name_below_portrait": _is_below(_patron_name, _patron_portrait),
 			"detail_visible": _patron_detail.visible,
@@ -330,7 +348,7 @@ func is_blocking() -> bool:
 # --- Intent rules ------------------------------------------------------------
 
 func _emit(kind: StringName, payload: Dictionary) -> void:
-	if _outcome_modal.visible and kind in TIME_INTENTS:
+	if (_outcome_modal.visible or _pause_menu.visible) and kind in TIME_INTENTS:
 		return
 	intent_submitted.emit(kind, payload)
 
@@ -475,11 +493,14 @@ func _render_patron() -> void:
 	_patron_detail.visible = selected
 	_patron_close.visible = selected
 	_patron_name.text = String(patron.get("name", "")) if selected else "No patron selected"
+	_patron_portrait.texture = (
+		patron.get("portrait") as Texture2D
+		if selected and patron.get("portrait") != null
+		else EMPTY_PATRON_TEXTURE
+	)
 	_patron_portrait.modulate = (
 		Color(patron.get("tint", CREAM)) if selected else Color(INK, 0.28)
 	)
-	if selected and patron.get("portrait") != null:
-		_patron_portrait.texture = patron["portrait"]
 	if not selected:
 		return
 	_patron_activity.text = String(patron.get("visible_activity", ""))
@@ -795,7 +816,8 @@ func _build_patron_zone() -> Control:
 	_patron_activity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(_patron_activity)
 	_patron_close = _icon_button("close", "Clear the Inspected Patron")
-	_patron_close.custom_minimum_size = Vector2(24.0, 22.0)
+	_patron_close.custom_minimum_size = Vector2(44.0, 36.0)
+	_patron_close.expand_icon = false
 	_patron_close.pressed.connect(func() -> void: activate(&"close_patron"))
 	header.add_child(_patron_close)
 
@@ -968,6 +990,11 @@ func _build_developer_menu() -> void:
 		return
 	_developer_built = true
 	var column := _menu_column(_developer_panel)
+	var scenarios_grid := GridContainer.new()
+	scenarios_grid.columns = 2
+	scenarios_grid.add_theme_constant_override("h_separation", 5)
+	scenarios_grid.add_theme_constant_override("v_separation", 5)
+	column.add_child(scenarios_grid)
 	for entry: Dictionary in scenarios:
 		var scenario_id := String(entry["id"])
 		var button := Button.new()
@@ -977,7 +1004,8 @@ func _build_developer_menu() -> void:
 			activate(&"scenario", {"scenario_id": scenario_id})
 		)
 		_scenario_buttons[scenario_id] = button
-		column.add_child(button)
+		button.custom_minimum_size = Vector2(132.0, 30.0)
+		scenarios_grid.add_child(button)
 	var steps := HBoxContainer.new()
 	steps.add_theme_constant_override("separation", 4)
 	column.add_child(steps)
@@ -994,7 +1022,7 @@ func _build_developer_menu() -> void:
 	column.add_child(_debug_toggle)
 	var restart := Button.new()
 	restart.text = "Restart scenario"
-	restart.pressed.connect(func() -> void: activate(&"restart"))
+	restart.pressed.connect(func() -> void: activate(&"restart_scenario"))
 	column.add_child(restart)
 
 
@@ -1217,6 +1245,26 @@ func _show_hover(control: Control, text: String) -> void:
 func _hide_hover() -> void:
 	_hover_text = ""
 	_hover_panel.visible = false
+
+
+func _bind_press_feedback() -> void:
+	for node: Node in _root.find_children("*", "Button", true, false):
+		var button := node as Button
+		if button.has_meta("folio_press_feedback"):
+			continue
+		button.set_meta("folio_press_feedback", true)
+		button.button_down.connect(_on_button_down.bind(button))
+		button.button_up.connect(_on_button_up.bind(button))
+
+
+func _on_button_down(button: Button) -> void:
+	button.pivot_offset = button.size * 0.5
+	if not bool(_view["settings"]["reduced_motion"]):
+		button.scale = Vector2(0.97, 0.97)
+
+
+func _on_button_up(button: Button) -> void:
+	button.scale = Vector2.ONE
 
 
 # --- Styles ------------------------------------------------------------------

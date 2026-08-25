@@ -25,25 +25,43 @@ SCENE="res://scenes/prototypes/ticket16_presentation_review.tscn"
 ARTIFACT_DIR="$PROJECT_ROOT/artifacts/green_folio_hud"
 mkdir -p "$ARTIFACT_DIR"
 
-# The Patrons need time to walk in, so every frame runs the same settle budget.
-FRAMES=720
+# Three seconds at the fixed rate lets the 4x review actors spread through the
+# room without making the capture suite wait on a complete simulated visit.
+FRAMES=180
 
 capture() {
-  local name="$1"; shift
+  local name="$1"; local frames="${2:-$FRAMES}"; shift 2
   "$GODOT_BIN" --path "$PROJECT_ROOT" --fixed-fps=60 --disable-vsync \
-    --rendering-method gl_compatibility "$SCENE" -- \
-    "--stage=full_cast" "--capture-frames=$FRAMES" "--identify-patron=patron_june" \
+    --rendering-method gl_compatibility --resolution 1280x720 "$SCENE" -- \
+    "--stage=full_cast" "--capture-frames=$frames" "--identify-patron=patron_june" \
     "$@" "--capture=res://artifacts/green_folio_hud/${name}.png"
 }
 
-capture night
-capture inspected --inspect-patron=patron_june
-capture action_queue --hud-preview=queue
-capture settings_menu --hud-preview=settings
-capture developer_menu --hud-preview=developer
-capture pause_menu --hud-preview=pause
-capture outcome_success --hud-preview=outcome_victory
-capture outcome_failed --hud-preview=outcome_failed
-capture outcome_exposed --hud-preview=outcome_exposed
+capture night "$FRAMES"
+capture inspected "$FRAMES" --inspect-patron=patron_june --hud-preview=quiet
+capture action_queue "$FRAMES" --hud-preview=queue
+capture settings_menu "$FRAMES" --hud-preview=settings
+capture developer_menu "$FRAMES" --hud-preview=developer
+capture clock_hover "$FRAMES" --hud-preview=clock_hover
+capture speed_2 "$FRAMES" --hud-preview=speed_2
+capture speed_4 "$FRAMES" --hud-preview=speed_4
+capture reduced_motion "$FRAMES" --hud-preview=reduced_motion
+capture offscreen_indicator "$FRAMES" --hud-preview=offscreen
+capture pause_menu 60 --hud-preview=pause
+capture outcome_success 60 --hud-preview=outcome_victory
+capture outcome_failed 60 --hud-preview=outcome_failed
+capture outcome_exposed 60 --hud-preview=outcome_exposed
+
+capture_resolution() {
+  local name="$1"; local resolution="$2"; shift 2
+  "$GODOT_BIN" --path "$PROJECT_ROOT" --fixed-fps=60 --disable-vsync \
+    --rendering-method gl_compatibility --resolution "$resolution" "$SCENE" -- \
+    "--stage=full_cast" "--capture-frames=60" "--identify-patron=patron_june" \
+    --inspect-patron=patron_june --hud-preview=quiet "$@" \
+    "--capture=res://artifacts/green_folio_hud/${name}.png"
+}
+
+capture_resolution inspected_1024 1024x576
+capture_resolution inspected_1920 1920x1080
 
 echo "Green Folio HUD approval frames written to $ARTIFACT_DIR"

@@ -1,4 +1,8 @@
-[gd_resource type="Theme" load_steps=8 format=3]
+[gd_resource type="Theme" load_steps=9 format=3]
+
+[sub_resource type="SystemFont" id="FolioSerif"]
+font_names = PackedStringArray("Baskerville", "Georgia", "Times New Roman")
+font_weight = 500
 
 [sub_resource type="StyleBoxFlat" id="ButtonNormal"]
 content_margin_left = 8.0
@@ -66,6 +70,7 @@ border_color = Color(0.302, 0.1765, 0.0941, 1)
 bg_color = Color(0.2902, 0.5882, 0.4275, 1)
 
 [resource]
+default_font = SubResource("FolioSerif")
 default_font_size = 14
 Button/colors/font_color = Color(0.9176, 0.8471, 0.6588, 1)
 Button/colors/font_disabled_color = Color(0.5412, 0.4784, 0.3686, 1)

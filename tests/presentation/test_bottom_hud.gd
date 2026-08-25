@@ -219,6 +219,8 @@ func test_the_inspected_patron_states_reuse_one_portrait_control() -> void:
 	)
 	assert_eq(empty["name"], "No patron selected")
 	assert_eq(selected["name"], "June")
+	assert_true(bool(empty.get("portrait_has_texture", false)),
+		"The empty Patron state has a recognizable portrait silhouette.")
 
 
 func test_names_render_below_both_portraits() -> void:
@@ -379,6 +381,18 @@ func test_the_pause_menu_offers_resume_restart_settings_and_quit() -> void:
 	)
 
 
+func test_the_pause_menu_blocks_speed_and_space_shortcuts() -> void:
+	await _render({"night": _night(0.0, true, 2.0), "pause_menu_open": true})
+
+	_hud.activate(&"speed_1")
+	_hud.activate(&"speed_2")
+	_hud.activate(&"speed_4")
+	_hud.activate(&"toggle_pause")
+
+	assert_eq(_kinds(), [] as Array[StringName],
+		"Only Resume may restart the Night while the Pause Menu is open.")
+
+
 func test_developer_intents_carry_their_scenario_and_step() -> void:
 	await _render({
 		"developer": {
@@ -395,6 +409,21 @@ func test_developer_intents_carry_their_scenario_and_step() -> void:
 	assert_eq(String(_last(&"select_scenario")["scenario_id"]), "front_exit")
 	assert_eq(float(_last(&"advance_debug_time")["seconds"]), 5.0)
 	assert_true(bool(_last(&"set_debug_visible")["enabled"]))
+
+
+func test_restart_scenario_restages_the_current_developer_scenario() -> void:
+	await _render({
+		"developer": {
+			"visible": false,
+			"scenario_id": "front_exit",
+			"scenarios": [{"id": "front_exit", "label": "FRONT EXIT"}],
+		},
+	})
+
+	_hud.activate(&"restart_scenario")
+
+	assert_eq(_kinds(), [&"select_scenario"] as Array[StringName])
+	assert_eq(String(_last(&"select_scenario")["scenario_id"]), "front_exit")
 
 
 func test_settings_intents_carry_their_new_value() -> void:
