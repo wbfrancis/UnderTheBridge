@@ -135,7 +135,7 @@ The committed behavior of a maximum-suspicion patron searching the bathroom for 
 _Avoid_: Search when referring to the whole state
 
 **Escape**:
-The committed behavior of a maximum-suspicion patron attempting to cross the front exit and expose the operation.
+The committed behavior of a maximum-suspicion patron attempting to cross the front exit and expose the operation. Escape limits Simulation Speed to 1x, but Plain Pause and intercept commands remain available.
 _Avoid_: Normal departure, leaving
 
 **Normal Departure**:
@@ -169,11 +169,15 @@ A validated Cultist command with a target, duration, interruptibility, and commi
 _Avoid_: Task, job
 
 **Action Queue**:
-One active Action followed by up to three pending Actions belonging to one Cultist. A normal command clears the queue, while Shift+command appends the Action.
+One active Action followed by any number of pending Actions belonging to one Cultist. A normal command cancels unfinished work and replaces pending work, while a committed Action finishes before the replacement; Shift+command appends without a queue-size limit.
 _Avoid_: Behavior tree
 
+**Action Chain**:
+A sequence of Actions linked by dependency inside one Action Queue. Cancellation or failure removes its unfinished Actions, then the next unrelated queued Action can start.
+_Avoid_: Task Chain, combo
+
 **Action Tile**:
-The square HUD item for one active or pending Action in the Selected Cultist's Action Queue. The complete row of Action Tiles stays visible above the Bottom HUD while a Cultist is selected.
+The square HUD item for one active or pending Action in the Selected Cultist's Action Queue. The Action Tiles stay visible above the Bottom HUD while a Cultist is selected.
 _Avoid_: Queue item, action row
 
 **Context Menu**:
@@ -185,8 +189,12 @@ The persistent player interface rooted to the lower screen edge. It groups the S
 _Avoid_: Top bar, control strip
 
 **Pause Menu**:
-The in-Night menu opened with Escape. It pauses the Night and offers Resume, Restart, Settings, and Quit.
+The blocking in-Night menu opened with Escape. Closing it with Escape restores the prior playback state, while Resume starts the Night at its selected Simulation Speed.
 _Avoid_: Main Menu, title screen
+
+**Plain Pause**:
+The non-blocking pause toggled with Space or the Bottom HUD. It stops the Night while camera control, inspection, and command entry remain available.
+_Avoid_: Pause Menu, planning mode
 
 **Offscreen Indicator**:
 A screen-edge marker for an urgent actor who is outside the camera view. Pressing it moves the camera to that actor; a transient Hard Evidence marker lasts 2.5 real seconds and freezes during pause.
@@ -208,9 +216,17 @@ _Avoid_: Interaction slot, work spot
 A player-commanded Action that sends the Selected Cultist to a floor destination through the Action Queue. A normal right-click clears the queue, while Shift+right-click appends the Move Action.
 _Avoid_: Direct movement, locomotion override
 
+**Generated Move Action**:
+A visible Move Action that the game adds before a proximity-dependent Patron Action when the Cultist is not adjacent. It tracks the Patron's valid Approach Position and is a linked prerequisite of the requested Action.
+_Avoid_: Hidden approach, automatic pathing
+
 **Talk Action**:
-A player-commanded Action that lets the Selected Cultist speak with an Inspected Patron and identify that Patron when the Action completes.
+A proximity-dependent Action that lets the Selected Cultist speak with an Inspected Patron and identify that Patron when the Action completes.
 _Avoid_: Chat, interview
+
+**Offer Cigarette Action**:
+A proximity-dependent Action that lets the Selected Cultist offer a cigarette to an Inspected Patron.
+_Avoid_: Smoke Action, cigarette command
 
 **Offer Drink Action**:
 A player-commanded Action that offers a carried Prepared Drink to an Inspected Patron without an Order.
@@ -225,7 +241,7 @@ One self-contained 18-minute operation ending in an Outcome Modal and clean rest
 _Avoid_: Level, campaign day
 
 **Simulation Speed**:
-The selected rate at which a Night advances: 1x, 2x, or 4x. Pause stops advancement without changing the selected rate.
+The selected rate at which a Night advances: 1x, 2x, or 4x. Pause stops advancement without changing the selected rate or its visible selection.
 _Avoid_: Playback rate, time scale
 
 **Night Clock**:
