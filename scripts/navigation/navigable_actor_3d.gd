@@ -132,6 +132,12 @@ func active_action_id() -> int:
 	return _active_action_id
 
 
+# The point the actor is currently heading for. Owners re-aim against this when
+# a moving target drifts away from the approach point they asked for.
+func target_position() -> Vector3:
+	return _target_position
+
+
 func _physics_process(delta: float) -> void:
 	if _active_action_id < 0 or navigation_agent == null or simulation_scale <= 0.0:
 		return

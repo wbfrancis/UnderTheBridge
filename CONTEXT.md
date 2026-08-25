@@ -168,6 +168,18 @@ _Avoid_: Task, job
 One active Action followed by up to three pending Actions belonging to one Cultist. A normal command clears the queue, while Shift+command appends the Action.
 _Avoid_: Behavior tree
 
+**Context Menu**:
+The small list of commands that a right-click on a Patron or an authored smart object opens for the Selected Cultist. It shows the queue mode, disables a command that a temporary condition blocks, and reveals no hidden Patron value.
+_Avoid_: Radial menu, action wheel
+
+**Smart Object**:
+An authored world target that offers its own commands, such as the bar work position, the Trapdoor control, or the Tunnel Intake.
+_Avoid_: Interactable, prop
+
+**Approach Position**:
+The authored floor point a Cultist walks to and reserves before a command reaches its Commitment Point.
+_Avoid_: Interaction slot, work spot
+
 **Move Action**:
 A player-commanded Action that sends the Selected Cultist to a floor destination through the Action Queue. A normal right-click clears the queue, while Shift+right-click appends the Move Action.
 _Avoid_: Direct movement, locomotion override

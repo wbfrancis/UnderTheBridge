@@ -44,11 +44,12 @@ flowchart TD
 - Hides: phase transitions, arrival schedule, Closing, Capture quota, results metrics, and defeat checks.
 - Invariant: only a maximum-suspicion Escape crossing the front exit causes immediate defeat.
 
-**CultistAgent**
+**CultistCommandSystem**
 
-- Interface: replace Action Queue, append Action, remove pending Action, cancel current Action, return normal/debug snapshots.
-- Hides: queue validation, Commitment Points, pathing, interaction execution, and failure reasons.
-- Invariant: one active plus at most three pending Actions; an empty queue leaves the Cultist idle.
+- Interface: reset for a new Night, register an authored smart object, resolve the context options for one Selected Cultist and one target, issue a command in Replace or Append mode, remove a pending Action, accept navigation reached/failed callbacks, revalidate queued targets, report the active navigation request, return normal/debug snapshots.
+- Hides: the command catalog, Action Queue lifecycle, target revalidation, the approach stage, the Commitment Point, execution dispatch, and reservation cleanup.
+- Invariant: one active plus at most three pending Actions across Move and contextual commands; an empty queue leaves the Cultist idle; the gameplay effect fires exactly once, at the Commitment Point.
+- Boundary: `GameSession` owns every eligibility rule and every operation. The command seam asks `command_availability` and dispatches; it never restates a rule. Target references carry kind, id, position, and approach slot — never a scene node. See `docs/adr/0002-unify-the-cultist-command-seam.md`.
 
 **PatronAgent**
 
@@ -306,6 +307,9 @@ Automate only:
 - formula bounds and representative Suspicion/Friendship/stay cases
 - representative bathroom-choice bounds and deterministic seeded roll
 - Action Queue replace, Shift-append, pending-row removal, pre/post-Commitment cancellation, and invalid-target progression
+- context resolution and one success plus one ineligible path for every catalog command
+- approach-slot contention producing one owner and one visible rejection
+- the normal command snapshot and menu labels carrying no hidden simulation value
 - exclusive reservation and bathroom FIFO invariants
 - Order served versus 60-second cancellation/payment behavior
 - seated versus standing Trapdoor result, including Max Drunk Hard Evidence downgrade

@@ -4,7 +4,6 @@ extends RefCounted
 signal snapshot_changed(snapshot: Dictionary)
 
 const ORDINARY_VISIT_SESSION_SCRIPT := preload("res://scripts/simulation/ordinary_visit_session.gd")
-const ACTION_QUEUE_SCRIPT := preload("res://scripts/actions/cultist_action_queue.gd")
 const SUPPORTED_TIME_SCALES: Array[float] = [0.0, 1.0, 2.0, 4.0]
 const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
 const PREPARATION_END_SECONDS := 60.0
@@ -24,7 +23,6 @@ var _representative_rolls: Array[int] = []
 var _representative_outcome: StringName = &"running"
 var _rng := RandomNumberGenerator.new()
 var _ordinary_visits = ORDINARY_VISIT_SESSION_SCRIPT.new()
-var _cultist_queues: Dictionary = {}
 var _session_events: Array[Dictionary] = []
 
 
@@ -40,9 +38,6 @@ func start_night(night_seed: int) -> void:
 	_rng.seed = night_seed
 	_ordinary_visits = ORDINARY_VISIT_SESSION_SCRIPT.new()
 	_ordinary_visits.start(night_seed, true)
-	_cultist_queues.clear()
-	for cultist_id in CULTIST_IDS:
-		_cultist_queues[cultist_id] = ACTION_QUEUE_SCRIPT.new()
 	_session_events.clear()
 	_record(&"night_started", {"seed": night_seed})
 	_emit_snapshot()
@@ -323,6 +318,52 @@ func stay_behind_chance(patron_id: StringName) -> float:
 	return _ordinary_visits.stay_behind_chance(patron_id)
 
 
+# --- Cultist command seam ----------------------------------------------------
+# CultistCommandSystem owns the Action Queue and the Commitment Point; the rules
+# behind each command stay here, in the gameplay authority.
+
+func command_availability(
+		command: StringName,
+		cultist_id: StringName,
+		target_id: StringName
+) -> Dictionary:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return {"visible": false, "available": false, "reason": &"night_over", "detail": ""}
+	return _ordinary_visits.command_availability(command, cultist_id, target_id)
+
+
+func prepare_drink(cultist_id: StringName) -> bool:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return false
+	var prepared: bool = _ordinary_visits.prepare_drink(cultist_id)
+	if prepared:
+		_record(&"prepared_drink_taken", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return prepared
+
+
+func carries_prepared_drink(cultist_id: StringName) -> bool:
+	return _ordinary_visits.carries_prepared_drink(cultist_id)
+
+
+func prepare_drugged_drink_for_next_order(cultist_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var prepared: bool = _ordinary_visits.prepare_drugged_drink_for_next_order(cultist_id)
+	if prepared:
+		_record(&"drugged_drink_prepared", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return prepared
+
+
+func end_cultist_engagement(cultist_id: StringName) -> bool:
+	var ended: bool = _ordinary_visits.end_cultist_engagement(cultist_id)
+	if ended:
+		_record(&"conversation_ended", {"cultist_id": cultist_id})
+		_emit_snapshot()
+	return ended
+
+
 func advance(real_seconds: float) -> void:
 	if real_seconds <= 0.0 or _time_scale <= 0.0 or _phase == &"results":
 		return
@@ -365,14 +406,6 @@ func snapshot() -> Dictionary:
 	var visit: Dictionary = _ordinary_visits.snapshot()
 	var patrons := _patron_summary(visit)
 	var orders := _order_summary(visit["orders"])
-	var queues: Dictionary = {}
-	var action_count := 0
-	for cultist_id in CULTIST_IDS:
-		var queue_snapshot: Dictionary = _cultist_queues[cultist_id].snapshot()
-		queues[cultist_id] = queue_snapshot
-		if not queue_snapshot["active"].is_empty():
-			action_count += 1
-		action_count += queue_snapshot["pending"].size()
 	var captures: Array = visit["captures"]
 	return {
 		"night_seed": _night_seed,
@@ -406,14 +439,13 @@ func snapshot() -> Dictionary:
 		"bathroom_owner": visit["bathroom_owner"],
 		"bathroom_line_owner": visit["bathroom_line_owner"],
 		"visit_events": visit["events"],
-		"cultist_queues": queues,
 		"results": _results(orders, patrons, captures.size(), visit),
 		"rescue_odds": visit["rescue_odds"],
 		"escape_alerts": visit["escaping_patrons"],
 		"runtime": {
 			"spawned_patrons": patrons["active_count"],
 			"prepared_drinks": 0,
-			"actions": action_count,
+			"actions": 0,
 			"reservations": _reservation_count(visit),
 			"timers": 0,
 		},

@@ -284,15 +284,25 @@ Cancellation loses elapsed time but no abstract resource. Invalid targets fail w
 
 When the queue is empty, the Cultist idles. Cultists never move or serve through safe autonomy.
 
+### Contextual commands
+
+Right-clicking a Patron or an authored smart object takes precedence over the floor behind it and opens a Context Menu. The menu opens even when only one command applies, so target clicks stay predictable. A normal right-click opens it in Replace mode and a Shift+right-click opens it in Append mode; the header names the mode. Escape or a click outside closes the menu without touching the queue.
+
+The menu lists only commands that relate to the target. A command whose target relates but whose condition is temporary appears disabled with a short reason, such as `Prepare Drink (No open Order)`. Eligibility reads only current world state, Selected Cultist state, and player-readable Patron knowledge, so an Unidentified Patron shows as `???` and no menu label reveals an exact Suspicion, Mood, Bladder, Overdrink value, or roll.
+
+A Patron target offers Talk, Serve Order, Offer Drink, Offer Cigarette, Knock Out, Pick Up Body, Intercept, Lead to Tunnel, and Rescue Persuasion. The bar work position offers Prepare Drink and Prepare Drugged Drink; a Cultist carries at most one Prepared Drink, and an Offer Drink spends it whether or not the Patron takes it. The bathroom Trapdoor control offers Activate Trapdoor. The Tunnel Intake is a destination for a drag or a follow that is already under way; it creates no Capture command of its own. While a Cultist drags a body, the floor menu adds Drop Body Here.
+
+Choosing a command reserves the authored approach position, then the Cultist walks there. The approach is interruptible and the gameplay effect fires exactly once, at the Commitment Point, after arrival. A reservation conflict rejects the command with a visible reason instead of creating a hidden wait queue. The target is rechecked when the menu opens, when the command is chosen, before movement starts, and at the Commitment Point; a stale target fails visibly, releases its reservation, and the queue advances.
+
 ### Movement and navigation
 
-Left-clicking a Cultist selects them. A normal right-click on reachable floor clears pending Actions and creates a Move Action; it redirects an active Move immediately. Shift+right-click appends a Move Action. Small numbered floor markers show queued destinations without drawing path lines. A click near inaccessible geometry moves to the nearest reachable floor point; a distant correction is rejected with visible feedback.
+Left-clicking a Cultist selects them. A normal right-click on reachable empty floor clears pending Actions and creates a Move Action; it redirects an active Move immediately. Shift+right-click appends a Move Action. Small numbered floor markers show queued destinations without drawing path lines. A click near inaccessible geometry moves to the nearest reachable floor point; a distant correction is rejected with visible feedback.
 
 Cultists move at 1.5 meters per second and Patrons at 1.3 meters per second. Escape uses 140% Patron speed, Helper movement uses 60%, and dragging uses 50% Cultist speed. Characters use soft avoidance and cannot permanently block one another. Exclusive work points and waiting positions use reservations.
 
 Four seconds without route progress requests a new path. A Cultist Move Action fails visibly after fifteen seconds without progress, then the next queued Action starts. A blocked Patron moves to the nearest valid waiting position and retries; emergency behavior never ends because a path temporarily fails.
 
-Talk, Offer Drink, and service timers begin only after the Cultist reaches and reserves the required interaction position. If the target starts leaving, the Action cancels, releases its reservation, and preserves any carried Prepared Drink.
+Talk, Offer Drink, and service timers begin only after the Cultist reaches and reserves the required interaction position. A Patron's approach position is a free floor point beside them, because a seat pad blocks the Patron's own spot. If the target starts leaving, the Action cancels, releases its reservation, and preserves any carried Prepared Drink.
 
 Conflicting Patron behaviors use this priority: Capture or unconsciousness, Escape, Investigation, Helper duty, Normal Departure, bathroom, Order, then socializing. Collapse and Capture apply immediately. Escape, Investigation, and Helper duty interrupt socializing, Talk, and Order waiting. A Patron finishes an active bathroom phase before Escape. Bathroom urgency interrupts Talk but waits for drinking to finish. Normal Departure waits for an active Order, drink, bathroom visit, or Talk to finish.
 

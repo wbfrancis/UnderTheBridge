@@ -1,0 +1,65 @@
+{
+  "navigation_ready": true,
+  "passed": true,
+  "reserved_slots": [],
+  "simulation_scale": 1.0,
+  "step_count": 7,
+  "steps": [
+    {
+      "actor_position": [
+        -7.69917774200439,
+        3.82565999031067
+      ],
+      "detail": "Move done.",
+      "passed": true,
+      "step": "floor_move"
+    },
+    {
+      "detail": "Prepare Drink failed: Another Cultist holds that position.",
+      "passed": true,
+      "step": "contention"
+    },
+    {
+      "detail": "prepare_drink",
+      "passed": true,
+      "step": "bar_command"
+    },
+    {
+      "actor_position": [
+        -12.0097236633301,
+        4.26819133758545
+      ],
+      "detail": "Talk done.",
+      "passed": true,
+      "step": "patron_command"
+    },
+    {
+      "actor_position": [
+        17.6670150756836,
+        4.52715873718262
+      ],
+      "detail": "Activate Trapdoor done.",
+      "passed": true,
+      "step": "trapdoor"
+    },
+    {
+      "actor_position": [
+        -0.619153320789337,
+        6.45466613769531
+      ],
+      "detail": "Pick Up Body done.",
+      "passed": true,
+      "step": "body_pickup"
+    },
+    {
+      "actor_position": [
+        -1.87441945075989,
+        3.31418299674988
+      ],
+      "detail": "Drop Body Here done.",
+      "passed": true,
+      "step": "body_drop"
+    }
+  ],
+  "stuck_actors": []
+}

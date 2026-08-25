@@ -229,6 +229,9 @@ var _peak_suspicion: float = 0.0
 var _interceptions: int = 0
 var _unattended_body_seconds: float = 0.0
 var _physical_navigation_enabled := false
+# One carried Prepared Drink per Cultist. This is the smallest state the GDD's
+# Offer Drink precondition needs; it is not a general inventory.
+var _carried_drinks: Dictionary = {}
 
 
 func start(seed: int = 707, full_night: bool = false) -> void:
@@ -240,6 +243,7 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_closing = false
 	_events.clear()
 	_autonomy_events.clear()
+	_carried_drinks.clear()
 	_seat_owners.clear()
 	var seat_count := 8 if full_night else 2
 	for index in range(seat_count):
@@ -1062,6 +1066,189 @@ func _update_group_seated_at(group_id: StringName) -> void:
 	_record(&"arrival_group_seated", group_id)
 
 
+# --- Cultist commands --------------------------------------------------------
+
+# Puts one Prepared Drink in the Cultist's hands at the bar work position. A
+# Cultist carries at most one, and only while an Order is open somewhere.
+func prepare_drink(cultist_id: StringName) -> bool:
+	if cultist_id.is_empty() or bool(_carried_drinks.get(cultist_id, false)):
+		return false
+	if _open_order_patrons().is_empty():
+		return false
+	_carried_drinks[cultist_id] = true
+	_record(&"prepared_drink_taken", cultist_id)
+	_emit_snapshot()
+	return true
+
+
+func carries_prepared_drink(cultist_id: StringName) -> bool:
+	return bool(_carried_drinks.get(cultist_id, false))
+
+
+# Doses the longest-waiting open Order. The bar work position has no Patron of
+# its own, so the target comes from the Order book, not from the player's click.
+func prepare_drugged_drink_for_next_order(cultist_id: StringName) -> bool:
+	var targets := _open_order_patrons()
+	if targets.is_empty():
+		return false
+	return prepare_drugged_drink(targets[0], cultist_id)
+
+
+func next_drug_target() -> StringName:
+	var targets := _open_order_patrons()
+	return &"" if targets.is_empty() else targets[0]
+
+
+# Ends a standing engagement so the Cultist's next Action can start. Only Talk
+# holds a Cultist this way; every other operation ends on its own clock.
+func end_cultist_engagement(cultist_id: StringName) -> bool:
+	return end_conversation(cultist_id)
+
+
+# The single authority for whether one command applies to one target right now.
+# "visible" keeps structurally unrelated commands out of the menu; "available"
+# with a short reason explains a temporary condition the player can act on.
+func command_availability(
+		command: StringName,
+		cultist_id: StringName,
+		target_id: StringName
+) -> Dictionary:
+	match command:
+		&"talk":
+			var talk := _conscious_patron(target_id)
+			if not talk:
+				return _command_state(false, false, &"patron_unavailable")
+			if _conversation_partner(target_id) != &"":
+				return _command_state(true, false, &"not_receptive")
+			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+		&"serve_order":
+			if not _conscious_patron(target_id):
+				return _command_state(false, false, &"patron_unavailable")
+			if _patrons[target_id]["activity"] != &"awaiting_drink":
+				return _command_state(false, false, &"no_open_order")
+			return _command_state(true, true, &"")
+		&"offer_drink":
+			if not carries_prepared_drink(cultist_id):
+				return _command_state(false, false, &"no_prepared_drink")
+			if not _conscious_patron(target_id):
+				return _command_state(false, false, &"patron_unavailable")
+			var patron: Dictionary = _patrons[target_id]
+			if _order_system.is_open(patron["order_id"]) or patron["activity"] != &"socializing":
+				return _command_state(true, false, &"not_receptive")
+			if _simulated_seconds < float(patron["offer_refused_until"]):
+				return _command_state(true, false, &"not_receptive")
+			return _command_state(true, true, &"")
+		&"offer_cigarette":
+			var smoker := _conscious_patron(target_id)
+			return _command_state(smoker, smoker, &"patron_unavailable")
+		&"knock_out":
+			if not _conscious_patron(target_id):
+				return _command_state(false, false, &"patron_unavailable")
+			if not _windup.is_empty():
+				return _command_state(true, false, &"cultist_busy")
+			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+		&"pick_up_body":
+			if not _patrons.has(target_id) or _patrons[target_id]["lifecycle"] != &"unconscious":
+				return _command_state(false, false, &"patron_unavailable")
+			if _drags.has(target_id):
+				return _command_state(false, false, &"patron_unavailable")
+			if _collapses.has(target_id) and _collapses[target_id]["phase"] not in [
+				&"reacting", &"unattended"
+			]:
+				return _command_state(true, false, &"not_receptive")
+			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+		&"intercept":
+			if not _patrons.has(target_id) or _patrons[target_id]["lifecycle"] != &"escaping":
+				return _command_state(false, false, &"patron_unavailable")
+			if _patrons[target_id]["activity"] != &"escaping":
+				return _command_state(true, false, &"not_receptive")
+			if _patrons[target_id]["intercept_attempted"]:
+				return _command_state(true, false, &"already_attempted")
+			return _command_state(true, _active_intercept.is_empty(), &"cultist_busy")
+		&"lead_to_tunnel":
+			if not _conscious_patron(target_id):
+				return _command_state(false, false, &"patron_unavailable")
+			if not _patrons[target_id]["friendship_capturable"]:
+				return _command_state(false, false, &"not_receptive")
+			if _friendship_value(target_id, cultist_id) < FRIENDSHIP_TRUSTED_THRESHOLD:
+				return _command_state(false, false, &"not_receptive")
+			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+		&"rescue_persuasion":
+			var victim := _carrying_collapse_victim()
+			if victim.is_empty() or _collapses[victim]["helper_id"] != target_id:
+				return _command_state(false, false, &"patron_unavailable")
+			if _collapses[victim]["rescue_attempted"]:
+				return _command_state(true, false, &"already_attempted")
+			return _command_state(true, true, &"")
+		&"prepare_drink":
+			if carries_prepared_drink(cultist_id):
+				return _command_state(true, false, &"already_carrying")
+			if _open_order_patrons().is_empty():
+				return _command_state(true, false, &"no_open_order")
+			return _command_state(true, true, &"")
+		&"prepare_drugged_drink":
+			if _doses_remaining <= 0:
+				return _command_state(true, false, &"no_doses")
+			if not _drug_prep.is_empty():
+				return _command_state(true, false, &"drug_prep_running")
+			var dose_target := next_drug_target()
+			if dose_target.is_empty():
+				return _command_state(true, false, &"no_open_order")
+			var state := _command_state(true, true, &"")
+			state["detail"] = normal_patron_view(dose_target, cultist_id)["name"]
+			return state
+		&"activate_trapdoor":
+			return _command_state(true, _trapdoor_state == &"closed", &"trapdoor_busy")
+		&"drop_body":
+			var carrying := not _drag_victim_for_cultist(cultist_id).is_empty()
+			return _command_state(carrying, carrying, &"not_carrying_body")
+	return _command_state(false, false, &"unknown_command")
+
+
+func _command_state(visible: bool, available: bool, reason: StringName) -> Dictionary:
+	return {
+		"visible": visible,
+		"available": available,
+		"reason": &"" if available else reason,
+		"detail": "",
+	}
+
+
+func _conscious_patron(patron_id: StringName) -> bool:
+	return _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active"
+
+
+# Busy for the purpose of offering a command. A running Talk does not count,
+# because issuing the next command ends that Talk first.
+func _busy_for_command(cultist_id: StringName) -> bool:
+	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
+		return true
+	for patron_id: StringName in _follows:
+		if _follows[patron_id]["cultist_id"] == cultist_id:
+			return true
+	return not _drag_victim_for_cultist(cultist_id).is_empty()
+
+
+# Patrons with an open Order, longest wait first, so bar work is deterministic.
+func _open_order_patrons() -> Array[StringName]:
+	var waiting: Array[Dictionary] = []
+	for patron_id: StringName in _patrons:
+		var order_id: StringName = _patrons[patron_id]["order_id"]
+		if order_id.is_empty() or not _order_system.is_open(order_id):
+			continue
+		var order: Dictionary = _order_system.order_snapshot(order_id)
+		waiting.append({"id": patron_id, "at": float(order["requested_at"])})
+	waiting.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		if is_equal_approx(left["at"], right["at"]):
+			return String(left["id"]) < String(right["id"])
+		return left["at"] < right["at"]
+	)
+	var result: Array[StringName] = []
+	for entry: Dictionary in waiting:
+		result.append(entry["id"])
+	return result
+
+
 func serve_patron_order(patron_id: StringName) -> bool:
 	if not _patrons.has(patron_id):
 		return false
@@ -1085,6 +1272,9 @@ func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = 
 	if _simulated_seconds < float(patron["offer_refused_until"]):
 		result["reason"] = &"refusal_cooldown"
 		return result
+	# The offer spends the carried Prepared Drink whether or not the Patron takes it.
+	if bool(_carried_drinks.get(cultist_id, false)):
+		_carried_drinks[cultist_id] = false
 	var roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
 	result["roll"] = roll
 	if roll > OFFER_ACCEPTANCE_PERCENT:

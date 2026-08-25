@@ -37,6 +37,19 @@ func remove_pending(action_id: int) -> bool:
 	return false
 
 
+# Writes one payload field on a queued Action. The snapshot is a deep copy, so
+# owners of an Action need this seam to record approach and commitment progress.
+func set_payload_value(action_id: int, key: String, value: Variant) -> bool:
+	if not _active.is_empty() and _active["id"] == action_id:
+		_active["payload"][key] = value
+		return true
+	for action in _pending:
+		if action["id"] == action_id:
+			action["payload"][key] = value
+			return true
+	return false
+
+
 func set_target_valid(action_id: int, is_valid: bool) -> bool:
 	if not _active.is_empty() and _active["id"] == action_id:
 		_active["target_is_valid"] = is_valid

@@ -197,9 +197,8 @@ func test_ten_restarts_release_all_actor_and_interaction_state() -> void:
 		assert_eq(clean["patrons"]["active_count"], 0)
 		for seat_owner: StringName in clean["seat_owners"].values():
 			assert_true(seat_owner.is_empty())
-		for queue: Dictionary in clean["cultist_queues"].values():
-			assert_true(queue["active"].is_empty())
-			assert_true(queue["pending"].is_empty())
+		assert_eq(clean["runtime"]["actions"], 0,
+			"A restarted Night leaves no Cultist Action behind.")
 
 
 func test_personal_suspicion_is_independent_and_hidden_behind_normal_bands() -> void:
@@ -1210,5 +1209,6 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	assert_almost_eq(odds, carry.rescue_persuasion_chance(&"cultist_01"), 0.001,
 		"The exposed odds match the exact chance.")
 
-	# The selected-Cultist Action Queue remains readable for its controls.
-	assert_true(session.snapshot()["cultist_queues"].has(&"cultist_01"))
+	# The selected-Cultist Action Queue lives in the command seam, not the session.
+	assert_false(session.snapshot().has("cultist_queues"),
+		"GameSession no longer holds a second Action Queue authority.")
