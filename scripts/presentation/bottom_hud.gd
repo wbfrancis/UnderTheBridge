@@ -51,6 +51,10 @@ const PORTRAIT_CAPTION_HEIGHT := 32.0
 const CLOCK_SIZE := 92.0
 const PLAYBACK_HEIGHT := 28.0
 const UTILITY_WIDTH := 46.0
+## The Patron empty-state caption already gives its portrait this visual gutter.
+## Apply the same gutter to the denser Cultist and Night content.
+const CULTIST_SIDE_GUTTER := 10
+const NIGHT_SIDE_GUTTER := 13
 const MIN_UI_SCALE := 0.75
 const MAX_UI_SCALE := 1.5
 ## How long one short feedback line stays on screen, in real seconds.
@@ -102,8 +106,10 @@ var _cultist_portrait: TextureRect
 var _cultist_name: Label
 var _cultist_activity: Label
 var _cultist_status: Label
+var _cultist_zone: PanelContainer
 var _clock: NightClock
 var _clock_hover: Control
+var _night_zone: PanelContainer
 var _night_fill: ColorRect
 var _night_track: Control
 var _speed_buttons: Dictionary = {}
@@ -111,6 +117,7 @@ var _pause_button: Button
 var _patron_portrait: TextureRect
 var _patron_name: Label
 var _patron_detail: VBoxContainer
+var _patron_zone: PanelContainer
 var _patron_activity: Label
 var _patron_meters: Dictionary = {}
 var _patron_close: Button
@@ -291,6 +298,7 @@ func inspect() -> Dictionary:
 			"portrait_rect": _cultist_portrait.get_rect(),
 			"name_rect": _cultist_name.get_rect(),
 			"name_below_portrait": _is_below(_cultist_name, _cultist_portrait),
+			"content_left_inset": _left_inset(_cultist_zone, _cultist_portrait),
 		},
 		"patron": {
 			"mode": "selected" if not _view["inspected_patron"].is_empty() else "empty",
@@ -300,6 +308,7 @@ func inspect() -> Dictionary:
 			"portrait_has_texture": _patron_portrait.texture != null,
 			"name_rect": _patron_name.get_rect(),
 			"name_below_portrait": _is_below(_patron_name, _patron_portrait),
+			"content_left_inset": _left_inset(_patron_zone, _patron_portrait),
 			"detail_visible": _patron_detail.visible,
 			"close_visible": _patron_close.visible,
 		},
@@ -311,6 +320,7 @@ func inspect() -> Dictionary:
 			"paused": bool(night["paused"]),
 			"selected_speed": _selected_speed(),
 			"pause_pressed": _pause_button.button_pressed,
+			"content_left_inset": _left_inset(_night_zone, _clock_hover),
 		},
 		"settings_open": _settings_panel.visible,
 		"developer_open": _developer_panel.visible,
@@ -686,6 +696,7 @@ func _build_frame() -> void:
 
 func _build_cultist_zone() -> Control:
 	var panel := PanelContainer.new()
+	_cultist_zone = panel
 	panel.name = "CultistZone"
 	panel.add_theme_stylebox_override("panel", _paper_style())
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -693,7 +704,7 @@ func _build_cultist_zone() -> Control:
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	panel.add_child(row)
+	panel.add_child(_side_gutter(row, CULTIST_SIDE_GUTTER))
 
 	_cultist_portrait = _portrait()
 	_cultist_name = _portrait_caption("Vera")
@@ -717,6 +728,7 @@ func _build_cultist_zone() -> Control:
 
 func _build_night_zone() -> Control:
 	var panel := PanelContainer.new()
+	_night_zone = panel
 	panel.name = "NightZone"
 	panel.add_theme_stylebox_override("panel", _time_style())
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -725,7 +737,7 @@ func _build_night_zone() -> Control:
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_theme_constant_override("separation", 5)
-	panel.add_child(column)
+	panel.add_child(_side_gutter(column, NIGHT_SIDE_GUTTER))
 
 	var clock_row := HBoxContainer.new()
 	clock_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -784,6 +796,7 @@ func _build_night_zone() -> Control:
 
 func _build_patron_zone() -> Control:
 	var panel := PanelContainer.new()
+	_patron_zone = panel
 	panel.name = "PatronZone"
 	panel.add_theme_stylebox_override("panel", _paper_style())
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1142,6 +1155,14 @@ func _portrait() -> TextureRect:
 	return portrait
 
 
+func _side_gutter(content: Control, size: int) -> MarginContainer:
+	var gutter := MarginContainer.new()
+	gutter.add_theme_constant_override("margin_left", size)
+	gutter.add_theme_constant_override("margin_right", size)
+	gutter.add_child(content)
+	return gutter
+
+
 func _portrait_stack(portrait: TextureRect, caption: Label) -> Control:
 	var stack := VBoxContainer.new()
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1401,6 +1422,10 @@ func _to_root_local(point: Vector2) -> Vector2:
 
 func _is_below(label: Control, portrait: Control) -> bool:
 	return label.get_global_rect().position.y >= portrait.get_global_rect().position.y
+
+
+func _left_inset(panel: Control, content: Control) -> float:
+	return content.get_global_rect().position.x - panel.get_global_rect().position.x
 
 
 func _action_icon(icon_id: StringName) -> Texture2D:

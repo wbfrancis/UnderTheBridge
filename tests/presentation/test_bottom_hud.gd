@@ -238,6 +238,24 @@ func test_names_render_below_both_portraits() -> void:
 		"The inspected Patron status belongs to the Cultist panel.")
 
 
+func test_dense_hud_panels_match_the_approved_empty_patron_inset() -> void:
+	await _render({
+		"selected_cultist": _cultist(), "inspected_patron": {},
+		"night": _night(1.0, false),
+	})
+
+	var state: Dictionary = _hud.inspect()
+	var patron_inset := float(state["patron"]["content_left_inset"])
+	assert_almost_eq(
+		float(state["cultist"]["content_left_inset"]), patron_inset, 1.0,
+		"The Cultist portrait uses the empty Patron portrait's visual inset."
+	)
+	assert_gte(
+		float(state["night"]["content_left_inset"]), patron_inset - 1.0,
+		"The Night group does not start closer to its frame than the Patron portrait."
+	)
+
+
 func test_closing_the_inspected_patron_leaves_the_selected_cultist_alone() -> void:
 	await _render({
 		"selected_cultist": _cultist("June selected"), "inspected_patron": _patron(),
