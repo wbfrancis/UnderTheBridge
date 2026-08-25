@@ -3,42 +3,42 @@
   "checks": [
     {
       "check": "1280x720_icons",
-      "detail": "9 bubbles, 5 placed, 4 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "1280x720_labels",
-      "detail": "9 bubbles, 4 placed, 5 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "1920x1080_icons",
-      "detail": "9 bubbles, 5 placed, 4 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "1920x1080_labels",
-      "detail": "9 bubbles, 4 placed, 5 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "ui_scale_75",
-      "detail": "9 bubbles, 5 placed, 4 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "ui_scale_150",
-      "detail": "9 bubbles, 2 placed, 7 hidden for space",
+      "detail": "6 bubbles, 3 placed, 3 hidden for space",
       "passed": true
     },
     {
       "check": "after_pan_and_zoom",
-      "detail": "9 bubbles, 3 placed, 6 hidden for space",
+      "detail": "6 bubbles, 4 placed, 2 hidden for space",
       "passed": true
     },
     {
       "check": "closing_clears_departed_actors",
-      "detail": "4 bubbles remain at Results",
+      "detail": "2 bubbles remain at Results",
       "passed": true
     },
     {

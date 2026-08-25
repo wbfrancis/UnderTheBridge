@@ -13,6 +13,7 @@ const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_acto
 const COMMAND_SYSTEM_SCRIPT := preload("res://scripts/actions/cultist_command_system.gd")
 const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
 const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
+const BOTTOM_HUD_SCENE: PackedScene = preload("res://scenes/ui/bottom_hud.tscn")
 const NAVIGATION_MESH: NavigationMesh = preload(
 	"res://assets/navigation/speakeasy_navigation.tres"
 )
@@ -25,6 +26,11 @@ const ALL_PATRON_IDS: Array[StringName] = [
 	&"patron_walter", &"patron_nell", &"patron_vincent", &"patron_clara",
 ]
 const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
+const CULTIST_NAMES := {
+	&"cultist_01": "Vera", &"cultist_02": "Iris", &"cultist_03": "Otto",
+}
+const SETTINGS_PATH := "user://settings.cfg"
+const CAMERA_FOCUS_SECONDS := 0.4
 const SCENARIOS := {
 	"full_cast": "FULL CAST",
 	"service_wing": "SERVICE WING",
@@ -58,7 +64,9 @@ const ZOOM_SMOOTHNESS := 9.0
 const CULTIST_VISIBLE_HEIGHT_METRES := 1.75
 const BARTENDER_OPAQUE_HEIGHT_PIXELS := 35.0
 const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
-const PLAY_SCALE := 4.0
+# The fixed speed a rendered capture or a validation report drives the actors
+# at. Ordinary play follows the Simulation Speed GameSession accepted.
+const AUTOMATED_RUN_SCALE := 4.0
 const NAVIGATION_FLOOR_Y := 0.18
 const MAX_DESTINATION_SNAP_METERS := 1.5
 # Authored smart targets. "pick" is the clickable volume, "approach" the floor
@@ -151,7 +159,6 @@ var _session = GAME_SESSION_SCRIPT.new()
 @export var review_debug_visible: bool = true
 var _scenario: String = "line_of_sight"
 var _scenario_trace: String = ""
-var _playing: bool = false
 var _debug_visible: bool = true
 var _capture_mode: bool = false
 var _presentation_prototype: bool = false
@@ -168,11 +175,23 @@ var _context_menu_rows: VBoxContainer
 var _context_menu_header: Label
 var _context_target: Dictionary = {}
 var _context_append := false
-var _queue_panel: PanelContainer
-var _queue_rows: VBoxContainer
 var _refreshing := false
 var _emotes = EMOTE_DIRECTOR_SCRIPT.new()
 var _emote_overlay: EmoteOverlay
+var _bottom_hud: BottomHud
+var _debug_panel: PanelContainer
+var _reduced_motion := false
+var _pause_menu_open := false
+var _hud_preview_outcome: StringName = &""
+var _hud_preview := ""
+var _feedback_serial := 0
+var _last_feedback := ""
+var _last_nonzero_scale := 1.0
+var _accepted_time_scale := 0.0
+var _focus_active := false
+var _focus_from := Vector3.ZERO
+var _focus_to := Vector3.ZERO
+var _focus_elapsed := 0.0
 var _emote_labels := false
 var _emote_ui_scale := 1.0
 var _emote_head_offset := 2.25
@@ -204,13 +223,9 @@ var _trackpad_pan_intent := Vector2.ZERO
 var _trackpad_pan_hold_remaining := 0.0
 var _staged_bodies: Array = []
 var _events: Array = []
-var _scenario_buttons: Dictionary = {}
-var _play_button: Button
 var _debug_label: RichTextLabel
 var _hover_panel: PanelContainer
 var _hover_label: RichTextLabel
-var _info_panel: PanelContainer
-var _info_label: RichTextLabel
 
 
 func _ready() -> void:
@@ -218,6 +233,7 @@ func _ready() -> void:
 	_presentation_prototype = review_presentation or _command_line_flag("--presentation-prototype") or _presentation_closeup
 	_debug_visible = review_debug_visible
 	_commands.reset(_session)
+	_load_settings()
 	_build_environment()
 	_build_navigation_world()
 	_build_hud()
@@ -248,6 +264,7 @@ func _ready() -> void:
 	if not inspect_patron.is_empty():
 		_inspected_patron_id = inspect_patron
 		_refresh(_session.snapshot())
+	_hud_preview = _command_line_value("--hud-preview=")
 	var hover_actor := StringName(_command_line_value("--hover-actor="))
 	if not hover_actor.is_empty():
 		_hovered_actor_id = hover_actor
@@ -270,22 +287,31 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _playing and not _capture_mode:
-		_session.advance(delta * PLAY_SCALE)
+	# GameSession applies the selected Simulation Speed itself, so the adapter
+	# hands it plain real seconds. Pause is simply a 0x scale inside the session.
+	if not _capture_mode:
+		_session.advance(delta)
 	elif _capture_mode and _emote_play_scale > 0.0:
 		# The rendered Emote review runs the Night at the requested speed so the
 		# captured frame is a live one, not a frozen setup.
 		_session.advance(delta * _emote_play_scale)
 	_advance_emotes(delta)
 	if _presentation_prototype and not _capture_mode:
+		_advance_camera_focus(delta)
 		_update_camera_pan(delta)
 		if not is_equal_approx(_camera.fov, _camera_fov_target):
-			var zoom_weight := 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
+			# Reduced motion cuts straight to the new zoom instead of easing into it.
+			var zoom_weight := 1.0 if _reduced_motion else 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
 			_camera.fov = lerpf(_camera.fov, _camera_fov_target, zoom_weight)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _presentation_prototype or _capture_mode:
+		return
+	if _handle_hud_shortcut(event):
+		get_viewport().set_input_as_handled()
+		return
+	if _bottom_hud != null and _bottom_hud.is_blocking():
 		return
 	if event is InputEventMouseMotion:
 		_update_character_hover(event.position)
@@ -308,19 +334,19 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					_queue_trackpad_pan(wheel_pan)
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_close_context_menu()
-		elif event.keycode == KEY_EQUAL:
+		if event.keycode == KEY_EQUAL:
 			_zoom_camera_smooth(-2.0)
 		elif event.keycode == KEY_MINUS:
 			_zoom_camera_smooth(2.0)
 
 
 func _zoom_camera_smooth(fov_delta: float) -> void:
+	_cancel_camera_focus()
 	_camera_fov_target = clampf(_camera_fov_target + fov_delta, 20.0, 55.0)
 
 
 func _queue_trackpad_pan(pan_delta: Vector2) -> void:
+	_cancel_camera_focus()
 	_trackpad_pan_intent = pan_delta.limit_length(1.0)
 	_trackpad_pan_hold_remaining = TRACKPAD_PAN_HOLD_SECONDS
 
@@ -342,6 +368,8 @@ func _update_camera_pan(delta: float) -> void:
 	_trackpad_pan_hold_remaining = maxf(0.0, _trackpad_pan_hold_remaining - delta)
 	if _trackpad_pan_hold_remaining <= 0.0:
 		_trackpad_pan_intent = Vector2.ZERO
+	if not pan.is_zero_approx():
+		_cancel_camera_focus()
 	var desired_velocity := Vector3(pan.x, 0.0, pan.y) * CAMERA_PAN_SPEED
 	var acceleration := CAMERA_PAN_ACCELERATION if not pan.is_zero_approx() else CAMERA_PAN_DECELERATION
 	_camera_pan_velocity = _camera_pan_velocity.move_toward(desired_velocity, acceleration * delta)
@@ -399,8 +427,9 @@ func _handle_character_left_click(screen_position: Vector2) -> void:
 	if character["is_cultist"]:
 		_select_cultist(character["id"])
 	else:
+		# Inspecting a Patron never changes the Selected Cultist.
 		_inspected_patron_id = character["id"]
-		_refresh_character_panels(_session.snapshot())
+		_refresh_hud(_session.snapshot())
 
 
 func _update_character_hover(screen_position: Vector2) -> void:
@@ -690,10 +719,15 @@ func _advance_emotes(real_delta: float) -> void:
 	_emotes.update(
 		_session.emote_view(_commands.snapshot()["cultists"]),
 		real_delta,
-		not _playing
+		is_zero_approx(_accepted_time_scale)
 	)
 	_emote_overlay.set_reserved_rects(_reserved_hud_rects())
-	_emote_overlay.refresh(_emotes.bubbles(), _emote_anchors())
+	var bubbles: Array[Dictionary] = _emotes.bubbles()
+	# The overlay names the actor in an Offscreen Indicator's accessible label,
+	# so it needs the same player-readable name the HUD uses.
+	for bubble: Dictionary in bubbles:
+		bubble["display_name"] = _actor_display_name(bubble["actor_id"])
+	_emote_overlay.refresh(bubbles, _emote_anchors())
 
 
 func _emote_anchors() -> Dictionary:
@@ -711,8 +745,10 @@ func _emote_anchors() -> Dictionary:
 
 
 func _reserved_hud_rects() -> Array[Rect2]:
-	var rects: Array[Rect2] = [Rect2(Vector2.ZERO, Vector2(1_920.0, 96.0))]
-	for panel: Variant in [_debug_label.get_parent(), _hover_panel, _info_panel, _queue_panel]:
+	var rects: Array[Rect2] = []
+	if _bottom_hud != null:
+		rects.append_array(_bottom_hud.reserved_rects())
+	for panel: Variant in [_hover_panel, _context_menu, _debug_panel]:
 		var control: Control = panel as Control
 		if control != null and control.visible:
 			rects.append(Rect2(control.global_position, control.size))
@@ -729,7 +765,51 @@ func _set_emote_accessibility(labels: bool, ui_scale: float) -> void:
 
 
 func _cultist_display_name(cultist_id: StringName) -> String:
-	return String(cultist_id).replace("cultist_", "Cultist ")
+	return CULTIST_NAMES.get(cultist_id, String(cultist_id).replace("cultist_", "Cultist "))
+
+
+func _actor_display_name(actor_id: StringName) -> String:
+	if _cultist_nodes.has(actor_id):
+		return _cultist_display_name(actor_id)
+	var view: Dictionary = _session.patron_view(actor_id, _selected_cultist_id)
+	return String(view["name"]) if not view.is_empty() else _humanize(actor_id)
+
+
+# --- Camera focus ------------------------------------------------------------
+
+# Pressing an Offscreen Indicator moves the camera to that actor. Manual pan,
+# zoom, or another press replaces the move at once; it never bounces or
+# overshoots, and Reduced motion makes it a straight cut.
+func _focus_camera_on(actor_id: StringName) -> void:
+	var node: Node3D = _cultist_nodes.get(actor_id, _patron_nodes.get(actor_id))
+	if node == null:
+		return
+	var destination := Vector3(
+		node.global_position.x, _camera_target.y, node.global_position.z
+	)
+	_cancel_camera_focus()
+	if _reduced_motion:
+		_pan_camera(destination - _camera_target)
+		return
+	_focus_from = _camera_target
+	_focus_to = destination
+	_focus_elapsed = 0.0
+	_focus_active = true
+
+
+func _advance_camera_focus(delta: float) -> void:
+	if not _focus_active:
+		return
+	_focus_elapsed += delta
+	var weight := clampf(_focus_elapsed / CAMERA_FOCUS_SECONDS, 0.0, 1.0)
+	var eased := weight * weight * (3.0 - 2.0 * weight)
+	_pan_camera(_focus_from.lerp(_focus_to, eased) - _camera_target)
+	if weight >= 1.0:
+		_focus_active = false
+
+
+func _cancel_camera_focus() -> void:
+	_focus_active = false
 
 
 # --- World -------------------------------------------------------------------
@@ -910,10 +990,11 @@ func _bake_navigation_world() -> void:
 		_refresh(_session.snapshot())
 	if not _context_menu_preview.is_empty():
 		_open_preview_context_menu()
+	_preview_hud_state(_hud_preview)
 	if _emote_play_scale >= 0.0:
-		_playing = _emote_play_scale > 0.0
+		_accepted_time_scale = 1.0 if _emote_play_scale > 0.0 else 0.0
 		for actor_id: StringName in _cultist_nodes:
-			(_cultist_nodes[actor_id] as NavigableActor3D).set_simulation_scale(PLAY_SCALE)
+			(_cultist_nodes[actor_id] as NavigableActor3D).set_simulation_scale(AUTOMATED_RUN_SCALE)
 	_refresh_hud(_session.snapshot())
 	if not _movement_report_path.is_empty():
 		_run_movement_validation.call_deferred(_movement_report_path)
@@ -1469,7 +1550,7 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 		NAVIGATION_FLOOR_Y,
 		1.1 + float(entrance_index) * 1.1
 	)
-	pivot.set_simulation_scale(PLAY_SCALE if _playing else 0.0)
+	pivot.set_simulation_scale(_world_simulation_scale())
 	if _presentation_prototype:
 		var sprite := _pixel_actor_sprite()
 		sprite.name = "Body"
@@ -1551,7 +1632,7 @@ func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	var pivot := NAVIGABLE_ACTOR_SCRIPT.new() as NavigableActor3D
 	pivot.configure(cultist_id, true)
 	pivot.position = CULTIST_POSITIONS[cultist_id] + Vector3(0.0, NAVIGATION_FLOOR_Y, 0.0)
-	pivot.set_simulation_scale(PLAY_SCALE if _playing else 0.0)
+	pivot.set_simulation_scale(_world_simulation_scale())
 	var sprite := _pixel_actor_sprite()
 	sprite.name = "Body"
 	sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
@@ -1589,8 +1670,6 @@ func _refresh_scene(state: Dictionary) -> void:
 	_latest_state = state
 	# Revalidation on every session change: a stale target fails and releases.
 	_commands.refresh()
-	for scenario_id: String in _scenario_buttons:
-		_scenario_buttons[scenario_id].button_pressed = scenario_id == _scenario
 	var visible_patron_ids: Array[StringName] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
 	for patron_id: StringName in visible_patron_ids:
 		var pivot := _actor_pivot(patron_id)
@@ -1637,17 +1716,7 @@ func _refresh_scene(state: Dictionary) -> void:
 
 func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
-	actor.set_simulation_scale(
-		PLAY_SCALE
-		if (
-			_playing
-			or not _movement_report_path.is_empty()
-			or not _command_report_path.is_empty()
-			or not _emote_report_path.is_empty()
-			or _capture_navigation_enabled
-		)
-		else 0.0
-	)
+	actor.set_simulation_scale(_world_simulation_scale())
 	actor.set_speed_multiplier(_patron_speed_multiplier(debug["activity"]))
 	var target := _patron_target(debug)
 	var previous: Vector3 = _patron_visual_targets.get(patron_id, Vector3.INF)
@@ -1845,7 +1914,8 @@ func _set_scenario(scenario_id: String) -> void:
 	if not SCENARIOS.has(scenario_id):
 		scenario_id = "full_cast" if _presentation_prototype else "line_of_sight"
 	_scenario = scenario_id
-	_playing = false
+	_pause_menu_open = false
+	_cancel_camera_focus()
 	_staged_bodies.clear()
 	_events.clear()
 	_session.restart_night(707)
@@ -1898,8 +1968,50 @@ func _set_scenario(scenario_id: String) -> void:
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
 	_session.set_physical_patron_navigation_enabled(true)
+	# A freshly staged scenario waits for the player. A rendered capture or a
+	# validation report drives the Night itself, so it must stay running.
+	if not _is_automated_run():
+		_last_nonzero_scale = 1.0
+		_session.set_time_scale(0.0)
 	_update_camera_for_scenario()
 	_refresh(_session.snapshot())
+
+
+# Opens one HUD state for an approval capture. It touches presentation only: no
+# gameplay rule, outcome, or Night state changes because of it.
+func _preview_hud_state(state_id: String) -> void:
+	if state_id.is_empty() or _bottom_hud == null:
+		return
+	_hud_preview = ""
+	match state_id:
+		"settings":
+			_bottom_hud.activate(&"settings_menu")
+		"developer":
+			_bottom_hud.activate(&"developer_menu")
+		"pause":
+			_open_pause_menu()
+		"queue":
+			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+			_issue_command(
+				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
+			)
+			_issue_command(&"prepare_drink", _smart_target(&"bar_work_position"), true)
+		_:
+			_hud_preview_outcome = StringName(state_id.trim_prefix("outcome_"))
+			_refresh_hud(_session.snapshot())
+
+
+# True while a rendered capture or a validation report drives the Night.
+func _is_automated_run() -> bool:
+	if _capture_mode:
+		return true
+	for flag: String in [
+		"--capture=", "--report=", "--movement-report=", "--command-report=",
+		"--emote-report=",
+	]:
+		if not _command_line_value(flag).is_empty():
+			return true
+	return false
 
 
 func _stage_full_cast() -> void:
@@ -1954,79 +2066,6 @@ func _build_hud() -> void:
 	var canvas := CanvasLayer.new()
 	add_child(canvas)
 
-	var top := HBoxContainer.new()
-	top.position = Vector2(18.0, 16.0)
-	top.add_theme_constant_override("separation", 6)
-	canvas.add_child(top)
-	for scenario_id: String in SCENARIOS:
-		var button := Button.new()
-		button.text = SCENARIOS[scenario_id]
-		button.toggle_mode = true
-		button.custom_minimum_size = Vector2(118.0, 34.0)
-		button.pressed.connect(_set_scenario.bind(scenario_id))
-		_scenario_buttons[scenario_id] = button
-		top.add_child(button)
-
-	var controls := HBoxContainer.new()
-	controls.position = Vector2(18.0, 58.0)
-	controls.add_theme_constant_override("separation", 6)
-	canvas.add_child(controls)
-	_add_control_button(controls, "+1s", _session.advance.bind(1.0))
-	_add_control_button(controls, "+5s", _session.advance.bind(5.0))
-	_play_button = Button.new()
-	_play_button.text = "PLAY"
-	_play_button.toggle_mode = true
-	_play_button.custom_minimum_size = Vector2(90.0, 32.0)
-	_play_button.pressed.connect(_toggle_play)
-	controls.add_child(_play_button)
-	var debug_toggle := Button.new()
-	debug_toggle.text = "DEBUG"
-	debug_toggle.toggle_mode = true
-	debug_toggle.button_pressed = _debug_visible
-	debug_toggle.custom_minimum_size = Vector2(90.0, 32.0)
-	debug_toggle.pressed.connect(func(): _debug_visible = debug_toggle.button_pressed; _refresh(_session.snapshot()))
-	controls.add_child(debug_toggle)
-	var emote_toggle := Button.new()
-	emote_toggle.text = "EMOTE TEXT"
-	emote_toggle.toggle_mode = true
-	emote_toggle.button_pressed = _emote_labels
-	emote_toggle.custom_minimum_size = Vector2(112.0, 32.0)
-	emote_toggle.pressed.connect(func() -> void:
-		_set_emote_accessibility(emote_toggle.button_pressed, _emote_ui_scale)
-	)
-	controls.add_child(emote_toggle)
-	var emote_scale := Button.new()
-	emote_scale.text = "UI 100%"
-	emote_scale.custom_minimum_size = Vector2(92.0, 32.0)
-	emote_scale.pressed.connect(func() -> void:
-		var steps: Array[float] = [0.75, 1.0, 1.25, 1.5]
-		var next: float = steps[(steps.find(_emote_ui_scale) + 1) % steps.size()]
-		_set_emote_accessibility(_emote_labels, next)
-		emote_scale.text = "UI %d%%" % int(round(next * 100.0))
-	)
-	controls.add_child(emote_scale)
-	var camera_hint := Label.new()
-	camera_hint.text = "PAN TRACKPAD / ARROWS  ·  ZOOM ⌘+TRACKPAD / - / ="
-	camera_hint.add_theme_color_override("font_color", Color("8195a2"))
-	camera_hint.add_theme_font_size_override("font_size", 13)
-	controls.add_child(camera_hint)
-
-	var panel := PanelContainer.new()
-	panel.position = Vector2(18.0, 104.0)
-	panel.custom_minimum_size = Vector2(430.0, 150.0)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.03, 0.04, 0.06, 0.86)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(11)
-	panel.add_theme_stylebox_override("panel", style)
-	canvas.add_child(panel)
-	_debug_label = RichTextLabel.new()
-	_debug_label.bbcode_enabled = true
-	_debug_label.fit_content = true
-	_debug_label.scroll_active = false
-	_debug_label.custom_minimum_size = Vector2(408.0, 130.0)
-	panel.add_child(_debug_label)
-
 	_hover_panel = PanelContainer.new()
 	_hover_panel.visible = false
 	_hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2040,52 +2079,6 @@ func _build_hud() -> void:
 	_hover_label.custom_minimum_size = Vector2(213.0, 90.0)
 	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hover_panel.add_child(_hover_label)
-
-	_info_panel = PanelContainer.new()
-	_info_panel.visible = false
-	_info_panel.anchor_left = 1.0
-	_info_panel.anchor_right = 1.0
-	_info_panel.offset_left = -318.0
-	_info_panel.offset_right = -18.0
-	_info_panel.offset_top = 104.0
-	_info_panel.offset_bottom = 424.0
-	_info_panel.add_theme_stylebox_override("panel", _inspection_panel_style(0.96))
-	canvas.add_child(_info_panel)
-	var info_column := VBoxContainer.new()
-	_info_panel.add_child(info_column)
-	var info_header := HBoxContainer.new()
-	info_column.add_child(info_header)
-	var title := Label.new()
-	title.text = "PATRON INFO"
-	title.add_theme_color_override("font_color", Color("e2a56e"))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info_header.add_child(title)
-	var close := Button.new()
-	close.text = "CLOSE"
-	close.pressed.connect(func(): _inspected_patron_id = &""; _info_panel.visible = false)
-	info_header.add_child(close)
-	_info_label = RichTextLabel.new()
-	_info_label.bbcode_enabled = true
-	_info_label.fit_content = true
-	_info_label.scroll_active = false
-	_info_label.custom_minimum_size = Vector2(278.0, 255.0)
-	info_column.add_child(_info_label)
-
-	_queue_panel = PanelContainer.new()
-	_queue_panel.visible = false
-	_queue_panel.position = Vector2(18.0, 272.0)
-	_queue_panel.custom_minimum_size = Vector2(300.0, 60.0)
-	_queue_panel.add_theme_stylebox_override("panel", _inspection_panel_style(0.94))
-	canvas.add_child(_queue_panel)
-	var queue_column := VBoxContainer.new()
-	_queue_panel.add_child(queue_column)
-	var queue_title := Label.new()
-	queue_title.text = "ACTION QUEUE"
-	queue_title.add_theme_color_override("font_color", Color("8fc4af"))
-	queue_column.add_child(queue_title)
-	_queue_rows = VBoxContainer.new()
-	_queue_rows.add_theme_constant_override("separation", 2)
-	queue_column.add_child(_queue_rows)
 
 	_context_menu = PanelContainer.new()
 	_context_menu.visible = false
@@ -2103,12 +2096,38 @@ func _build_hud() -> void:
 	_context_menu_rows.add_theme_constant_override("separation", 2)
 	menu_column.add_child(_context_menu_rows)
 
+	# The debug trace is a developer overlay now, not a permanent panel. It is
+	# hidden until the Developer menu asks for it.
+	_debug_panel = PanelContainer.new()
+	_debug_panel.visible = false
+	_debug_panel.position = Vector2(18.0, 16.0)
+	_debug_panel.custom_minimum_size = Vector2(430.0, 150.0)
+	_debug_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var debug_style := StyleBoxFlat.new()
+	debug_style.bg_color = Color(0.03, 0.04, 0.06, 0.86)
+	debug_style.set_corner_radius_all(6)
+	debug_style.set_content_margin_all(11)
+	_debug_panel.add_theme_stylebox_override("panel", debug_style)
+	canvas.add_child(_debug_panel)
+	_debug_label = RichTextLabel.new()
+	_debug_label.bbcode_enabled = true
+	_debug_label.fit_content = true
+	_debug_label.scroll_active = false
+	_debug_label.custom_minimum_size = Vector2(408.0, 130.0)
+	_debug_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_debug_panel.add_child(_debug_label)
+
+	_bottom_hud = BOTTOM_HUD_SCENE.instantiate() as BottomHud
+	add_child(_bottom_hud)
+	_bottom_hud.intent_submitted.connect(_on_hud_intent)
+
 	_emote_overlay = EMOTE_OVERLAY_SCRIPT.new() as EmoteOverlay
 	_emote_overlay.name = "EmoteOverlay"
 	add_child(_emote_overlay)
 	_emote_overlay.configure(_camera)
 	_emote_overlay.set_accessible_labels(_emote_labels)
 	_emote_overlay.set_ui_scale(_emote_ui_scale)
+	_emote_overlay.offscreen_indicator_pressed.connect(_focus_camera_on)
 
 
 func _inspection_panel_style(alpha: float) -> StyleBoxFlat:
@@ -2121,101 +2140,312 @@ func _inspection_panel_style(alpha: float) -> StyleBoxFlat:
 	return style
 
 
-func _add_control_button(row: HBoxContainer, text: String, action: Callable) -> void:
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size = Vector2(70.0, 32.0)
-	button.pressed.connect(action)
-	row.add_child(button)
-
-
-func _toggle_play() -> void:
-	_playing = _play_button.button_pressed
-	_play_button.text = "PAUSE" if _playing else "PLAY"
-	for cultist_id: StringName in _cultist_nodes:
-		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(
-			PLAY_SCALE if _playing else 0.0
-		)
-	for patron_id: StringName in _patron_nodes:
-		(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(
-			PLAY_SCALE if _playing else 0.0
-		)
+# The scale the visible actors move at. A rendered review or validation run
+# drives the world itself; ordinary play follows the accepted Simulation Speed.
+func _world_simulation_scale() -> float:
+	if (
+		not _movement_report_path.is_empty()
+		or not _command_report_path.is_empty()
+		or not _emote_report_path.is_empty()
+		or _capture_navigation_enabled
+	):
+		return AUTOMATED_RUN_SCALE
+	return _accepted_time_scale
 
 
 func _refresh_hud(state: Dictionary) -> void:
-	if _debug_label == null:
-		return
-	var seconds: float = state["simulated_seconds"]
-	var text := "[color=#e2a56e][b]%s[/b][/color]   [color=#8195a2]t=%.1fs[/color]\n%s\n" % [
-		SCENARIOS[_scenario], seconds, _scenario_trace,
-	]
-	text += "\n[color=#8fc4af][b]%s[/b][/color]  %s" % [
-		_cultist_display_name(_selected_cultist_id), _movement_feedback,
-	]
-	var command_state: Dictionary = _commands.snapshot()["cultists"]
-	if command_state.has(_selected_cultist_id):
-		text += "  [color=#8195a2]Queue %d/4[/color]" % [
-			int(command_state[_selected_cultist_id]["action_count"])
-		]
-	if _debug_visible:
-		for patron_id: StringName in PATRON_IDS:
-			var debug: Dictionary = state["debug_patron_views"][patron_id]
-			var name := String(patron_id).trim_prefix("patron_").capitalize()
-			text += "\n[color=#c9b6da]%s[/color]  %s  ·  %.0f/100  ·  %s" % [
-				name, _humanize(debug["room"]), debug["suspicion"], _humanize(debug["suspicion_cause"]),
-			]
-			var trace: Array = debug["recent_perceptions"]
-			for index in range(maxi(0, trace.size() - 3), trace.size()):
-				var entry: Dictionary = trace[index]
-				text += "\n   [color=#8195a2]%.1fs %s > %s = %s[/color]" % [
-					entry["at"], _humanize(entry["source"]), _humanize(entry["recipient"]), _humanize(entry["cause"]),
-				]
-	_debug_label.text = text
-	_refresh_queue_panel()
+	_accepted_time_scale = float(state["time_scale"])
+	if _movement_feedback != _last_feedback:
+		_last_feedback = _movement_feedback
+		_feedback_serial += 1
+	if _debug_panel != null:
+		_debug_panel.visible = _debug_visible
+		if _debug_visible:
+			_debug_label.text = _debug_trace_text(state)
+	if _bottom_hud != null:
+		_bottom_hud.render(_hud_view(state))
 
 
-# One row per Action for the Selected Cultist. Pending rows carry a remove
-# control; the active row does not, because it is already under way.
-func _refresh_queue_panel() -> void:
-	if _queue_panel == null:
-		return
-	for child in _queue_rows.get_children():
-		child.queue_free()
+# --- The HUD view ------------------------------------------------------------
+
+# One place builds everything the Bottom HUD draws. It reads sanitized session
+# state only: patron_view() and the Emote view, never the debug views.
+func _hud_view(state: Dictionary) -> Dictionary:
+	var elapsed: float = state["simulated_seconds"]
+	var night_length: float = GAME_SESSION_SCRIPT.NIGHT_END_SECONDS
+	var remaining := int(maxf(0.0, night_length - elapsed))
+	var results: Dictionary = state["results"]
+	var quota := maxi(1, int(results["capture_quota"]))
+	return {
+		"selected_cultist": _selected_cultist_view(state),
+		"action_tiles": _action_tile_views(),
+		"night": {
+			"clock_label": state["clock_label"],
+			"clock_minutes": state["clock_minutes"],
+			"closing_label": state["closing_label"],
+			"remaining_label": "%dm %02ds" % [remaining / 60, remaining % 60],
+			"progress_ratio": clampf(elapsed / night_length, 0.0, 1.0),
+			"time_scale": state["time_scale"],
+			"last_nonzero_scale": _last_nonzero_scale,
+			"paused": is_zero_approx(float(state["time_scale"])),
+			"phase": state["phase"],
+		},
+		"inspected_patron": _inspected_patron_view(state),
+		"outcome": {
+			"visible": bool(results["visible"]) or not _hud_preview_outcome.is_empty(),
+			"kind": _outcome_kind(state, results),
+			"cause": _outcome_cause(state, results),
+			"captures": int(results["captures"]),
+			"capture_quota": quota,
+			"progress_ratio": clampf(float(results["captures"]) / float(quota), 0.0, 1.0),
+		},
+		"developer": {
+			"visible": _debug_visible,
+			"scenario_id": _scenario,
+			"scenarios": _scenario_entries(),
+		},
+		"settings": {
+			"emote_labels": _emote_labels,
+			"ui_scale": _emote_ui_scale,
+			"reduced_motion": _reduced_motion,
+		},
+		"feedback": {"text": _movement_feedback, "serial": _feedback_serial},
+		"pause_menu_open": _pause_menu_open,
+	}
+
+
+func _selected_cultist_view(state: Dictionary) -> Dictionary:
+	if not state["cultists"].has(_selected_cultist_id):
+		return {}
+	var cultist: Dictionary = state["cultists"][_selected_cultist_id]
+	var status := ""
+	if not _inspected_patron_id.is_empty():
+		var patron: Dictionary = _session.patron_view(
+			_inspected_patron_id, _selected_cultist_id
+		)
+		if not patron.is_empty():
+			status = "%s selected" % patron["name"]
+	return {
+		"id": _selected_cultist_id,
+		"name": _cultist_display_name(_selected_cultist_id),
+		"portrait": BARTENDER_TEXTURE,
+		"tint": CULTIST_COLORS.get(_selected_cultist_id, Color.WHITE),
+		"activity": _humanize(cultist["activity"]),
+		"inspected_patron_status": status,
+	}
+
+
+func _action_tile_views() -> Array[Dictionary]:
+	var tiles: Array[Dictionary] = []
 	var cultists: Dictionary = _commands.snapshot()["cultists"]
 	if not cultists.has(_selected_cultist_id):
-		_queue_panel.visible = false
-		return
+		return tiles
 	var queue: Dictionary = cultists[_selected_cultist_id]
 	var active: Dictionary = queue["active"]
-	if active.is_empty() and queue["pending"].is_empty():
-		_queue_panel.visible = false
-		return
 	if not active.is_empty():
-		_queue_rows.add_child(_queue_row(active, true))
+		tiles.append(_action_tile_view(active, true))
 	for entry: Dictionary in queue["pending"]:
-		_queue_rows.add_child(_queue_row(entry, false))
-	_queue_panel.visible = true
+		tiles.append(_action_tile_view(entry, false))
+	return tiles
 
 
-func _queue_row(action: Dictionary, is_active: bool) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	var label := Label.new()
-	label.text = "%s  %s  ·  %s" % [
-		"▶" if is_active else "·", action["label"], action["target_label"],
-	]
-	label.add_theme_font_size_override("font_size", 13)
-	label.add_theme_color_override(
-		"font_color", Color("e6edf3") if is_active else Color("8195a2")
-	)
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(label)
-	if not is_active:
-		var remove := Button.new()
-		remove.text = "✕"
-		remove.custom_minimum_size = Vector2(26.0, 20.0)
-		remove.pressed.connect(_on_pending_removed.bind(int(action["id"])))
-		row.add_child(remove)
-	return row
+func _action_tile_view(action: Dictionary, is_active: bool) -> Dictionary:
+	return {
+		"id": int(action["id"]),
+		"icon": action["command"],
+		"label": action["label"],
+		"target_label": action["target_label"],
+		"active": is_active,
+		"cancellable": bool(action["cancellable"]),
+		"progress_ratio": _active_navigation_ratio(int(action["id"])) if is_active else null,
+	}
+
+
+# A fill appears only for a real, stable ratio: the Selected Cultist must be
+# navigating for this very Action. Otherwise the tile reads as active with no
+# invented percentage.
+func _active_navigation_ratio(action_id: int) -> Variant:
+	if not _cultist_nodes.has(_selected_cultist_id):
+		return null
+	var actor := _cultist_nodes[_selected_cultist_id] as NavigableActor3D
+	if actor.active_action_id() != action_id:
+		return null
+	return actor.navigation_progress_ratio()
+
+
+func _inspected_patron_view(state: Dictionary) -> Dictionary:
+	if _inspected_patron_id.is_empty():
+		return {}
+	if not _patron_is_present(state, _inspected_patron_id):
+		_inspected_patron_id = &""
+		return {}
+	var view: Dictionary = _session.patron_view(_inspected_patron_id, _selected_cultist_id)
+	if view.is_empty():
+		return {}
+	return {
+		"id": _inspected_patron_id,
+		"name": view["name"],
+		"portrait": BARTENDER_TEXTURE,
+		"tint": PATRON_COLORS.get(_inspected_patron_id, Color.WHITE),
+		"visible_activity": view["visible_activity"],
+		"mood": view["mood"],
+		"suspicion_band": view["suspicion_band"],
+		"intoxication": view["intoxication"],
+		"order_state": _humanize(view["order_state"]),
+	}
+
+
+# Presence comes from the sanitized Emote view, so no player-facing decision
+# reads the debug views.
+func _patron_is_present(state: Dictionary, patron_id: StringName) -> bool:
+	var emotes: Dictionary = state["emote_view"]
+	return emotes.has(patron_id) and bool(emotes[patron_id]["present"])
+
+
+func _scenario_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for scenario_id: String in SCENARIOS:
+		entries.append({"id": scenario_id, "label": SCENARIOS[scenario_id]})
+	return entries
+
+
+func _outcome_kind(state: Dictionary, results: Dictionary) -> StringName:
+	if not _hud_preview_outcome.is_empty():
+		return _hud_preview_outcome
+	if bool(state["defeat"]):
+		return &"exposed"
+	if int(results["captures"]) >= int(results["capture_quota"]):
+		return &"victory"
+	return &"failed"
+
+
+func _outcome_cause(state: Dictionary, results: Dictionary) -> String:
+	if _outcome_kind(state, results) == &"exposed":
+		return "A Patron reached the street while at Maximum Suspicion. The speakeasy is exposed."
+	if _outcome_kind(state, results) == &"victory":
+		return "The Night closed with the Capture quota met and no alarm raised."
+	return "The Night closed short of the Capture quota."
+
+
+# --- Player intent -----------------------------------------------------------
+
+# Every piece of HUD intent lands here, in one match. Nothing else in the scene
+# reads a HUD control.
+func _on_hud_intent(kind: StringName, payload: Dictionary) -> void:
+	match kind:
+		&"set_time_scale":
+			_request_time_scale(float(payload["value"]))
+		&"toggle_pause":
+			_toggle_pause()
+		&"cancel_active_action":
+			_cancel_active_action()
+		&"remove_pending_action":
+			_on_pending_removed(int(payload["action_id"]))
+		&"close_inspected_patron":
+			_inspected_patron_id = &""
+			_refresh_hud(_session.snapshot())
+		&"open_pause_menu":
+			_open_pause_menu()
+		&"resume_night":
+			_close_pause_menu()
+		&"restart_night":
+			get_tree().reload_current_scene()
+		&"quit_game":
+			get_tree().quit()
+		&"select_scenario":
+			_set_scenario(String(payload["scenario_id"]))
+		&"advance_debug_time":
+			_advance_debug_time(float(payload["seconds"]))
+		&"set_debug_visible":
+			_debug_visible = bool(payload["enabled"])
+			_refresh(_session.snapshot())
+		&"set_emote_labels":
+			_set_emote_accessibility(bool(payload["enabled"]), _emote_ui_scale)
+			_save_settings()
+			_refresh_hud(_session.snapshot())
+		&"set_ui_scale":
+			_set_emote_accessibility(_emote_labels, float(payload["scale"]))
+			_save_settings()
+			_refresh_hud(_session.snapshot())
+		&"set_reduced_motion":
+			_reduced_motion = bool(payload["enabled"])
+			_save_settings()
+			_refresh_hud(_session.snapshot())
+
+
+# Keyboard shortcuts go through the HUD, so an open modal blocks them in one
+# place instead of in two.
+func _handle_hud_shortcut(event: InputEvent) -> bool:
+	if _bottom_hud == null or not (event is InputEventKey) or event.is_echo():
+		return false
+	if event.is_action_pressed("open_pause_menu"):
+		if _context_menu != null and _context_menu.visible:
+			_close_context_menu()
+		else:
+			_bottom_hud.activate(&"escape")
+		return true
+	for action: String in ["simulation_speed_1", "simulation_speed_2", "simulation_speed_4"]:
+		if event.is_action_pressed(action):
+			_bottom_hud.activate(StringName(action.replace("simulation_", "")))
+			return true
+	if event.is_action_pressed("simulation_toggle_pause"):
+		_bottom_hud.activate(&"toggle_pause")
+		return true
+	return false
+
+
+# GameSession is the only Simulation Speed authority. A refused speed leaves the
+# HUD on the accepted snapshot and says why.
+func _request_time_scale(value: float) -> void:
+	if _session.set_time_scale(value):
+		if value > 0.0:
+			_last_nonzero_scale = value
+	else:
+		_movement_feedback = "%dx is not available right now." % int(value)
+		# A repeated refusal must show again, even with the same words.
+		_feedback_serial += 1
+	_refresh_hud(_session.snapshot())
+
+
+func _toggle_pause() -> void:
+	var current := float(_session.snapshot()["time_scale"])
+	if current > 0.0:
+		_last_nonzero_scale = current
+	_request_time_scale(BottomHud.resume_scale(current, _last_nonzero_scale))
+
+
+func _advance_debug_time(seconds: float) -> void:
+	var restore := float(_session.snapshot()["time_scale"])
+	_session.set_time_scale(1.0)
+	_session.advance(seconds)
+	_session.set_time_scale(restore)
+	_refresh_hud(_session.snapshot())
+
+
+func _open_pause_menu() -> void:
+	if _pause_menu_open:
+		return
+	_pause_menu_open = true
+	var current := float(_session.snapshot()["time_scale"])
+	if current > 0.0:
+		_last_nonzero_scale = current
+	_close_context_menu()
+	_request_time_scale(0.0)
+
+
+func _close_pause_menu() -> void:
+	if not _pause_menu_open:
+		return
+	_pause_menu_open = false
+	_request_time_scale(_last_nonzero_scale)
+
+
+func _cancel_active_action() -> void:
+	var outcome: Dictionary = _commands.request_cancel_active(_selected_cultist_id)
+	_movement_feedback = outcome["message"]
+	_sync_cultist_navigation(_selected_cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
 
 
 func _on_pending_removed(action_id: int) -> void:
@@ -2224,30 +2454,44 @@ func _on_pending_removed(action_id: int) -> void:
 		_refresh_hud(_session.snapshot())
 
 
+# --- Settings ----------------------------------------------------------------
+
+func _load_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK:
+		return
+	_emote_labels = bool(config.get_value("hud", "emote_labels", _emote_labels))
+	_emote_ui_scale = clampf(
+		float(config.get_value("hud", "ui_scale", _emote_ui_scale)), 0.75, 1.5
+	)
+	_reduced_motion = bool(config.get_value("hud", "reduced_motion", _reduced_motion))
+
+
+func _save_settings() -> void:
+	var config := ConfigFile.new()
+	config.set_value("hud", "emote_labels", _emote_labels)
+	config.set_value("hud", "ui_scale", _emote_ui_scale)
+	config.set_value("hud", "reduced_motion", _reduced_motion)
+	config.save(SETTINGS_PATH)
+
+
+# --- Hover Summary and debug trace -------------------------------------------
+
 func _refresh_character_panels(state: Dictionary) -> void:
-	if _hover_panel == null or _info_panel == null:
+	if _hover_panel == null:
 		return
-	if not _hovered_actor_id.is_empty():
-		if _hovered_is_cultist and state["cultists"].has(_hovered_actor_id):
-			_hover_label.text = _cultist_summary_text(_hovered_actor_id, state)
-			_hover_panel.visible = true
-		elif state["debug_patron_views"].has(_hovered_actor_id):
-			var debug: Dictionary = state["debug_patron_views"][_hovered_actor_id]
-			if debug["lifecycle"] not in [&"not_arrived", &"captured", &"exited"]:
-				_hover_label.text = _patron_summary_text(_hovered_actor_id, state)
-				_hover_panel.visible = true
-			else:
-				_hover_panel.visible = false
-	if _inspected_patron_id.is_empty() or not state["debug_patron_views"].has(_inspected_patron_id):
-		_info_panel.visible = false
+	if _hovered_actor_id.is_empty():
+		_hover_panel.visible = false
 		return
-	var inspected_debug: Dictionary = state["debug_patron_views"][_inspected_patron_id]
-	if inspected_debug["lifecycle"] in [&"not_arrived", &"captured", &"exited"]:
-		_inspected_patron_id = &""
-		_info_panel.visible = false
+	if _hovered_is_cultist and state["cultists"].has(_hovered_actor_id):
+		_hover_label.text = _cultist_summary_text(_hovered_actor_id, state)
+		_hover_panel.visible = true
 		return
-	_info_label.text = _patron_info_text(_inspected_patron_id, state)
-	_info_panel.visible = true
+	if _patron_is_present(state, _hovered_actor_id):
+		_hover_label.text = _patron_summary_text(_hovered_actor_id, state)
+		_hover_panel.visible = true
+	else:
+		_hover_panel.visible = false
 
 
 func _cultist_summary_text(cultist_id: StringName, state: Dictionary) -> String:
@@ -2267,19 +2511,28 @@ func _patron_summary_text(patron_id: StringName, state: Dictionary) -> String:
 	]
 
 
-func _patron_info_text(patron_id: StringName, state: Dictionary) -> String:
-	var view: Dictionary = _session.patron_view(patron_id, _selected_cultist_id)
-	var companions := (
-		"???"
-		if view["companions"] is String
-		else ", ".join(Array(view["companions"]).map(func(id): return String(id).trim_prefix("patron_").capitalize()))
-	)
-	return "[color=#e2a56e][font_size=22][b]%s[/b][/font_size][/color]\n\n[b]Observable Status[/b]\nActivity  %s\nMood  %s\nSuspicion  %s\nIntoxication  %s\nOrder  %s\n\n[b]Profile[/b]\nIdeal Intoxication  %s\nArrival Group  %s\nCompanions  %s\nFriendship  %s\nValue / Risk  %s / %s" % [
-		view["name"], view["visible_activity"], _humanize(view["mood"]),
-		view["suspicion_band"], view["intoxication"], _humanize(view["order_state"]),
-		view["ideal_intoxication"], _humanize(view["arrival_group"]), companions, view["friendship"],
-		view["victim_value"], view["victim_risk"],
+func _debug_trace_text(state: Dictionary) -> String:
+	var seconds: float = state["simulated_seconds"]
+	var text := "[color=#e2a56e][b]%s[/b][/color]   [color=#8195a2]t=%.1fs[/color]\n%s\n" % [
+		SCENARIOS[_scenario], seconds, _scenario_trace,
 	]
+	text += "\n[color=#8fc4af][b]%s[/b][/color]  %s" % [
+		_cultist_display_name(_selected_cultist_id), _movement_feedback,
+	]
+	for patron_id: StringName in PATRON_IDS:
+		var debug: Dictionary = state["debug_patron_views"][patron_id]
+		var name := String(patron_id).trim_prefix("patron_").capitalize()
+		text += "\n[color=#c9b6da]%s[/color]  %s  ·  %.0f/100  ·  %s" % [
+			name, _humanize(debug["room"]), debug["suspicion"], _humanize(debug["suspicion_cause"]),
+		]
+		var trace: Array = debug["recent_perceptions"]
+		for index in range(maxi(0, trace.size() - 3), trace.size()):
+			var entry: Dictionary = trace[index]
+			text += "\n   [color=#8195a2]%.1fs %s > %s = %s[/color]" % [
+				entry["at"], _humanize(entry["source"]), _humanize(entry["recipient"]),
+				_humanize(entry["cause"]),
+			]
+	return text
 
 
 # --- Helpers -----------------------------------------------------------------

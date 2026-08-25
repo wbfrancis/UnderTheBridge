@@ -10,6 +10,11 @@ const PREPARATION_END_SECONDS := 60.0
 const CLOSING_START_SECONDS := 960.0
 const NIGHT_END_SECONDS := 1080.0
 const CAPTURE_QUOTA := 3
+## The Night Clock reads 8:00 PM when the Night starts and 2:00 AM when it ends
+## (CONTEXT.md). This is the only mapping from Night progress to a clock face;
+## no phase boundary, duration, or gameplay rule reads it.
+const CLOCK_OPENING_MINUTES := 20 * 60
+const CLOCK_CLOSING_MINUTES := 26 * 60
 const REPRESENTATIVE_ROLL_INTERVAL_SECONDS := 5.0
 const REPRESENTATIVE_ROLLS_FOR_OUTCOME := 4
 
@@ -464,6 +469,8 @@ func snapshot() -> Dictionary:
 		"phase": _phase,
 		"phase_label": _phase_label(),
 		"clock_label": _clock_label(),
+		"clock_minutes": clock_minutes(),
+		"closing_label": closing_label(),
 		"outcome": _outcome,
 		"captures": captures.size(),
 		"capture_log": captures.duplicate(true),
@@ -693,14 +700,32 @@ func _phase_label() -> String:
 	return "Night"
 
 
+## The clock-face reading, in minutes past midnight. The analog Night Clock and
+## the clock label both come from this one number.
+func clock_minutes() -> float:
+	var ratio := clampf(_simulated_seconds / NIGHT_END_SECONDS, 0.0, 1.0)
+	return float(CLOCK_OPENING_MINUTES) + ratio * float(
+		CLOCK_CLOSING_MINUTES - CLOCK_OPENING_MINUTES
+	)
+
+
+func closing_label() -> String:
+	return _format_clock(float(CLOCK_CLOSING_MINUTES))
+
+
 func _clock_label() -> String:
-	var total_seconds := 18 * 60 * 60 + 59 * 60 + int(_simulated_seconds)
-	var hour := total_seconds / 3600
-	var minute := (total_seconds / 60) % 60
-	var suffix := "PM"
-	if hour > 12:
-		hour -= 12
-	return "%d:%02d %s" % [hour, minute, suffix]
+	return _format_clock(clock_minutes())
+
+
+static func _format_clock(minutes: float) -> String:
+	var total := posmod(int(round(minutes)), 24 * 60)
+	var hour: int = total / 60
+	var minute: int = total % 60
+	var suffix := "AM" if hour < 12 else "PM"
+	var display_hour: int = hour % 12
+	if display_hour == 0:
+		display_hour = 12
+	return "%d:%02d %s" % [display_hour, minute, suffix]
 
 
 func _record(event_name: StringName, details: Dictionary = {}) -> void:

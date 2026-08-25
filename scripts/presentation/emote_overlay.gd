@@ -6,6 +6,14 @@ extends CanvasLayer
 ## The overlay owns no gameplay rule and no priority rule. It projects each
 ## actor's head anchor through the active camera, solves placement, and renders
 ## the descriptions it is given at a fixed pixel size.
+##
+## The same projection answers a second question: an urgent actor who has left
+## the camera view gets a clickable Offscreen Indicator on the screen edge. That
+## reuses the anchors, the safe bounds, and the reserved HUD rectangles this
+## module already owns, so nothing needs a second projection system.
+
+## Pressed by the player to move the camera to that actor.
+signal offscreen_indicator_pressed(actor_id: StringName)
 
 const BASE_SIZE := Vector2(34.0, 34.0)
 const LABEL_WIDTH := 86.0
@@ -25,12 +33,22 @@ const OFFSETS: Array[Vector2] = [
 	Vector2(0.0, -84.0),
 ]
 
+const INDICATOR_SIZE := Vector2(38.0, 34.0)
+## Only an urgent state earns an edge marker: a persistent Escape, a persistent
+## Investigation, and the transient danger reaction. Everything else is ordinary
+## and stays inside the scene.
+const URGENT_EMOTES: Array[StringName] = [
+	&"escaping", &"investigating", &"danger_reaction",
+]
+
 var _camera: Camera3D
 var _safe_inset := 12.0
 var _panel_rects: Array[Rect2] = []
 var _accessible_labels := false
 var _ui_scale := 1.0
 var _slots: Array[Control] = []
+var _indicator_slots: Array[Button] = []
+var _indicators: Dictionary = {}
 var _last_offsets: Dictionary = {}
 var _placements: Dictionary = {}
 
@@ -57,8 +75,11 @@ func set_reserved_rects(rects: Array[Rect2]) -> void:
 func reset() -> void:
 	_last_offsets.clear()
 	_placements.clear()
+	_indicators.clear()
 	for slot in _slots:
 		slot.visible = false
+	for indicator in _indicator_slots:
+		indicator.visible = false
 
 
 ## Renders one frame. `anchors` maps actor id to the world-space head position.
@@ -73,16 +94,19 @@ func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 	)
 	var taken: Array[Rect2] = []
 	var used := 0
+	var offscreen: Array[Dictionary] = []
 	for bubble: Dictionary in bubbles:
 		var actor_id: StringName = bubble["actor_id"]
 		if not anchors.has(actor_id):
 			continue
 		var world: Vector3 = anchors[actor_id]
-		if _camera.is_position_behind(world):
+		if _camera.is_position_behind(world) or not Rect2(
+			Vector2.ZERO, viewport_size
+		).has_point(_camera.unproject_position(world)):
+			if _is_urgent(bubble):
+				offscreen.append(bubble)
 			continue
 		var screen := _camera.unproject_position(world)
-		if not Rect2(Vector2.ZERO, viewport_size).has_point(screen):
-			continue
 		var size := _bubble_size()
 		var placement: Variant = _solve_placement(actor_id, screen, size, bounds, taken)
 		if placement == null:
@@ -94,11 +118,160 @@ func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 		used += 1
 	for index in range(used, _slots.size()):
 		_slots[index].visible = false
+	_refresh_indicators(offscreen, anchors, taken)
 
 
 ## The rectangle a bubble occupies, for the rendered review checks.
 func placements() -> Dictionary:
 	return _placements.duplicate(true)
+
+
+## The Offscreen Indicators now on screen: actor id to rectangle and label.
+func offscreen_indicators() -> Dictionary:
+	return _indicators.duplicate(true)
+
+
+## Presses one Offscreen Indicator. Returns false when that actor has none.
+func press_offscreen_indicator(actor_id: StringName) -> bool:
+	if not _indicators.has(actor_id):
+		return false
+	offscreen_indicator_pressed.emit(actor_id)
+	return true
+
+
+func _is_urgent(bubble: Dictionary) -> bool:
+	return StringName(bubble.get("emote", &"")) in URGENT_EMOTES
+
+
+# One indicator for one actor, clamped to the usable scene edge above the Bottom
+# HUD and pushed clear of any reserved panel or open modal.
+func _refresh_indicators(
+		offscreen: Array[Dictionary],
+		anchors: Dictionary,
+		taken: Array[Rect2]
+) -> void:
+	_indicators.clear()
+	var bounds := _usable_bounds()
+	var used := 0
+	for bubble: Dictionary in offscreen:
+		var actor_id: StringName = bubble["actor_id"]
+		if _indicators.has(actor_id) or bounds.size.x <= INDICATOR_SIZE.x:
+			continue
+		var direction := _screen_direction(anchors[actor_id])
+		var rect := _edge_rect(direction, bounds)
+		rect = _push_clear(rect, bounds, taken)
+		taken.append(rect)
+		var label := "Focus %s: %s" % [
+			bubble.get("display_name", _humanize(actor_id)),
+			String(bubble["emote"]).replace("_", " "),
+		]
+		_indicators[actor_id] = {"rect": rect, "label": label, "emote": bubble["emote"]}
+		_paint_indicator(used, bubble, rect, label, actor_id)
+		used += 1
+	for index in range(used, _indicator_slots.size()):
+		_indicator_slots[index].visible = false
+
+
+# The scene area a marker may use: the safe rectangle, minus whatever the HUD
+# reserves along the bottom edge.
+func _usable_bounds() -> Rect2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	var bounds := Rect2(
+		Vector2(_safe_inset, _safe_inset),
+		viewport_size - Vector2(_safe_inset, _safe_inset) * 2.0
+	)
+	var floor_y := bounds.end.y
+	for reserved: Rect2 in _panel_rects:
+		if reserved.end.y >= viewport_size.y - 1.0 and reserved.position.y < floor_y:
+			floor_y = reserved.position.y
+	bounds.size.y = maxf(INDICATOR_SIZE.y, floor_y - _safe_inset - bounds.position.y)
+	return bounds
+
+
+# Which way the actor lies from the screen centre, including behind the camera,
+# where the projected point would otherwise read as mirrored.
+func _screen_direction(world: Vector3) -> Vector2:
+	var local := _camera.global_transform.affine_inverse() * world
+	var direction := Vector2(local.x, -local.y)
+	if local.z > 0.0:
+		direction = -direction
+	if direction.is_zero_approx():
+		return Vector2(0.0, -1.0)
+	return direction.normalized()
+
+
+func _edge_rect(direction: Vector2, bounds: Rect2) -> Rect2:
+	var center := bounds.get_center()
+	var half := bounds.size * 0.5 - INDICATOR_SIZE * 0.5
+	var travel := INF
+	if not is_zero_approx(direction.x):
+		travel = minf(travel, maxf(0.0, half.x) / absf(direction.x))
+	if not is_zero_approx(direction.y):
+		travel = minf(travel, maxf(0.0, half.y) / absf(direction.y))
+	if is_inf(travel):
+		travel = 0.0
+	var point := center + direction * travel
+	return Rect2(point - INDICATOR_SIZE * 0.5, INDICATOR_SIZE).abs()
+
+
+# Slides the marker along the edge until it stops covering a reserved panel or
+# another marker. It never leaves the usable bounds.
+func _push_clear(rect: Rect2, bounds: Rect2, taken: Array[Rect2]) -> Rect2:
+	var step := INDICATOR_SIZE.y + 6.0
+	for attempt in range(8):
+		var candidate := rect
+		var shift := step * float((attempt + 1) / 2) * (1.0 if attempt % 2 == 0 else -1.0)
+		if attempt > 0:
+			candidate.position.y += shift
+		candidate.position.x = clampf(
+			candidate.position.x, bounds.position.x, bounds.end.x - candidate.size.x
+		)
+		candidate.position.y = clampf(
+			candidate.position.y, bounds.position.y, bounds.end.y - candidate.size.y
+		)
+		if _is_legal(candidate, bounds, taken):
+			return candidate
+	return rect
+
+
+func _paint_indicator(
+		index: int,
+		bubble: Dictionary,
+		rect: Rect2,
+		label: String,
+		actor_id: StringName
+) -> void:
+	var button := _indicator(index)
+	button.position = rect.position
+	button.custom_minimum_size = rect.size
+	button.size = rect.size
+	button.visible = true
+	button.text = String(bubble["icon"])
+	button.tooltip_text = label
+	if "accessibility_name" in button:
+		button.set("accessibility_name", label)
+	var style := _bubble_style(Color(bubble["color"]), bubble["shape"])
+	for state: String in ["normal", "hover", "pressed", "focus"]:
+		button.add_theme_stylebox_override(state, style)
+	button.add_theme_color_override("font_color", Color(bubble["color"]))
+	button.set_meta("actor_id", actor_id)
+
+
+func _indicator(index: int) -> Button:
+	while _indicator_slots.size() <= index:
+		var button := Button.new()
+		button.focus_mode = Control.FOCUS_NONE
+		button.clip_text = true
+		button.pressed.connect(func() -> void:
+			offscreen_indicator_pressed.emit(StringName(button.get_meta("actor_id", &"")))
+		)
+		_indicator_slots.append(button)
+		add_child(button)
+	return _indicator_slots[index]
+
+
+func _humanize(actor_id: StringName) -> String:
+	return String(actor_id).split("_")[-1].capitalize()
 
 
 func _bubble_size() -> Vector2:

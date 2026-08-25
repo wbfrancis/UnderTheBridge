@@ -172,9 +172,29 @@ _Avoid_: Task, job
 One active Action followed by up to three pending Actions belonging to one Cultist. A normal command clears the queue, while Shift+command appends the Action.
 _Avoid_: Behavior tree
 
+**Action Tile**:
+The square HUD item for one active or pending Action in the Selected Cultist's Action Queue. The complete row of Action Tiles stays visible above the Bottom HUD while a Cultist is selected.
+_Avoid_: Queue item, action row
+
 **Context Menu**:
 The small list of commands that a right-click on a Patron or an authored smart object opens for the Selected Cultist. It shows the queue mode, disables a command that a temporary condition blocks, and reveals no hidden Patron value.
 _Avoid_: Radial menu, action wheel
+
+**Bottom HUD**:
+The persistent player interface rooted to the lower screen edge. It groups the Selected Cultist, Night and playback state, and Inspected Patron into three zones whose detailed panels open upward.
+_Avoid_: Top bar, control strip
+
+**Pause Menu**:
+The in-Night menu opened with Escape. It pauses the Night and offers Resume, Restart, Settings, and Quit.
+_Avoid_: Main Menu, title screen
+
+**Offscreen Indicator**:
+A screen-edge marker for an urgent actor who is outside the camera view. Pressing it moves the camera to that actor; a transient Hard Evidence marker lasts 2.5 real seconds and freezes during pause.
+_Avoid_: Minimap marker, notification badge
+
+**Outcome Modal**:
+The blocking end-of-Night popup that reports Success, Operation Failed, or Exposed with its cause and Capture quota progress. It offers Restart and Quit before a future detailed results view.
+_Avoid_: Victory screen, game-over screen
 
 **Smart Object**:
 An authored world target that offers its own commands, such as the bar work position, the Trapdoor control, or the Tunnel Intake.
@@ -201,5 +221,13 @@ The moment after which cancelling an Action cannot undo its gameplay consequence
 _Avoid_: Completion
 
 **Night**:
-One self-contained 18-minute operation ending in a results screen and clean restart.
+One self-contained 18-minute operation ending in an Outcome Modal and clean restart.
 _Avoid_: Level, campaign day
+
+**Simulation Speed**:
+The selected rate at which a Night advances: 1x, 2x, or 4x. Pause stops advancement without changing the selected rate.
+_Avoid_: Playback rate, time scale
+
+**Night Clock**:
+The analog-style HUD clock that maps an 8:00 PM to 2:00 AM operation onto the 18-minute Night. Its hover summary gives the current time, Closing time, and time remaining.
+_Avoid_: Timer, countdown

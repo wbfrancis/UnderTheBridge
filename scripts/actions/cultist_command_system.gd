@@ -61,11 +61,13 @@ const OBJECT_COMMANDS := {
 const REASON_LABELS := {
 	&"": "",
 	&"already_attempted": "Already attempted",
+	&"already_committed": "That Action is already under way",
 	&"already_carrying": "Already carrying a drink",
 	&"approach_reserved": "Another Cultist holds that position",
 	&"cultist_busy": "Cultist is occupied",
 	&"drug_prep_running": "A dose is already being prepared",
 	&"invalid_target": "That target is gone",
+	&"no_active_action": "No Action is running",
 	&"no_doses": "No dose remains",
 	&"no_open_order": "No open Order",
 	&"no_prepared_drink": "No Prepared Drink carried",
@@ -206,6 +208,56 @@ func remove_pending(cultist_id: StringName, action_id: int) -> bool:
 		return false
 	_note(cultist_id, &"cancelled", "Pending Action removed.", &"")
 	return true
+
+
+## Cancels the running Action for one Cultist. Cancellation is only allowed
+## before the Commitment Point, because after it the gameplay effect has fired
+## and no undo exists. A refusal carries a visible reason, never a silent no-op.
+func request_cancel_active(cultist_id: StringName) -> Dictionary:
+	if _session == null or not _queues.has(cultist_id):
+		return _cancel_refusal(cultist_id, -1, &"", &"invalid_target")
+	var action := _active_action(cultist_id)
+	if action.is_empty():
+		return _cancel_refusal(cultist_id, -1, &"", &"no_active_action")
+	var action_id := int(action["id"])
+	var command: StringName = action["payload"]["command"]
+	if bool(action["payload"]["committed"]):
+		return _cancel_refusal(cultist_id, action_id, command, &"already_committed")
+	# The reservation goes back before the queue moves on, so the next Action can
+	# take the slot it needs in the same step.
+	_release(cultist_id)
+	if not _queues[cultist_id].cancel_active():
+		return _cancel_refusal(cultist_id, action_id, command, &"already_committed")
+	_record(cultist_id, action_id, command, &"cancelled", &"player_request")
+	var message := "%s cancelled." % CATALOG[command]["label"]
+	_note(cultist_id, &"cancelled", message, &"")
+	_sync_active(cultist_id)
+	return {
+		"cancelled": true,
+		"action_id": action_id,
+		"command": command,
+		"reason": &"",
+		"message": message,
+	}
+
+
+func _cancel_refusal(
+		cultist_id: StringName,
+		action_id: int,
+		command: StringName,
+		reason: StringName
+) -> Dictionary:
+	var label: String = CATALOG[command]["label"] if CATALOG.has(command) else "Action"
+	var message := "%s cannot be cancelled: %s." % [label, _reason_label(reason)]
+	if _feedback.has(cultist_id):
+		_note(cultist_id, &"rejected", message, reason)
+	return {
+		"cancelled": false,
+		"action_id": action_id,
+		"command": command,
+		"reason": reason,
+		"message": message,
+	}
 
 
 ## Navigation reported arrival at the approach point. This is the Commitment
@@ -542,6 +594,7 @@ func _action_view(cultist_id: StringName, action: Dictionary) -> Dictionary:
 		"target_id": target["id"],
 		"target_label": _target_label(cultist_id, target),
 		"stage": &"committed" if bool(payload["committed"]) else &"approaching",
+		"cancellable": not bool(payload["committed"]),
 	}
 
 

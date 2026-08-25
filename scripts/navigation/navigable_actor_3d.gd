@@ -22,6 +22,11 @@ var _active_action_id := -1
 var _target_position := Vector3.ZERO
 var _remaining_waypoints: Array[Vector3] = []
 var _progress = PROGRESS_TRACKER_SCRIPT.new()
+# Presentation-only travel bookkeeping for the Action Tile fill. It is measured
+# in metres, never in gameplay state, so no rule can depend on it.
+var _planned_distance := 0.0
+var _travelled_distance := 0.0
+var _last_travel_position := Vector3.ZERO
 var _selection_ring: MeshInstance3D
 
 
@@ -110,6 +115,9 @@ func navigate_path(action_id: int, waypoints: Array[Vector3]) -> void:
 		return
 	_active_action_id = action_id
 	_remaining_waypoints = waypoints.duplicate()
+	_planned_distance = _path_length(global_position, waypoints)
+	_travelled_distance = 0.0
+	_last_travel_position = global_position
 	_target_position = _remaining_waypoints.pop_front()
 	_progress.reset(global_position)
 	if navigation_agent != null:
@@ -119,6 +127,8 @@ func navigate_path(action_id: int, waypoints: Array[Vector3]) -> void:
 func cancel_navigation() -> void:
 	_active_action_id = -1
 	_remaining_waypoints.clear()
+	_planned_distance = 0.0
+	_travelled_distance = 0.0
 	velocity = Vector3.ZERO
 	if navigation_agent != null:
 		navigation_agent.velocity = Vector3.ZERO
@@ -132,6 +142,24 @@ func active_action_id() -> int:
 	return _active_action_id
 
 
+# How much of the planned route is behind the actor, as 0.0 to 1.0. It returns
+# null while no route with a usable length exists, so a caller shows an active
+# state instead of inventing a percentage.
+func navigation_progress_ratio() -> Variant:
+	if _active_action_id < 0 or _planned_distance <= 0.01:
+		return null
+	return clampf(_travelled_distance / _planned_distance, 0.0, 1.0)
+
+
+func _path_length(from: Vector3, waypoints: Array[Vector3]) -> float:
+	var total := 0.0
+	var cursor := from
+	for waypoint: Vector3 in waypoints:
+		total += cursor.distance_to(waypoint)
+		cursor = waypoint
+	return total
+
+
 # The point the actor is currently heading for. Owners re-aim against this when
 # a moving target drifts away from the approach point they asked for.
 func target_position() -> Vector3:
@@ -143,6 +171,8 @@ func _physics_process(delta: float) -> void:
 		return
 	if NavigationServer3D.map_get_iteration_id(navigation_agent.get_navigation_map()) == 0:
 		return
+	_travelled_distance += _last_travel_position.distance_to(global_position)
+	_last_travel_position = global_position
 	if global_position.distance_to(_target_position) <= arrival_distance:
 		_finish_navigation()
 		return

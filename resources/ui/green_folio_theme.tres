@@ -1,0 +1,84 @@
+[gd_resource type="Theme" load_steps=8 format=3]
+
+[sub_resource type="StyleBoxFlat" id="ButtonNormal"]
+content_margin_left = 8.0
+content_margin_top = 3.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.4549, 0.2706, 0.1333, 1)
+border_width_left = 2
+border_width_top = 3
+border_width_right = 2
+border_width_bottom = 1
+border_color = Color(0.6588, 0.4745, 0.2431, 1)
+
+[sub_resource type="StyleBoxFlat" id="ButtonHover"]
+content_margin_left = 8.0
+content_margin_top = 3.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.5412, 0.3294, 0.1608, 1)
+border_width_left = 2
+border_width_top = 3
+border_width_right = 2
+border_width_bottom = 1
+border_color = Color(0.7647, 0.5647, 0.3059, 1)
+
+[sub_resource type="StyleBoxFlat" id="ButtonPressed"]
+content_margin_left = 8.0
+content_margin_top = 5.0
+content_margin_right = 8.0
+content_margin_bottom = 3.0
+bg_color = Color(0.0824, 0.2157, 0.1529, 1)
+border_width_left = 2
+border_width_top = 1
+border_width_right = 2
+border_width_bottom = 3
+border_color = Color(0.302, 0.1765, 0.0941, 1)
+
+[sub_resource type="StyleBoxFlat" id="ButtonDisabled"]
+content_margin_left = 8.0
+content_margin_top = 3.0
+content_margin_right = 8.0
+content_margin_bottom = 5.0
+bg_color = Color(0.302, 0.1765, 0.0941, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4157, 0.2902, 0.1373, 1)
+
+[sub_resource type="StyleBoxEmpty" id="ButtonFocus"]
+
+[sub_resource type="StyleBoxFlat" id="PanelFolio"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.2118, 0.4392, 0.3333, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.302, 0.1765, 0.0941, 1)
+
+[sub_resource type="StyleBoxFlat" id="ProgressFill"]
+bg_color = Color(0.2902, 0.5882, 0.4275, 1)
+
+[resource]
+default_font_size = 14
+Button/colors/font_color = Color(0.9176, 0.8471, 0.6588, 1)
+Button/colors/font_disabled_color = Color(0.5412, 0.4784, 0.3686, 1)
+Button/colors/font_focus_color = Color(0.9529, 0.898, 0.7412, 1)
+Button/colors/font_hover_color = Color(0.9529, 0.898, 0.7412, 1)
+Button/colors/font_pressed_color = Color(0.9529, 0.898, 0.7412, 1)
+Button/font_sizes/font_size = 14
+Button/styles/disabled = SubResource("ButtonDisabled")
+Button/styles/focus = SubResource("ButtonFocus")
+Button/styles/hover = SubResource("ButtonHover")
+Button/styles/normal = SubResource("ButtonNormal")
+Button/styles/pressed = SubResource("ButtonPressed")
+Label/colors/font_color = Color(0.9176, 0.8471, 0.6588, 1)
+Label/font_sizes/font_size = 14
+PanelContainer/styles/panel = SubResource("PanelFolio")
+ProgressBar/styles/fill = SubResource("ProgressFill")

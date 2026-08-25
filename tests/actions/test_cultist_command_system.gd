@@ -137,6 +137,98 @@ func test_precommit_cancellation_releases_the_reservation_and_changes_nothing() 
 		"An interrupted approach has no gameplay effect.")
 
 
+func test_active_cancellation_before_commitment_releases_and_starts_the_next_action() -> void:
+	var pair := _seated_night()
+	var session = pair[0]
+	var commands = pair[1]
+
+	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), false)
+	var queued: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(-6.0, 4.0), true
+	)
+	assert_eq(
+		commands.snapshot()["reserved_slots"].get(&"cultist_01", &""),
+		&"approach_patron_june",
+		"The approach is reserved while the Talk is running."
+	)
+
+	var cancelled: Dictionary = commands.request_cancel_active(&"cultist_01")
+	assert_true(bool(cancelled["cancelled"]), "A pre-commitment Action can be cancelled.")
+	assert_false(commands.snapshot()["reserved_slots"].has(&"cultist_01"),
+		"Cancelling releases the approach reservation.")
+	assert_true(session.snapshot()["conversations"].is_empty(),
+		"A cancelled approach leaves no gameplay effect.")
+
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(int(queue["active"]["id"]), int(queued["action_id"]),
+		"The next pending Action becomes active at once.")
+	assert_true(queue["pending"].is_empty())
+
+
+func test_cancellation_cannot_undo_an_action_past_its_commitment_point() -> void:
+	var pair := _seated_night()
+	var session = pair[0]
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+	)
+	commands.notify_reached(&"cultist_01", int(issued["action_id"]))
+	assert_false(session.snapshot()["conversations"].is_empty(),
+		"The Talk committed, so the conversation is running.")
+
+	var refused: Dictionary = commands.request_cancel_active(&"cultist_01")
+	assert_false(bool(refused["cancelled"]),
+		"A committed Action has already left the queue, so nothing can cancel it.")
+	assert_eq(refused["reason"], &"no_active_action")
+	assert_false(String(refused["message"]).is_empty(),
+		"A refusal always carries a visible reason.")
+	assert_false(session.snapshot()["conversations"].is_empty(),
+		"The committed gameplay effect survives the refused cancellation.")
+
+
+func test_cancelling_the_last_action_leaves_an_idle_queue_and_no_reservation() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), false)
+	assert_true(bool(commands.request_cancel_active(&"cultist_01")["cancelled"]))
+
+	var queue := _queue(commands, &"cultist_01")
+	assert_true(queue["active"].is_empty(), "The Action Queue is idle again.")
+	assert_eq(int(queue["action_count"]), 0)
+	assert_false(commands.snapshot()["reserved_slots"].has(&"cultist_01"),
+		"An idle Cultist holds no approach slot.")
+
+
+func test_the_normal_snapshot_marks_each_action_cancellable_without_hidden_state() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+	)
+	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), true)
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(int(queue["active"]["id"]), int(issued["action_id"]))
+	assert_true(bool(queue["active"]["cancellable"]),
+		"An Action still approaching can be cancelled.")
+	assert_true(bool(queue["pending"][0]["cancellable"]),
+		"A pending Action can always be removed.")
+	assert_eq(queue["active"]["stage"], &"approaching",
+		"An Action before its Commitment Point is still approaching.")
+
+	# The flag adds one display field and drags no internal payload with it.
+	var expected: Array[String] = [
+		"id", "command", "label", "target_kind", "target_id", "target_label", "stage",
+		"cancellable",
+	]
+	var keys: Array = queue["active"].keys()
+	keys.sort()
+	expected.sort()
+	assert_eq(keys, expected as Array, "An Action view carries display fields only.")
+
+
 func test_the_effect_fires_once_at_commitment_and_a_later_command_cannot_reverse_it() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
