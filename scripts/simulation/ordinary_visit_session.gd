@@ -624,6 +624,57 @@ func _urgent_intention(patron: Dictionary) -> StringName:
 	return &"none"
 
 
+# The sanitized projection the Emote system reads. It carries only what the
+# player may already see: identity, presence, one public state, public band
+# labels, and public change events. No exact value or internal timer crosses it.
+func patron_emote_row(patron_id: StringName) -> Dictionary:
+	if not _patrons.has(patron_id):
+		return {}
+	var patron: Dictionary = _patrons[patron_id]
+	var view := normal_patron_view(patron_id)
+	var lifecycle: StringName = patron["lifecycle"]
+	return {
+		"id": patron_id,
+		"kind": &"patron",
+		"present": lifecycle not in [&"not_arrived", &"captured", &"exited"],
+		"state": _public_emote_state(patron, view),
+		"changes": [],
+		"public": {
+			"activity": view["visible_activity"],
+			"mood": view["mood"],
+			"danger": view["suspicion_band"],
+			"rapport": view["friendship"],
+			"order": String(view["order_state"]),
+			"drug_cue": String(view["known_drugged_drink"]),
+		},
+	}
+
+
+# One public state for each Patron, in the order the Emote catalog ranks them.
+func _public_emote_state(patron: Dictionary, view: Dictionary) -> StringName:
+	match StringName(view["urgent_intention"]):
+		&"escaping":
+			return &"escaping"
+		&"investigating":
+			return &"investigating"
+		&"bathroom":
+			return &"bathroom"
+		&"ordering":
+			return &"ordering"
+	if patron["lifecycle"] == &"unconscious" or patron["activity"] == &"being_dragged":
+		return &"unconscious"
+	if patron["activity"] == &"conversing":
+		return &"conversation"
+	return &"none"
+
+
+func conversing_cultists() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for cultist_id: StringName in _conversations:
+		result.append(cultist_id)
+	return result
+
+
 func peak_suspicion() -> float:
 	return _peak_suspicion
 

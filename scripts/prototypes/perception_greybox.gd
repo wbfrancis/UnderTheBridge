@@ -11,6 +11,8 @@ const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_percepti
 const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
 const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_actor_3d.gd")
 const COMMAND_SYSTEM_SCRIPT := preload("res://scripts/actions/cultist_command_system.gd")
+const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
+const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
 const NAVIGATION_MESH: NavigationMesh = preload(
 	"res://assets/navigation/speakeasy_navigation.tres"
 )
@@ -169,6 +171,11 @@ var _context_append := false
 var _queue_panel: PanelContainer
 var _queue_rows: VBoxContainer
 var _refreshing := false
+var _emotes = EMOTE_DIRECTOR_SCRIPT.new()
+var _emote_overlay: EmoteOverlay
+var _emote_labels := false
+var _emote_ui_scale := 1.0
+var _emote_head_offset := 2.25
 var _selected_cultist_id: StringName = &"cultist_01"
 var _hovered_actor_id: StringName = &""
 var _hovered_is_cultist := false
@@ -180,6 +187,8 @@ var _navigation_region: NavigationRegion3D
 var _navigation_ready := false
 var _movement_feedback := "Select a Cultist, then right-click the floor to move. Hold Shift to queue."
 var _command_report_path := ""
+var _emote_report_path := ""
+var _emote_play_scale := -1.0
 var _context_menu_preview: StringName = &""
 var _movement_report_path := ""
 var _movement_capture_path := ""
@@ -222,6 +231,12 @@ func _ready() -> void:
 	_movement_capture_path = _command_line_value("--movement-capture=")
 	_command_report_path = _command_line_value("--command-report=")
 	_context_menu_preview = StringName(_command_line_value("--context-menu="))
+	_emote_report_path = _command_line_value("--emote-report=")
+	_emote_play_scale = float(_command_line_value("--emote-play=", "-1"))
+	_set_emote_accessibility(
+		_command_line_flag("--emote-labels"),
+		float(_command_line_value("--emote-scale=", "1.0"))
+	)
 	_movement_validation_scale = clampf(
 		float(_command_line_value("--movement-scale=", "4.0")), 1.0, 4.0
 	)
@@ -239,7 +254,11 @@ func _ready() -> void:
 		_hovered_is_cultist = String(hover_actor).begins_with("cultist_")
 		_hover_panel.position = Vector2(540.0, 210.0)
 		_refresh_character_panels(_session.snapshot())
-	if not _movement_report_path.is_empty() or not _command_report_path.is_empty():
+	if (
+		not _movement_report_path.is_empty()
+		or not _command_report_path.is_empty()
+		or not _emote_report_path.is_empty()
+	):
 		_capture_mode = true
 	if not capture_path.is_empty():
 		_capture_mode = true
@@ -253,6 +272,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if _playing and not _capture_mode:
 		_session.advance(delta * PLAY_SCALE)
+	elif _capture_mode and _emote_play_scale > 0.0:
+		# The rendered Emote review runs the Night at the requested speed so the
+		# captured frame is a live one, not a frozen setup.
+		_session.advance(delta * _emote_play_scale)
+	_advance_emotes(delta)
 	if _presentation_prototype and not _capture_mode:
 		_update_camera_pan(delta)
 		if not is_equal_approx(_camera.fov, _camera_fov_target):
@@ -656,6 +680,54 @@ func _refresh_move_markers() -> void:
 		_move_marker_root.add_child(marker)
 
 
+# --- Emote Bubbles -----------------------------------------------------------
+
+# Presentation only. The director reads the sanitized emote_view, never the
+# debug views, and transients use real seconds so 4x play stays readable.
+func _advance_emotes(real_delta: float) -> void:
+	if _emote_overlay == null:
+		return
+	_emotes.update(
+		_session.emote_view(_commands.snapshot()["cultists"]),
+		real_delta,
+		not _playing
+	)
+	_emote_overlay.set_reserved_rects(_reserved_hud_rects())
+	_emote_overlay.refresh(_emotes.bubbles(), _emote_anchors())
+
+
+func _emote_anchors() -> Dictionary:
+	var anchors: Dictionary = {}
+	for patron_id: StringName in _patron_nodes:
+		var patron_pivot: Node3D = _patron_nodes[patron_id]
+		if patron_pivot.visible:
+			anchors[patron_id] = (
+				patron_pivot.global_position + Vector3(0.0, _emote_head_offset, 0.0)
+			)
+	for cultist_id: StringName in _cultist_nodes:
+		var cultist_pivot: Node3D = _cultist_nodes[cultist_id]
+		anchors[cultist_id] = cultist_pivot.global_position + Vector3(0.0, _emote_head_offset, 0.0)
+	return anchors
+
+
+func _reserved_hud_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = [Rect2(Vector2.ZERO, Vector2(1_920.0, 96.0))]
+	for panel: Variant in [_debug_label.get_parent(), _hover_panel, _info_panel, _queue_panel]:
+		var control: Control = panel as Control
+		if control != null and control.visible:
+			rects.append(Rect2(control.global_position, control.size))
+	return rects
+
+
+func _set_emote_accessibility(labels: bool, ui_scale: float) -> void:
+	_emote_labels = labels
+	_emote_ui_scale = clampf(ui_scale, 0.75, 1.5)
+	if _emote_overlay != null:
+		_emote_overlay.set_accessible_labels(_emote_labels)
+		_emote_overlay.set_ui_scale(_emote_ui_scale)
+		_advance_emotes(0.0)
+
+
 func _cultist_display_name(cultist_id: StringName) -> String:
 	return String(cultist_id).replace("cultist_", "Cultist ")
 
@@ -838,11 +910,164 @@ func _bake_navigation_world() -> void:
 		_refresh(_session.snapshot())
 	if not _context_menu_preview.is_empty():
 		_open_preview_context_menu()
+	if _emote_play_scale >= 0.0:
+		_playing = _emote_play_scale > 0.0
+		for actor_id: StringName in _cultist_nodes:
+			(_cultist_nodes[actor_id] as NavigableActor3D).set_simulation_scale(PLAY_SCALE)
 	_refresh_hud(_session.snapshot())
 	if not _movement_report_path.is_empty():
 		_run_movement_validation.call_deferred(_movement_report_path)
 	elif not _command_report_path.is_empty():
 		_run_command_validation.call_deferred(_command_report_path)
+	elif not _emote_report_path.is_empty():
+		_run_emote_validation.call_deferred(_emote_report_path)
+
+
+# Production-scene check for the Emote Bubble overlay. It stages every authored
+# actor, forces the readable states, then proves placement, HUD avoidance, and
+# clean teardown at both supported resolutions and in both accessibility modes.
+func _run_emote_validation(report_path: String) -> void:
+	var checks: Array[Dictionary] = []
+	for cultist_id: StringName in CULTIST_IDS:
+		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(4.0)
+	_stage_emote_states()
+	# The authored cast must be spread across the room, not stacked at one point,
+	# or the placement solver has nothing real to solve.
+	await _wait_for_patrons(2_400)
+
+	for resolution: Vector2i in [Vector2i(1_280, 720), Vector2i(1_920, 1_080)]:
+		get_window().size = resolution
+		await get_tree().process_frame
+		for labels: bool in [false, true]:
+			_set_emote_accessibility(labels, 1.0)
+			await get_tree().process_frame
+			checks.append(_check_emote_frame(
+				StringName("%dx%d_%s" % [
+					resolution.x, resolution.y, "labels" if labels else "icons",
+				])
+			))
+	for ui_scale: float in [0.75, 1.5]:
+		_set_emote_accessibility(true, ui_scale)
+		await get_tree().process_frame
+		checks.append(_check_emote_frame(StringName("ui_scale_%d" % int(ui_scale * 100.0))))
+	_set_emote_accessibility(false, 1.0)
+
+	# Camera movement must not orphan a bubble or strand a stale anchor.
+	_pan_camera(Vector3(3.0, 0.0, 2.0))
+	_zoom_camera_smooth(4.0)
+	_camera.fov = _camera_fov_target
+	await get_tree().process_frame
+	checks.append(_check_emote_frame(&"after_pan_and_zoom"))
+	_pan_camera(Vector3(-3.0, 0.0, -2.0))
+
+	# Departure, Capture, and Closing remove the actor and their bubble with it.
+	var escaping_id := &"patron_vincent"
+	var before_close := false
+	for bubble: Dictionary in _emotes.bubbles():
+		before_close = before_close or bubble["actor_id"] == escaping_id
+	_session.advance(1_080.0 - float(_session.snapshot()["simulated_seconds"]))
+	await get_tree().process_frame
+	_advance_emotes(0.0)
+	var still_shown := false
+	for bubble: Dictionary in _emotes.bubbles():
+		still_shown = still_shown or bubble["actor_id"] == escaping_id
+	checks.append({
+		"check": &"closing_clears_departed_actors",
+		"passed": before_close and not still_shown,
+		"detail": "%d bubbles remain at Results" % _emotes.bubbles().size(),
+	})
+
+	var restart_clean := true
+	for _restart in range(10):
+		_session.restart_night(707)
+		_commands.reset(_session)
+		_emotes.reset()
+		_emote_overlay.reset()
+		_advance_emotes(0.0)
+		restart_clean = restart_clean and _emote_overlay.placements().is_empty()
+	checks.append({
+		"check": &"ten_restarts_leave_no_orphan_bubble",
+		"passed": restart_clean,
+		"detail": "",
+	})
+
+	var passed := true
+	for check: Dictionary in checks:
+		passed = passed and bool(check["passed"])
+	var report := {
+		"passed": passed,
+		"check_count": checks.size(),
+		"checks": checks,
+	}
+	var absolute_path := ProjectSettings.globalize_path(report_path)
+	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
+	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(report, "  "))
+		file.close()
+	get_tree().quit(0 if passed else 1)
+
+
+# Forces one readable example of each urgent state so the frame under test
+# carries eleven actors and every catalog category at once.
+func _stage_emote_states() -> void:
+	_session.report_patron_stimulus(&"patron_vincent", &"drink_dosed_seen")
+	_session.debug_set_patron_drink_state(&"patron_walter", 3, 1, 0, 3)
+	_session.debug_force_finish_drink(&"patron_walter")
+	_session.debug_force_bathroom(&"patron_nell")
+	_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 3)
+	_session.begin_conversation(&"cultist_02", &"patron_mara")
+	_session.advance(45.0)
+	_advance_emotes(0.0)
+
+
+func _check_emote_frame(label: StringName) -> Dictionary:
+	_advance_emotes(0.0)
+	var bubbles: Array[Dictionary] = _emotes.bubbles()
+	var placements: Dictionary = _emote_overlay.placements()
+	var viewport_size := get_viewport().get_visible_rect().size
+	var reserved := _reserved_hud_rects()
+	var failures: Array[String] = []
+
+	var seen: Dictionary = {}
+	for bubble: Dictionary in bubbles:
+		var actor_id: StringName = bubble["actor_id"]
+		if seen.has(actor_id):
+			failures.append("%s has more than one bubble" % actor_id)
+		seen[actor_id] = true
+
+	var rects: Array[Rect2] = []
+	for actor_id: StringName in placements:
+		var rect: Rect2 = placements[actor_id]
+		if not Rect2(Vector2.ZERO, viewport_size).encloses(rect):
+			failures.append("%s sits outside the viewport" % actor_id)
+		for panel: Rect2 in reserved:
+			if panel.intersects(rect):
+				failures.append("%s covers a critical HUD panel" % actor_id)
+		for other: Rect2 in rects:
+			if other.intersects(rect):
+				failures.append("%s overlaps another bubble" % actor_id)
+		rects.append(rect)
+
+	if placements.is_empty() and not bubbles.is_empty():
+		failures.append("no bubble found a legal position")
+	# Determinism: the same frame solved twice must place the same rectangles.
+	_advance_emotes(0.0)
+	var repeated: Dictionary = _emote_overlay.placements()
+	if repeated.size() != placements.size():
+		failures.append("placement is not deterministic")
+	else:
+		for actor_id: StringName in placements:
+			if not repeated.has(actor_id) or repeated[actor_id] != placements[actor_id]:
+				failures.append("%s moved between identical frames" % actor_id)
+	return {
+		"check": label,
+		"passed": failures.is_empty() and not bubbles.is_empty(),
+		"detail": "%d bubbles, %d placed, %d hidden for space%s" % [
+			bubbles.size(), placements.size(), bubbles.size() - placements.size(),
+			"" if failures.is_empty() else ": " + ", ".join(failures),
+		],
+	}
 
 
 # Production-scene check for the unified command seam. It drives real picking
@@ -1401,6 +1626,7 @@ func _refresh_scene(state: Dictionary) -> void:
 
 	for cultist_id: StringName in _cultist_nodes:
 		_sync_cultist_navigation(cultist_id)
+	_advance_emotes(0.0)
 	_refresh_bodies()
 	_refresh_events(state)
 	_refresh_cultists(state)
@@ -1417,6 +1643,7 @@ func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
 			_playing
 			or not _movement_report_path.is_empty()
 			or not _command_report_path.is_empty()
+			or not _emote_report_path.is_empty()
 			or _capture_navigation_enabled
 		)
 		else 0.0
@@ -1759,6 +1986,25 @@ func _build_hud() -> void:
 	debug_toggle.custom_minimum_size = Vector2(90.0, 32.0)
 	debug_toggle.pressed.connect(func(): _debug_visible = debug_toggle.button_pressed; _refresh(_session.snapshot()))
 	controls.add_child(debug_toggle)
+	var emote_toggle := Button.new()
+	emote_toggle.text = "EMOTE TEXT"
+	emote_toggle.toggle_mode = true
+	emote_toggle.button_pressed = _emote_labels
+	emote_toggle.custom_minimum_size = Vector2(112.0, 32.0)
+	emote_toggle.pressed.connect(func() -> void:
+		_set_emote_accessibility(emote_toggle.button_pressed, _emote_ui_scale)
+	)
+	controls.add_child(emote_toggle)
+	var emote_scale := Button.new()
+	emote_scale.text = "UI 100%"
+	emote_scale.custom_minimum_size = Vector2(92.0, 32.0)
+	emote_scale.pressed.connect(func() -> void:
+		var steps: Array[float] = [0.75, 1.0, 1.25, 1.5]
+		var next: float = steps[(steps.find(_emote_ui_scale) + 1) % steps.size()]
+		_set_emote_accessibility(_emote_labels, next)
+		emote_scale.text = "UI %d%%" % int(round(next * 100.0))
+	)
+	controls.add_child(emote_scale)
 	var camera_hint := Label.new()
 	camera_hint.text = "PAN TRACKPAD / ARROWS  ·  ZOOM ⌘+TRACKPAD / - / ="
 	camera_hint.add_theme_color_override("font_color", Color("8195a2"))
@@ -1856,6 +2102,13 @@ func _build_hud() -> void:
 	_context_menu_rows = VBoxContainer.new()
 	_context_menu_rows.add_theme_constant_override("separation", 2)
 	menu_column.add_child(_context_menu_rows)
+
+	_emote_overlay = EMOTE_OVERLAY_SCRIPT.new() as EmoteOverlay
+	_emote_overlay.name = "EmoteOverlay"
+	add_child(_emote_overlay)
+	_emote_overlay.configure(_camera)
+	_emote_overlay.set_accessible_labels(_emote_labels)
+	_emote_overlay.set_ui_scale(_emote_ui_scale)
 
 
 func _inspection_panel_style(alpha: float) -> StyleBoxFlat:
@@ -2047,6 +2300,20 @@ func _command_line_flag(flag: String) -> bool:
 
 
 func _capture_after_render(capture_path: String, wait_frames: int = 6) -> void:
+	if _emote_play_scale >= 0.0:
+		# Let the cast reach their seats first, then force the readable states so
+		# the captured frame carries live bubbles rather than a frozen setup.
+		await _wait_for_patrons(wait_frames)
+		_stage_emote_states()
+		for _settle in 60:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var staged_path := ProjectSettings.globalize_path(capture_path)
+		DirAccess.make_dir_recursive_absolute(staged_path.get_base_dir())
+		var staged := get_viewport().get_texture().get_image().save_png(staged_path)
+		await get_tree().process_frame
+		get_tree().quit(staged)
+		return
 	for _frame in wait_frames:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw

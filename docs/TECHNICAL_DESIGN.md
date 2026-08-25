@@ -51,6 +51,13 @@ flowchart TD
 - Invariant: one active plus at most three pending Actions across Move and contextual commands; an empty queue leaves the Cultist idle; the gameplay effect fires exactly once, at the Commitment Point.
 - Boundary: `GameSession` owns every eligibility rule and every operation. The command seam asks `command_availability` and dispatches; it never restates a rule. Target references carry kind, id, position, and approach slot — never a scene node. See `docs/adr/0002-unify-the-cultist-command-seam.md`.
 
+**EmoteDirector**
+
+- Interface: reset for a new Night, update from the sanitized `emote_view` with a real delta and the paused flag, return the current bubble descriptions.
+- Hides: the emote catalog, state diffing, transient creation, priority, preemption, deduplication, queue limits, duration, and deterministic ordering.
+- Invariant: one bubble for each actor and at most two waiting transients; a critical persistent state suppresses every transient; nothing here changes gameplay.
+- Boundary: the module reads only `GameSession.emote_view()`. That projection carries actor id, kind, presence, one public state, public band labels, and public change events. Debug Patron views, raw rolls, exact Suspicion, Mood, Bladder, Ideal Intoxication, Overdrink Limit, Excess Drinks, hidden drug state, reservations, and internal timers never cross it. `EmoteOverlay` is a thin screen-space adapter that projects head anchors and solves placement; it owns no gameplay or priority rule.
+
 **PatronAgent**
 
 - Interface: apply observation/stimulus, request intent change, return visible snapshot.
@@ -310,6 +317,8 @@ Automate only:
 - context resolution and one success plus one ineligible path for every catalog command
 - approach-slot contention producing one owner and one visible rejection
 - the normal command snapshot and menu labels carrying no hidden simulation value
+- emote priority, preemption, transient timing, pause, deduplication, and reset
+- a recursive forbidden-key scan proving `emote_view` carries no hidden simulation value
 - exclusive reservation and bathroom FIFO invariants
 - Order served versus 60-second cancellation/payment behavior
 - seated versus standing Trapdoor result, including Max Drunk Hard Evidence downgrade

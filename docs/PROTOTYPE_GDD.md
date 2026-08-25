@@ -284,6 +284,16 @@ Cancellation loses elapsed time but no abstract resource. Invalid targets fail w
 
 When the queue is empty, the Cultist idles. Cultists never move or serve through safe autonomy.
 
+### Emote Bubbles
+
+Each Cultist and Patron can show one overhead Emote Bubble, never two at once. Bubbles are purely presentational: they never acknowledge, block, complete, or cancel an Action, and the Hover Summary and Patron Info Panel keep the detailed text. A bubble carries an icon and a distinct silhouette, so colour reinforces meaning without ever being the only cue. An accessibility setting adds a short label beside the icon and scales the whole overlay from 75% to 150%.
+
+Persistent state bubbles last as long as their source state, in this order, highest first: Escape, Investigation, unconscious, bathroom, ordering, conversation, and an active contextual Cultist Action. Ordinary Move needs no bubble because its destination marker already communicates it. The unconscious bubble reads the same for an Overdrink Collapse and a Drugged Drink collapse, so it never reveals why a Patron went down.
+
+Transient bubbles mark a visible change and use real-time duration, so 4x play never makes one flash past: a danger reaction for 2.5 seconds, a Friendship band gain for 2 seconds, a Mood band move for 2 seconds, a drink result for 1.75 seconds, and a Cultist command result for 1.25 seconds. Pause freezes those timers so the player can read the room. Escape, Investigation, and unconscious suppress every transient while they last, and when such a state ends the bubble recomputes from current state instead of resuming a stale transient. Each actor holds at most two waiting transients; a repeat of the same kind refreshes rather than stacks, and the oldest lowest-priority one is discarded first.
+
+Bubbles are drawn at a fixed pixel size above each actor's head. They stay clear of the top controls, the Hover Summary, and the Patron Info Panel, they keep their previous position while conditions hold so they do not jitter, and a lower-priority bubble hides when no legal position is left.
+
 ### Contextual commands
 
 Right-clicking a Patron or an authored smart object takes precedence over the floor behind it and opens a Context Menu. The menu opens even when only one command applies, so target clicks stay predictable. A normal right-click opens it in Replace mode and a Shift+right-click opens it in Append mode; the header names the mode. Escape or a click outside closes the menu without touching the queue.

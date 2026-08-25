@@ -46,6 +46,10 @@ _Avoid_: Character sheet, NPC data
 The visible current condition of a Patron, including activity, mood, Suspicion band, Intoxication, Order state, and player-created drug state.
 _Avoid_: Patron Profile, hidden state
 
+**Emote Bubble**:
+The single overhead icon that shows one actor's urgent intention or expressive change. It is presentational only: it never acknowledges, blocks, or changes gameplay, and it carries no name, value, percentage, countdown, or hidden cause.
+_Avoid_: Thought bubble, status icon
+
 **Hover Summary**:
 The small temporary view of a Cultist or Patron that appears while the pointer rests on that person.
 _Avoid_: Tooltip, summary menu

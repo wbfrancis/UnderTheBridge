@@ -318,6 +318,56 @@ func stay_behind_chance(patron_id: StringName) -> float:
 	return _ordinary_visits.stay_behind_chance(patron_id)
 
 
+# --- Emote information-safety seam -------------------------------------------
+
+# The only projection the Emote system may read. Patron rows come from normal
+# Patron views; Cultist rows come from the unified command summary when the
+# adapter supplies one, and from the session's public activity otherwise.
+# Nothing hidden crosses this seam, so no bubble can leak a simulation value.
+func emote_view(cultist_commands: Dictionary = {}) -> Dictionary:
+	var visit: Dictionary = _ordinary_visits.snapshot()
+	var rows: Dictionary = {}
+	for patron_id: StringName in visit["debug_views"]:
+		var row: Dictionary = _ordinary_visits.patron_emote_row(patron_id)
+		if not row.is_empty():
+			rows[patron_id] = row
+	var summaries := _cultist_summary(visit)
+	var talking: Array = _ordinary_visits.conversing_cultists()
+	for cultist_id in CULTIST_IDS:
+		var activity: StringName = summaries[cultist_id]["activity"]
+		var state: StringName = &"none"
+		if cultist_id in talking:
+			state = &"conversation"
+		elif cultist_commands.has(cultist_id):
+			state = _command_emote_state(cultist_commands[cultist_id])
+		elif activity != &"idle":
+			state = &"cultist_action"
+		var changes: Array[StringName] = []
+		if cultist_commands.has(cultist_id):
+			var outcome: StringName = StringName(
+				cultist_commands[cultist_id]["feedback"]["outcome"]
+			)
+			if outcome in [&"completed", &"failed", &"rejected"]:
+				changes.append(&"command_result")
+		rows[cultist_id] = {
+			"id": cultist_id,
+			"kind": &"cultist",
+			"present": true,
+			"state": state,
+			"changes": changes,
+			"public": {"activity": String(activity).replace("_", " ").capitalize()},
+		}
+	return rows
+
+
+# Ordinary Move needs no bubble: its destination marker already communicates it.
+func _command_emote_state(command_summary: Dictionary) -> StringName:
+	var active: Dictionary = command_summary["active"]
+	if active.is_empty() or active["command"] == &"move":
+		return &"none"
+	return &"cultist_action"
+
+
 # --- Cultist command seam ----------------------------------------------------
 # CultistCommandSystem owns the Action Queue and the Commitment Point; the rules
 # behind each command stay here, in the gameplay authority.
@@ -433,6 +483,7 @@ func snapshot() -> Dictionary:
 		"safe_autonomy": visit["safe_autonomy"],
 		"cultists": _cultist_summary(visit),
 		"normal_patron_views": visit["normal_views"],
+		"emote_view": emote_view(),
 		"debug_patron_views": visit["debug_views"],
 		"arrival_groups": visit["groups"],
 		"seat_owners": visit["seat_owners"],
