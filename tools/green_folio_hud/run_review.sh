@@ -53,7 +53,6 @@ capture developer_menu "$FRAMES" --hud-preview=developer
 capture clock_hover "$FRAMES" --hud-preview=clock_hover
 capture speed_2 "$FRAMES" --hud-preview=speed_2
 capture speed_4 "$FRAMES" --hud-preview=speed_4
-capture reduced_motion "$FRAMES" --hud-preview=reduced_motion
 capture offscreen_indicator "$FRAMES" --hud-preview=offscreen
 capture pause_menu 60 --hud-preview=pause
 capture outcome_success 60 --hud-preview=outcome_victory

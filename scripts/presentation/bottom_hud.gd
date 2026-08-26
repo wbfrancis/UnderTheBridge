@@ -145,7 +145,6 @@ var _developer_panel: PanelContainer
 var _scenario_buttons: Dictionary = {}
 var _debug_toggle: Button
 var _emote_toggle: Button
-var _reduced_motion_toggle: Button
 var _ui_scale_buttons: Dictionary = {}
 var _developer_built := false
 var _pause_menu: Control
@@ -189,7 +188,7 @@ static func empty_view() -> Dictionary:
 		},
 		"feedback": {"text": "", "serial": 0},
 		"developer": {"visible": false, "scenario_id": "", "scenarios": []},
-		"settings": {"emote_labels": false, "ui_scale": 1.0, "reduced_motion": false},
+		"settings": {"emote_labels": false, "ui_scale": 1.0},
 		"pause_menu_open": false,
 	}
 
@@ -269,8 +268,6 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 			_emit(&"set_emote_labels", {"enabled": bool(payload.get("enabled", false))})
 		&"set_ui_scale":
 			_emit(&"set_ui_scale", {"scale": float(payload.get("scale", 1.0))})
-		&"set_reduced_motion":
-			_emit(&"set_reduced_motion", {"enabled": bool(payload.get("enabled", false))})
 		&"restart_scenario":
 			_close_menus()
 			_emit(&"select_scenario", {
@@ -712,7 +709,6 @@ func _render_menus() -> void:
 			)
 		_debug_toggle.button_pressed = bool(developer["visible"])
 	_emote_toggle.button_pressed = bool(settings["emote_labels"])
-	_reduced_motion_toggle.button_pressed = bool(settings["reduced_motion"])
 	for step: float in _ui_scale_buttons:
 		(_ui_scale_buttons[step] as Button).button_pressed = is_equal_approx(
 			step, float(settings["ui_scale"])
@@ -1187,10 +1183,6 @@ func _build_settings_menu() -> void:
 		button.pressed.connect(func() -> void: activate(&"set_ui_scale", {"scale": step}))
 		_ui_scale_buttons[step] = button
 		scale_row.add_child(button)
-	_reduced_motion_toggle = _menu_toggle("Reduced motion", func(pressed: bool) -> void:
-		activate(&"set_reduced_motion", {"enabled": pressed})
-	)
-	column.add_child(_reduced_motion_toggle)
 
 
 # The developer menu is built once, from the scenario list the first render
@@ -1480,8 +1472,7 @@ func _bind_press_feedback() -> void:
 
 func _on_button_down(button: Button) -> void:
 	button.pivot_offset = button.size * 0.5
-	if not bool(_view["settings"]["reduced_motion"]):
-		button.scale = Vector2(0.97, 0.97)
+	button.scale = Vector2(0.97, 0.97)
 
 
 func _on_button_up(button: Button) -> void:

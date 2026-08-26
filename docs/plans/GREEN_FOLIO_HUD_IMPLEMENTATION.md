@@ -135,7 +135,7 @@ The `view` dictionary must contain only display-ready, player-readable data:
     visible, kind, cause, captures, capture_quota, progress_ratio
   },
   developer = {visible, scenario_id, scenarios},
-  settings = {emote_labels, ui_scale, reduced_motion},
+  settings = {emote_labels, ui_scale},
   pause_menu_open = false,
 }
 ```
@@ -292,10 +292,9 @@ Developer menu contents:
 Settings menu contents:
 
 - Emote text labels;
-- UI scale steps `75%`, `100%`, `125%`, `150%`;
-- Reduced motion.
+- UI scale steps `75%`, `100%`, `125%`, `150%`.
 
-Use `ConfigFile` at `user://settings.cfg` for these three settings. Do not add a general settings manager.
+Use `ConfigFile` at `user://settings.cfg` for these two settings. Do not add a general settings manager.
 
 ## Input and time behavior
 
@@ -433,7 +432,6 @@ At `1280 × 720`:
 - Success, Operation Failed, and Exposed each show Restart and Quit.
 - An urgent offscreen actor gets an edge indicator; pressing it focuses the camera.
 - Manual camera input interrupts automatic focus movement.
-- Reduced motion removes press scaling and camera interpolation without removing state feedback.
 - Hidden Patron values never appear in normal play.
 
 Also review at `1920 × 1080` and `1024 × 576`. The HUD may scale, but its zones must not overlap, clip, or change order.

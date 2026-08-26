@@ -124,14 +124,16 @@ Each Night has one seed. Rescue Persuasion, staying-behind, bathroom choice, Ide
 ## 5. World representation
 
 - Root gameplay world: `Node3D`
-- Actors: `CharacterBody3D` with upright `AnimatedSprite3D`
+- Actors: `CharacterBody3D` with a presentation-only visual pivot around the upright sprite
 - Movement: `NavigationAgent3D` over one baked `NavigationRegion3D`
 - Camera: fixed low-elevated long-lens perspective view, square to the bar/backbar wall; pan and zoom only, with authored foreground-wall cutaways
 - Functional locations: authored interaction-point scenes with approach transforms
 - Queues: authored positions managed by `InteractionRegistry`
 - Tunnel: terminal threshold, not a playable scene
 
-Actor movement is constrained to the floor plane. Animation state is selected from logical activity and movement; animation events never own gameplay consequences.
+Actor movement is constrained to the floor plane. `NavigableActor3D` owns physical movement, while `AvatarMotionController` moves only the sprite under a feet-anchored visual pivot. Collision, labels, Emote Bubbles, shadows, selection rings, and gameplay targets remain fixed to the actor root.
+
+The visual controller selects states in this priority: Passive Body Motion, Running, Walking, Doing, then Idle. Idle is subtle; Doing is its heightened fallback for upright stationary Cultist Actions and active Patron activities. Walking and Running use separate profiles over one procedural rigid-avatar cycle, and gameplay intent selects Running. Simulation Speed changes playback rate but never gait. A blocked actor settles from locomotion after a short delay, and pause freezes the current phase. A stationary prone body stays still, while a dragged or carried body gets a small bounce and trailing tilt without squash. Later activity-specific or sprite-frame states may replace Doing without changing the controller boundary. Animation events never own gameplay consequences. See [ADR 0004](adr/0004-separate-avatar-motion-from-navigation.md).
 
 The navigation spike validated flat-plane `NavigationAgent3D` path following with 2D RVO avoidance and physical actor collision as a fallback. Path updates occur once per physics frame. A four-simulated-second no-progress interval requests a fresh path; fifteen simulated seconds without progress is a measured stuck failure. Production geometry should use a pre-baked static navigation mesh; runtime collision-geometry baking exists only in the spike harness.
 

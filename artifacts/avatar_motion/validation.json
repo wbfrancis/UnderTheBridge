@@ -1,0 +1,58 @@
+{
+  "blocked_settles": true,
+  "passed": true,
+  "pause_freezes": true,
+  "paused": false,
+  "scale": 1.0,
+  "slice": "avatar_motion_review",
+  "states": {
+    "blocked": {
+      "actor_id": "blocked",
+      "phase": 1.8221846593007,
+      "position": "(0.0, 0.013134, 0.0)",
+      "rotation_z": 0.00968568027019501,
+      "scale": "(0.994743, 1.005257, 1.0)",
+      "state": "idle"
+    },
+    "doing": {
+      "actor_id": "doing",
+      "phase": 5.10107047869994,
+      "position": "(0.0, 0.027404, 0.0)",
+      "rotation_z": -0.0203590095043182,
+      "scale": "(0.991447, 1.008553, 1.0)",
+      "state": "doing"
+    },
+    "idle": {
+      "actor_id": "idle",
+      "phase": 5.11143741935221,
+      "position": "(0.0, 0.011886, 0.0)",
+      "rotation_z": -0.00921431090682745,
+      "scale": "(0.995812, 1.004188, 1.0)",
+      "state": "idle"
+    },
+    "passive_body": {
+      "actor_id": "passive_body",
+      "phase": 2.54094030491649,
+      "position": "(0.0, 0.008305, 0.0)",
+      "rotation_z": 0.0158250611275434,
+      "scale": "(1.0, 1.0, 1.0)",
+      "state": "passive_body"
+    },
+    "running": {
+      "actor_id": "running",
+      "phase": 2.13024087413688,
+      "position": "(0.0, 0.086201, 0.0)",
+      "rotation_z": 0.0737368538975716,
+      "scale": "(0.983406, 1.016594, 1.0)",
+      "state": "running"
+    },
+    "walking": {
+      "actor_id": "walking",
+      "phase": 5.14503386957545,
+      "position": "(0.0, 0.059343, 0.0)",
+      "rotation_z": -0.0472087189555168,
+      "scale": "(0.984438, 1.015562, 1.0)",
+      "state": "walking"
+    }
+  }
+}

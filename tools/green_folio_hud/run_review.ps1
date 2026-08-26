@@ -30,7 +30,6 @@ $Frames_ = @(
     @{ Name = "clock_hover";     Extra = @("--hud-preview=clock_hover") },
     @{ Name = "speed_2";         Extra = @("--hud-preview=speed_2") },
     @{ Name = "speed_4";         Extra = @("--hud-preview=speed_4") },
-    @{ Name = "reduced_motion";  Extra = @("--hud-preview=reduced_motion") },
     @{ Name = "offscreen_indicator"; Extra = @("--hud-preview=offscreen") },
     @{ Name = "pause_menu"; Frames = 60; Extra = @("--hud-preview=pause") },
     @{ Name = "outcome_success"; Frames = 60; Extra = @("--hud-preview=outcome_victory") },

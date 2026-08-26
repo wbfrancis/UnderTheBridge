@@ -541,15 +541,13 @@ func test_settings_intents_carry_their_new_value() -> void:
 
 	_hud.activate(&"set_emote_labels", {"enabled": true})
 	_hud.activate(&"set_ui_scale", {"scale": 1.25})
-	_hud.activate(&"set_reduced_motion", {"enabled": true})
 
 	assert_true(bool(_last(&"set_emote_labels")["enabled"]))
 	assert_eq(float(_last(&"set_ui_scale")["scale"]), 1.25)
-	assert_true(bool(_last(&"set_reduced_motion")["enabled"]))
 
 
 func test_the_ui_scale_setting_keeps_the_hud_on_the_bottom_edge() -> void:
-	await _render({"settings": {"emote_labels": false, "ui_scale": 1.25, "reduced_motion": false}})
+	await _render({"settings": {"emote_labels": false, "ui_scale": 1.25}})
 
 	assert_almost_eq(float(_hud.inspect()["ui_scale"]), 1.25, 0.001)
 	var viewport := get_viewport().get_visible_rect()

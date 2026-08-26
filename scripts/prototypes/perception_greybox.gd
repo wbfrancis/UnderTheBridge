@@ -12,6 +12,9 @@ const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_
 const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_actor_3d.gd")
 const COMMAND_SYSTEM_SCRIPT := preload("res://scripts/actions/cultist_command_system.gd")
 const NIGHT_PLAYBACK_SCRIPT := preload("res://scripts/presentation/night_playback.gd")
+const AVATAR_MOTION_SCRIPT := preload(
+	"res://scripts/presentation/avatar_motion_controller.gd"
+)
 const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
 const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
 const BOTTOM_HUD_SCENE: PackedScene = preload("res://scenes/ui/bottom_hud.tscn")
@@ -30,6 +33,9 @@ const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_
 const CULTIST_NAMES := {
 	&"cultist_01": "Vera", &"cultist_02": "Iris", &"cultist_03": "Otto",
 }
+const PATRON_RESTING_ACTIVITIES: Array[StringName] = [
+	&"awaiting_drink", &"bathroom_queued", &"waiting_investigation",
+]
 const SETTINGS_PATH := "user://settings.cfg"
 const CAMERA_FOCUS_SECONDS := 0.4
 const SCENARIOS := {
@@ -186,7 +192,6 @@ var _emotes = EMOTE_DIRECTOR_SCRIPT.new()
 var _emote_overlay: EmoteOverlay
 var _bottom_hud: BottomHud
 var _debug_panel: PanelContainer
-var _reduced_motion := false
 var _pause_menu_open := false
 var _hud_preview_outcome: StringName = &""
 var _hud_preview := ""
@@ -305,8 +310,7 @@ func _process(delta: float) -> void:
 		_advance_camera_focus(delta)
 		_update_camera_pan(delta)
 		if not is_equal_approx(_camera.fov, _camera_fov_target):
-			# Reduced motion cuts straight to the new zoom instead of easing into it.
-			var zoom_weight := 1.0 if _reduced_motion else 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
+			var zoom_weight := 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
 			_camera.fov = lerpf(_camera.fov, _camera_fov_target, zoom_weight)
 
 
@@ -618,6 +622,7 @@ func _close_context_menu() -> void:
 
 func _sync_cultist_navigation(cultist_id: StringName) -> void:
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+	actor.set_simulation_scale(_world_simulation_scale())
 	var request: Dictionary = _commands.active_request(cultist_id)
 	if request.is_empty():
 		actor.cancel_navigation()
@@ -824,7 +829,7 @@ func _actor_display_name(actor_id: StringName) -> String:
 
 # Pressing an Offscreen Indicator moves the camera to that actor. Manual pan,
 # zoom, or another press replaces the move at once; it never bounces or
-# overshoots, and Reduced motion makes it a straight cut.
+# overshoots.
 func _focus_camera_on(actor_id: StringName) -> void:
 	var node: Node3D = _cultist_nodes.get(actor_id, _patron_nodes.get(actor_id))
 	if node == null:
@@ -833,9 +838,6 @@ func _focus_camera_on(actor_id: StringName) -> void:
 		node.global_position.x, _camera_target.y, node.global_position.z
 	)
 	_cancel_camera_focus()
-	if _reduced_motion:
-		_pan_camera(destination - _camera_target)
-		return
 	_focus_from = _camera_target
 	_focus_to = destination
 	_focus_elapsed = 0.0
@@ -1654,7 +1656,7 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 		var height_scale: float = PATRON_HEIGHT_SCALE.get(patron_id, 1.0)
 		sprite.scale = Vector3(0.88, height_scale, 1.0)
 		sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size * height_scale
-		pivot.add_child(sprite)
+		_add_avatar_visual(pivot, patron_id, sprite)
 		pivot.add_child(_actor_shadow())
 	else:
 		var body := MeshInstance3D.new()
@@ -1664,7 +1666,7 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 		body.mesh = capsule
 		body.position = Vector3(0.0, 0.9, 0.0)
 		body.name = "Body"
-		pivot.add_child(body)
+		_add_avatar_visual(pivot, patron_id, body)
 	# The vision cone (its radius is the view range) and the Companion ring make
 	# the perception geometry judgeable by eye instead of implied by an arrow.
 	var cone := MeshInstance3D.new()
@@ -1723,6 +1725,21 @@ func _actor_shadow() -> MeshInstance3D:
 	return shadow
 
 
+func _add_avatar_visual(actor: Node3D, actor_id: StringName, body: Node3D) -> void:
+	var visual := AVATAR_MOTION_SCRIPT.new() as AvatarMotionController
+	visual.configure(actor_id)
+	actor.add_child(visual)
+	visual.add_child(body)
+
+
+func _avatar_visual(actor: Node3D) -> AvatarMotionController:
+	return actor.get_node("VisualPivot") as AvatarMotionController
+
+
+func _avatar_body(actor: Node3D) -> Node3D:
+	return actor.get_node("VisualPivot/Body") as Node3D
+
+
 func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	if _cultist_nodes.has(cultist_id):
 		return _cultist_nodes[cultist_id]
@@ -1734,7 +1751,7 @@ func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	sprite.name = "Body"
 	sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
 	sprite.modulate = CULTIST_COLORS[cultist_id]
-	pivot.add_child(sprite)
+	_add_avatar_visual(pivot, cultist_id, sprite)
 	pivot.add_child(_actor_shadow())
 	var label := Label3D.new()
 	label.name = "Name"
@@ -1778,10 +1795,11 @@ func _refresh_scene(state: Dictionary) -> void:
 			continue
 		var facing: Vector2 = debug["facing"]
 		_sync_patron_navigation(patron_id, debug)
+		var is_carried := _sync_carried_body(patron_id, debug, state)
 		if not (pivot as NavigableActor3D).is_navigating():
 			pivot.look_at(pivot.position + Vector3(facing.x, 0.0, facing.y), Vector3.UP)
 		var band_color: Color = BAND_COLORS.get(normal["suspicion_band"], Color.WHITE)
-		var body := pivot.get_node("Body")
+		var body := _avatar_body(pivot)
 		if _presentation_prototype:
 			var sprite := body as Sprite3D
 			var palette: Color = PATRON_COLORS.get(patron_id, Color.WHITE)
@@ -1800,6 +1818,22 @@ func _refresh_scene(state: Dictionary) -> void:
 		label.text = String(normal["name"])
 		label.visible = label.text != "???"
 		label.modulate = band_color
+		var visual := _avatar_visual(pivot)
+		var activity := StringName(debug["activity"])
+		var is_prone: bool = debug["lifecycle"] == &"unconscious" or activity == &"being_dragged"
+		var has_motion_intent: bool = (pivot as NavigableActor3D).is_navigating() or is_carried
+		var gait := (
+			AvatarMotionController.GAIT_RUN
+			if activity in [&"shock", &"escaping"]
+			else AvatarMotionController.GAIT_WALK
+		)
+		var is_doing := (
+			not is_prone
+			and not has_motion_intent
+			and activity not in PATRON_RESTING_ACTIVITIES
+		)
+		visual.set_simulation_scale(_world_simulation_scale())
+		visual.set_context(gait, has_motion_intent, is_doing, is_prone)
 
 	for cultist_id: StringName in _cultist_nodes:
 		_sync_cultist_navigation(cultist_id)
@@ -1826,6 +1860,24 @@ func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
 	else:
 		actor.navigate(_next_patron_move_id, target)
 	_next_patron_move_id += 1
+
+
+# A Helper carries the prone Patron with their own actor root. Keep the body on
+# that measured route so Passive Body Motion can follow real travel distance.
+func _sync_carried_body(
+		patron_id: StringName, debug: Dictionary, state: Dictionary
+) -> bool:
+	var helper_id := StringName(debug.get("helper_id", &""))
+	if helper_id.is_empty() or not state["debug_patron_views"].has(helper_id):
+		return false
+	var helper: Dictionary = state["debug_patron_views"][helper_id]
+	if StringName(helper["activity"]) != &"helper_carrying" or not _patron_nodes.has(helper_id):
+		return false
+	var body_actor := _patron_nodes[patron_id] as NavigableActor3D
+	var helper_actor := _patron_nodes[helper_id] as NavigableActor3D
+	body_actor.cancel_navigation()
+	body_actor.global_position = helper_actor.global_position + Vector3(0.3, 0.0, 0.12)
+	return true
 
 
 func _seat_approach_route(target: Vector3) -> Array[Vector3]:
@@ -1890,6 +1942,16 @@ func _refresh_cultists(_state: Dictionary) -> void:
 		var pivot := _cultist_pivot(cultist_id)
 		var label := pivot.get_node("Name") as Label3D
 		label.text = _cultist_display_name(cultist_id)
+		var actor := pivot as NavigableActor3D
+		var visual := _avatar_visual(pivot)
+		var activity := StringName(_state["cultists"][cultist_id]["activity"])
+		visual.set_simulation_scale(_world_simulation_scale())
+		visual.set_context(
+			AvatarMotionController.GAIT_WALK,
+			actor.is_navigating(),
+			not actor.is_navigating() and activity != &"idle",
+			false
+		)
 
 
 func _refresh_bodies() -> void:
@@ -2096,10 +2158,6 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"select_speed", {"value": 2.0})
 		"speed_4":
 			_submit_playback(&"select_speed", {"value": 4.0})
-		"reduced_motion":
-			_reduced_motion = true
-			_refresh_hud(_session.snapshot())
-			_bottom_hud.activate(&"settings_menu")
 		"offscreen":
 			_stage_emote_states()
 			_set_camera_view(SERVICE_CAMERA_POSITION, SERVICE_CAMERA_TARGET)
@@ -2335,11 +2393,7 @@ func _hud_view(state: Dictionary) -> Dictionary:
 			"scenario_id": _scenario,
 			"scenarios": _scenario_entries(),
 		},
-		"settings": {
-			"emote_labels": _emote_labels,
-			"ui_scale": _emote_ui_scale,
-			"reduced_motion": _reduced_motion,
-		},
+		"settings": {"emote_labels": _emote_labels, "ui_scale": _emote_ui_scale},
 		"feedback": {"text": _movement_feedback, "serial": _feedback_serial},
 		"pause_menu_open": bool(_playback.snapshot()["pause_menu_open"]),
 	}
@@ -2529,10 +2583,6 @@ func _on_hud_intent(kind: StringName, payload: Dictionary) -> void:
 			_set_emote_accessibility(_emote_labels, float(payload["scale"]))
 			_save_settings()
 			_refresh_hud(_session.snapshot())
-		&"set_reduced_motion":
-			_reduced_motion = bool(payload["enabled"])
-			_save_settings()
-			_refresh_hud(_session.snapshot())
 
 
 # Keyboard shortcuts go through the HUD, so an open modal blocks them in one
@@ -2611,14 +2661,12 @@ func _load_settings() -> void:
 	_emote_ui_scale = clampf(
 		float(config.get_value("hud", "ui_scale", _emote_ui_scale)), 0.75, 1.5
 	)
-	_reduced_motion = bool(config.get_value("hud", "reduced_motion", _reduced_motion))
 
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("hud", "emote_labels", _emote_labels)
 	config.set_value("hud", "ui_scale", _emote_ui_scale)
-	config.set_value("hud", "reduced_motion", _reduced_motion)
 	config.save(SETTINGS_PATH)
 
 
