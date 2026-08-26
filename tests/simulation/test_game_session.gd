@@ -469,6 +469,9 @@ func test_full_night_trapdoor_capture_creates_witness_and_companion_consequences
 		"An arrived Patron can be placed in the bathroom for the scenario."
 	)
 	assert_true(session.activate_trapdoor(), "The Trapdoor arms against the current occupant.")
+	# The standing occupant falls for a bounded time, then the panels close; final
+	# removal happens only after the panels finish closing.
+	session.advance(1.1)
 	var after_capture: Dictionary = session.snapshot()
 	assert_eq(after_capture["debug_patron_views"][&"patron_june"]["lifecycle"], &"captured")
 	assert_eq(after_capture["captures"], 1)
@@ -484,7 +487,8 @@ func test_full_night_trapdoor_capture_creates_witness_and_companion_consequences
 	witness_session.start_night(707)
 	witness_session.advance(100.0)
 	assert_true(witness_session.debug_force_bathroom(&"patron_mara"))
-	witness_session.advance(2.05)
+	# Reach the seated toilet phase: Mirror Check and the walk to the toilet precede it.
+	witness_session.advance(9.1)
 	var seated: Dictionary = witness_session.snapshot()["debug_patron_views"][&"patron_mara"]
 	assert_eq(seated["activity"], &"seated_bathroom_use", "The witness has sat down to use the bathroom.")
 	assert_true(witness_session.activate_trapdoor())
@@ -829,7 +833,8 @@ func test_dropping_restarts_unattended_pressure_and_intake_crossing_captures_onc
 	# Isolate solo Elias in the bathroom and knock him out there: the main hall neither
 	# sees nor hears it, so main-hall June is a clean pressure gauge that starts at zero.
 	assert_true(session.debug_force_bathroom(&"patron_elias"))
-	session.advance(2.1)
+	# Reach the seated toilet phase: Mirror Check and the walk to the toilet precede it.
+	session.advance(9.1)
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["activity"], &"seated_bathroom_use")
 
 	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))

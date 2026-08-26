@@ -99,6 +99,23 @@ func test_hud_escape_dismiss_restores_but_resume_starts_the_selected_speed() -> 
 	assert_false(bool(_hud.inspect()["night"]["plain_paused"]))
 
 
+func test_the_pause_button_icon_and_tooltip_always_agree() -> void:
+	# Running: the button offers Pause. One flag drives both, so they cannot disagree.
+	var running: Dictionary = _hud.inspect()["night"]
+	assert_eq(String(running["playback_action"]), "pause")
+	assert_eq(String(running["pause_button_icon"]), "pause")
+	assert_true(String(running["pause_button_tooltip"]).begins_with("Pause"),
+		"A running Night offers Pause on both icon and tooltip.")
+
+	_hud.activate(&"toggle_pause")
+	await _render_authoritative_state()
+	var paused: Dictionary = _hud.inspect()["night"]
+	assert_eq(String(paused["playback_action"]), "play")
+	assert_eq(String(paused["pause_button_icon"]), "play")
+	assert_true(String(paused["pause_button_tooltip"]).begins_with("Resume"),
+		"A paused Night offers Resume on both icon and tooltip.")
+
+
 func test_escape_lock_reaches_disabled_hud_buttons_and_plain_pause_stays_available() -> void:
 	_hud.activate(&"speed_4")
 	await _render_authoritative_state()

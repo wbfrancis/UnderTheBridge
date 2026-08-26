@@ -133,15 +133,43 @@ Clamp the result from 1% at 50% Bladder to 90% at 100%. Patrons below 50% do not
 - Additional Patrons retain bathroom intent at their seats. The earliest waiting intent claims the line when it opens.
 - Queue waiting raises impatience, not Suspicion.
 
-Bathroom use lasts about 13 seconds:
+A Bathroom Visit has three timed phases with standing travel between four stations
+— the entry door, the mirror on the visible background wall, the toilet, and the
+sink against the invisible foreground wall. The Patron stands and stays vulnerable
+while walking between stations; only the seated toilet phase protects them.
 
-| Phase | Duration | Trapdoor vulnerability |
-|---|---:|---|
-| Enter and approach | 2 seconds | Vulnerable while standing |
-| Seated use | 8 seconds | Protected |
-| Stand and prepare to leave | 3 seconds | Vulnerable |
+| Phase | Duration | Posture | Trapdoor vulnerability |
+|---|---:|---|---|
+| Walk to the mirror | until arrival | Standing | Vulnerable |
+| Mirror Check | 5 seconds | Standing | Vulnerable |
+| Walk to the toilet | until arrival | Standing | Vulnerable |
+| Seated Bathroom Use | seeded whole number, 8–15 seconds | Seated | Protected |
+| Walk to the sink | until arrival | Standing | Vulnerable |
+| Handwashing | 5 seconds | Standing | Vulnerable |
+| Walk to the exit | until arrival | Standing | Vulnerable |
 
-The external control opens the Trapdoor for a 2-second pulse followed by a 3-second cooldown. A seated occupant does not fall, and the activation does not remain armed. Seeing it open while seated is Hard Evidence; a Max Drunk occupant therefore gains 25 soft Suspicion instead of permanent maximum Suspicion. Every activation creates a nearby +10 sound event.
+The seeded Seated Bathroom Use duration is sampled once per visit. Completing that
+phase empties Bladder to 0%; the visit finishes only after Handwashing and the walk
+to the exit. The overhead bathroom emote shows three consecutive vertical fills — a
+mirror icon, a toilet icon, then a handwashing icon — each resetting and filling
+bottom to top while its phase runs; walking between stations invents no progress.
+
+The Trapdoor is the entire bathroom floor. Activation snapshots the current occupant
+and resolves eligibility from that snapshot; it never arms a later Patron. The
+bathroom door locks while the panels are open or closing: no queued Patron enters and
+no Investigator claims the room until the panels close.
+
+- A standing snapped occupant is captured. They fall for about 0.6 seconds, occluded
+  by the floor and never shown below the stage, then the panels close for about 0.4
+  seconds. Final removal and bathroom-slot release happen only after the panels close.
+- A seated snapped occupant is protected and receives the existing Hard Evidence
+  response: seeing it open while seated is Hard Evidence, so a Max Drunk occupant gains
+  25 soft Suspicion instead of permanent maximum Suspicion, and a sober witness escapes
+  after finishing the visit.
+- A non-capture activation keeps the existing 2-second open display before the close.
+  The existing 3-second control cooldown still follows; the door can unlock once the
+  panels close even while the control remains on cooldown. Every activation creates a
+  nearby +10 sound event.
 
 ## 9. Intoxication
 
@@ -157,7 +185,10 @@ While Max Drunk, every Hard Evidence event is downgraded to +25 soft Suspicion i
 
 ### 10.1 Bathroom Trapdoor
 
-Time the 2-second opening pulse while a Patron or Investigator is standing. Falling through completes Capture immediately. Tunnels are implied and are not playable.
+Activate the Trapdoor while a Patron or Investigator is standing on the bathroom
+floor. A standing occupant falls for a bounded time and is removed only after the
+panels finish closing, so Capture is a short finite sequence rather than an instant
+removal. A seated occupant is protected. Tunnels are implied and are not playable.
 
 ### 10.2 Drugged Drink
 

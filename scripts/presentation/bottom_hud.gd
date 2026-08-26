@@ -337,6 +337,8 @@ func inspect() -> Dictionary:
 			"plain_paused": bool(night["plain_paused"]),
 			"selected_speed": _selected_speed(),
 			"playback_action": "pause" if float(night["time_scale"]) > 0.0 else "play",
+			"pause_button_icon": String(_pause_button.get_meta("icon_name", "")),
+			"pause_button_tooltip": _pause_button.tooltip_text,
 			"speed_enabled": (night["speed_enabled"] as Dictionary).duplicate(),
 			"speed_disabled": _disabled_speeds(),
 			"content_left_inset": _left_inset(_night_zone, _clock_hover),
@@ -587,7 +589,10 @@ func _render_night() -> void:
 	_night_track.tooltip_text = "Night %d%%" % int(round(float(night["progress_ratio"]) * 100.0))
 	var running := float(night["time_scale"]) > 0.0
 	# The playback button shows the action a press performs, not the current state.
-	_pause_button.icon = _icon("pause" if running else "play")
+	# One flag drives both icon and tooltip so they can never disagree.
+	var pause_icon := "pause" if running else "play"
+	_pause_button.icon = _icon(pause_icon)
+	_pause_button.set_meta("icon_name", pause_icon)
 	_pause_button.tooltip_text = (
 		"Pause the Night (Space)" if running else "Resume the Night (Space)"
 	)

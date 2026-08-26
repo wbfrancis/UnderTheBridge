@@ -51,6 +51,7 @@ var _indicator_slots: Array[Button] = []
 var _indicators: Dictionary = {}
 var _last_offsets: Dictionary = {}
 var _placements: Dictionary = {}
+var _fill_ratios: Dictionary = {}
 
 
 func configure(camera: Camera3D) -> void:
@@ -85,6 +86,7 @@ func reset() -> void:
 ## Renders one frame. `anchors` maps actor id to the world-space head position.
 func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 	_placements.clear()
+	_fill_ratios.clear()
 	if _camera == null:
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
@@ -119,6 +121,12 @@ func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 	for index in range(used, _slots.size()):
 		_slots[index].visible = false
 	_refresh_indicators(offscreen, anchors, taken)
+
+
+## The bottom-to-top fill fraction each Emote Progress bubble shows, or 0.0 for
+## a bubble with no progress. Used by the rendered review checks.
+func fill_ratio(actor_id: StringName) -> float:
+	return float(_fill_ratios.get(actor_id, 0.0))
 
 
 ## The rectangle a bubble occupies, for the rendered review checks.
@@ -343,6 +351,18 @@ func _paint(index: int, bubble: Dictionary, rect: Rect2) -> void:
 	var color := Color(bubble["color"])
 	var panel := slot.get_node("Panel") as Panel
 	panel.add_theme_stylebox_override("panel", _bubble_style(color, bubble["shape"]))
+	# Emote Progress: a bottom-to-top fill sized by the phase's normalized ratio.
+	var fill := slot.get_node("Panel/Fill") as ColorRect
+	if bubble.has("progress_ratio"):
+		var ratio := clampf(float(bubble["progress_ratio"]), 0.0, 1.0)
+		_fill_ratios[bubble["actor_id"]] = ratio
+		var fill_height := rect.size.y * ratio
+		fill.visible = true
+		fill.color = Color(color, 0.34)
+		fill.position = Vector2(0.0, rect.size.y - fill_height)
+		fill.size = Vector2(rect.size.x, fill_height)
+	else:
+		fill.visible = false
 	var icon := slot.get_node("Panel/Row/Icon") as Label
 	icon.text = String(bubble["icon"])
 	icon.add_theme_font_size_override("font_size", int(18.0 * _ui_scale))
@@ -384,6 +404,12 @@ func _slot(index: int) -> Control:
 		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 		slot.add_child(panel)
+		# The Emote Progress fill sits behind the icon and grows from the bottom up.
+		var fill := ColorRect.new()
+		fill.name = "Fill"
+		fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fill.visible = false
+		panel.add_child(fill)
 		var row := HBoxContainer.new()
 		row.name = "Row"
 		row.set_anchors_preset(Control.PRESET_FULL_RECT)

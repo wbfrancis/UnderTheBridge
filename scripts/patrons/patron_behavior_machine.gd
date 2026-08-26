@@ -18,7 +18,11 @@ const STATE_CLASS := {
 	&"drinking": &"drink",
 	&"bathroom_queued": &"bathroom",
 	&"entering_bathroom": &"bathroom",
+	&"mirror_check": &"bathroom",
+	&"moving_to_toilet": &"bathroom",
 	&"seated_bathroom_use": &"bathroom",
+	&"moving_to_sink": &"bathroom",
+	&"handwashing": &"bathroom",
 	&"standing_bathroom_exit": &"bathroom",
 	&"normal_departure": &"departure",
 	&"helper_reacting": &"helper",
@@ -33,6 +37,7 @@ const STATE_CLASS := {
 	&"unconscious": &"incapacitated",
 	&"being_dragged": &"incapacitated",
 	&"following": &"incapacitated",
+	&"trapdoor_falling": &"capturing",
 	&"captured": &"terminal",
 	&"exited": &"terminal",
 }
@@ -48,7 +53,8 @@ const CLASS_PRIORITY := {
 	&"investigation": 7,
 	&"escape": 8,
 	&"incapacitated": 9,
-	&"terminal": 10,
+	&"capturing": 10,
+	&"terminal": 11,
 }
 
 # Rows are current behavior classes. Columns are requested behavior classes.
@@ -82,7 +88,7 @@ const TRANSITION_MATRIX := {
 		&"routine": ACCEPT, &"order": DEFER, &"talk": DEFER, &"drink": DEFER,
 		&"bathroom": ACCEPT, &"departure": DEFER, &"helper": DEFER,
 		&"investigation": DEFER, &"escape": DEFER, &"incapacitated": ACCEPT,
-		&"terminal": ACCEPT,
+		&"capturing": ACCEPT, &"terminal": ACCEPT,
 	},
 	&"departure": {
 		&"routine": REJECT, &"order": REJECT, &"talk": REJECT, &"drink": REJECT,
@@ -100,7 +106,7 @@ const TRANSITION_MATRIX := {
 		&"routine": REJECT, &"order": REJECT, &"talk": REJECT, &"drink": REJECT,
 		&"bathroom": REJECT, &"departure": REJECT, &"helper": REJECT,
 		&"investigation": ACCEPT, &"escape": ACCEPT, &"incapacitated": ACCEPT,
-		&"terminal": ACCEPT,
+		&"capturing": ACCEPT, &"terminal": ACCEPT,
 	},
 	&"escape": {
 		&"routine": REJECT, &"order": REJECT, &"talk": REJECT, &"drink": REJECT,
@@ -112,7 +118,14 @@ const TRANSITION_MATRIX := {
 		&"routine": REJECT, &"order": REJECT, &"talk": REJECT, &"drink": REJECT,
 		&"bathroom": REJECT, &"departure": REJECT, &"helper": REJECT,
 		&"investigation": REJECT, &"escape": REJECT, &"incapacitated": ACCEPT,
-		&"terminal": ACCEPT,
+		&"capturing": ACCEPT, &"terminal": ACCEPT,
+	},
+	# The Trapdoor fall is a committed capture: only terminal removal follows it.
+	&"capturing": {
+		&"routine": REJECT, &"order": REJECT, &"talk": REJECT, &"drink": REJECT,
+		&"bathroom": REJECT, &"departure": REJECT, &"helper": REJECT,
+		&"investigation": REJECT, &"escape": REJECT, &"incapacitated": REJECT,
+		&"capturing": ACCEPT, &"terminal": ACCEPT,
 	},
 }
 

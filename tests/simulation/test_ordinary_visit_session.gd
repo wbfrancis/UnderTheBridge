@@ -99,12 +99,23 @@ func test_physical_bathroom_phases_wait_for_navigation_thresholds() -> void:
 	session.advance(1.1)
 	session.set_physical_navigation_enabled(true)
 	assert_true(session.debug_force_bathroom(&"patron_june"))
+	# Travel to the mirror waits for a real arrival; a timer alone never completes it.
 	session.advance(30.0)
 	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"entering_bathroom")
 	assert_true(session.patron_destination_reached(&"patron_june"))
 	session.advance(0.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"mirror_check")
+	# The walk to the toilet also blocks until navigation reports arrival.
+	session.advance(5.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_toilet")
+	session.advance(30.0)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_toilet")
+	assert_true(session.patron_destination_reached(&"patron_june"))
+	session.advance(0.1)
 	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"seated_bathroom_use")
-	session.advance(8.1)
+	# The exit travel completes only on its own arrival, at the end of the visit.
+	_walk_seated_to_handwashing(session, &"patron_june")
+	session.advance(5.1)
 	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"standing_bathroom_exit")
 	session.advance(30.0)
 	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"standing_bathroom_exit")
@@ -138,11 +149,16 @@ func test_bathroom_line_has_one_waiting_position_and_promotes_its_owner() -> voi
 	assert_eq(queued["bathroom_owner"], &"patron_june")
 	assert_eq(queued["bathroom_line_owner"], &"patron_mara")
 	assert_eq(queued["debug_views"][&"patron_mara"]["activity"], &"bathroom_queued")
-	session.advance(13.1)
+	# June now runs the full Mirror -> Toilet -> Sink visit before the room frees,
+	# so the line promotes its one waiting Patron only once that visit completes.
+	session.advance(40.0)
 	var promoted: Dictionary = session.snapshot()
 	assert_eq(promoted["bathroom_owner"], &"patron_mara")
 	assert_eq(promoted["bathroom_line_owner"], &"")
-	assert_eq(promoted["debug_views"][&"patron_mara"]["activity"], &"entering_bathroom")
+	assert_true(promoted["debug_views"][&"patron_mara"]["activity"] in [
+		&"entering_bathroom", &"mirror_check", &"moving_to_toilet",
+		&"seated_bathroom_use", &"moving_to_sink", &"handwashing", &"standing_bathroom_exit",
+	], "The promoted Patron has entered the bathroom for their own visit.")
 
 
 func test_ideal_intoxication_and_overdrink_limits_are_seeded_and_bounded() -> void:
@@ -244,6 +260,355 @@ func test_miserable_companion_does_not_become_collapse_helper() -> void:
 	session.advance(2.1)
 	assert_eq(session.debug_patron_view(&"patron_mara")["mood_band"], "Miserable")
 	assert_eq(session.snapshot()["collapses"][&"patron_june"]["phase"], &"unattended")
+
+
+# --- Bathroom Visit: Mirror Check -> Seated Bathroom Use -> Handwashing --------
+# The visit stands and travels through four stations. Only the seated toilet phase
+# protects the Patron from the Trapdoor. Physical-navigation tests control each
+# arrival explicitly; a timer never pretends an actor reached a station.
+
+func test_bathroom_arrival_starts_mirror_check_not_seated_use() -> void:
+	var session = SESSION_SCRIPT.new()
+	session.start(707)
+	session.advance(1.1)
+	session.set_physical_navigation_enabled(true)
+	assert_true(session.debug_force_bathroom(&"patron_june"))
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"entering_bathroom")
+	assert_true(session.patron_destination_reached(&"patron_june"))
+	session.advance(0.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"mirror_check",
+		"Bathroom arrival starts Mirror Check, not Seated Bathroom Use.")
+
+
+func test_mirror_check_lasts_five_seconds_then_travels_to_the_toilet() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_into_mirror_check(session, &"patron_june")
+	session.advance(4.8)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"mirror_check")
+	session.advance(0.3)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_toilet",
+		"Mirror Check lasts five seconds, then the Patron walks to the toilet.")
+
+
+func test_toilet_arrival_starts_seated_use_and_empties_bladder_at_its_end() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_into_mirror_check(session, &"patron_june")
+	session.advance(5.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_toilet")
+	assert_true(session.patron_destination_reached(&"patron_june"))
+	session.advance(0.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"seated_bathroom_use")
+	var use_seconds: float = session.debug_patron_view(&"patron_june").get("bathroom_use_seconds", -1.0)
+	assert_between(use_seconds, 8.0, 15.0)
+	session.advance(use_seconds + 0.1)
+	var view: Dictionary = session.debug_patron_view(&"patron_june")
+	assert_eq(view["activity"], &"moving_to_sink",
+		"Seated Bathroom Use ends into the walk to the sink.")
+	assert_eq(float(view["bladder"]), 0.0, "Seated Bathroom Use empties Bladder at its end.")
+	assert_true(_has_event(session.snapshot()["events"], &"bladder_emptied", &"patron_june"),
+		"The Bladder empties exactly at the end of Seated Bathroom Use.")
+
+
+func test_seated_bathroom_duration_is_a_seeded_whole_number_sampled_once() -> void:
+	var first: float = _sampled_bathroom_use_seconds(707)
+	var again: float = _sampled_bathroom_use_seconds(707)
+	assert_eq(first, again, "The seeded Seated Bathroom Use duration is reproducible.")
+	assert_between(first, 8.0, 15.0)
+	assert_eq(first, floorf(first), "Seated Bathroom Use lasts a whole number of seconds.")
+
+
+func test_sink_arrival_starts_handwashing_for_five_seconds() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_into_handwashing(session, &"patron_june")
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"handwashing")
+	session.advance(4.8)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"handwashing")
+	session.advance(0.3)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"standing_bathroom_exit",
+		"Handwashing lasts five seconds, then the Patron leaves the bathroom.")
+
+
+func test_full_bathroom_visit_releases_the_room_and_promotes_the_line_once() -> void:
+	var session = SESSION_SCRIPT.new()
+	_start_physical_session(session)
+	assert_true(session.debug_force_bathroom(&"patron_june"))
+	assert_true(session.debug_force_bathroom(&"patron_mara"))
+	assert_eq(session.snapshot()["bathroom_line_owner"], &"patron_mara")
+	_walk_entering_to_mirror(session, &"patron_june")
+	_walk_mirror_to_seated(session, &"patron_june")
+	_walk_seated_to_handwashing(session, &"patron_june")
+	_walk_handwashing_to_socializing(session, &"patron_june")
+	var state: Dictionary = session.snapshot()
+	assert_eq(_count_events(state["events"], &"bathroom_visit_completed"), 1)
+	assert_eq(state["bathroom_owner"], &"patron_mara",
+		"Exit completion releases the room and promotes the one waiting Patron.")
+	assert_eq(state["bathroom_line_owner"], &"")
+	assert_eq(state["debug_views"][&"patron_mara"]["activity"], &"entering_bathroom")
+
+
+func test_every_standing_bathroom_phase_is_trapdoor_vulnerable() -> void:
+	for phase: StringName in [
+		&"entering_bathroom", &"mirror_check", &"moving_to_toilet",
+		&"moving_to_sink", &"handwashing", &"standing_bathroom_exit",
+	]:
+		var session = SESSION_SCRIPT.new()
+		_drive_to_bathroom_phase(session, &"patron_june", phase)
+		assert_eq(session.debug_patron_view(&"patron_june")["activity"], phase,
+			"Setup reached %s" % phase)
+		assert_true(session.activate_trapdoor())
+		assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"trapdoor_falling",
+			"%s is a standing phase and begins the Trapdoor fall." % phase)
+		session.advance(1.1)  # Fall then panels close.
+		assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured",
+			"%s is captured once the Trapdoor panels close." % phase)
+
+
+func test_only_seated_bathroom_use_is_protected_from_the_trapdoor() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"seated_bathroom_use")
+	assert_true(session.activate_trapdoor())
+	assert_ne(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured",
+		"A seated Patron is protected from the Trapdoor.")
+	assert_true(_has_event(session.snapshot()["events"], &"trapdoor_seated_evidence", &"patron_june"))
+
+
+func test_a_stale_arrival_flag_cannot_complete_a_later_travel_station() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	var use_seconds: float = session.debug_patron_view(&"patron_june").get("bathroom_use_seconds", 12.0)
+	# Fire a stale arrival while seated, then leave the toilet without a fresh one.
+	session.patron_destination_reached(&"patron_june")
+	session.advance(use_seconds + 0.1)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_sink")
+	session.advance(30.0)
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"moving_to_sink",
+		"A travel station never completes on a stale arrival flag or a timer alone.")
+
+
+func test_restart_clears_bathroom_visit_and_trapdoor_state() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	assert_ne(session.snapshot()["bathroom_owner"], &"")
+	session.restart(707)
+	var state: Dictionary = session.snapshot()
+	assert_eq(state["bathroom_owner"], &"")
+	assert_eq(state["trapdoor"]["state"], &"closed")
+	# The legacy pair arrives immediately, so a clean restart returns June to the
+	# fresh arrival state with no bathroom phase, sampled duration, or capture left.
+	assert_eq(state["debug_views"][&"patron_june"]["activity"], &"entering")
+	assert_eq(float(state["debug_views"][&"patron_june"]["bathroom_use_seconds"]), 0.0)
+
+
+# --- Trapdoor: finite capture lifecycle and door lock -------------------------
+
+func test_standing_capture_falls_then_closes_then_becomes_terminal_after_closure() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"mirror_check")
+	assert_true(session.activate_trapdoor())
+	var falling: Dictionary = session.snapshot()["trapdoor"]
+	assert_eq(falling["state"], &"falling")
+	assert_eq(falling["falling_patron"], &"patron_june")
+	assert_eq(session.debug_patron_view(&"patron_june")["activity"], &"trapdoor_falling")
+	assert_ne(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured",
+		"The falling Patron is not terminal until the panels close.")
+	assert_eq(session.snapshot()["bathroom_owner"], &"patron_june",
+		"The bathroom stays reserved through the fall.")
+	# The fall is bounded, then the panels close.
+	session.advance(0.61)
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"closing")
+	assert_ne(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured")
+	assert_eq(session.snapshot()["bathroom_owner"], &"patron_june")
+	# Final removal and slot release happen only after the panels finish closing.
+	session.advance(0.41)
+	assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured")
+	assert_eq(session.snapshot()["bathroom_owner"], &"")
+	assert_eq(session.snapshot()["captures"].size(), 1)
+
+
+func test_trapdoor_fall_ratio_is_bounded_and_clamps_at_one() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"handwashing")
+	assert_true(session.activate_trapdoor())
+	session.advance(0.3)
+	var mid: float = float(session.snapshot()["trapdoor"]["fall_ratio"])
+	assert_between(mid, 0.0, 1.0)
+	session.advance(5.0)
+	assert_lte(float(session.snapshot()["trapdoor"]["fall_ratio"]), 1.0,
+		"The fall ratio clamps at 1.0 and never continues downward.")
+
+
+func test_seated_misfire_applies_evidence_once_and_never_captures() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	assert_true(session.activate_trapdoor())
+	assert_ne(session.debug_patron_view(&"patron_june")["lifecycle"], &"captured")
+	assert_eq(session.snapshot()["trapdoor"]["falling_patron"], &"")
+	assert_eq(_count_events(session.snapshot()["events"], &"trapdoor_seated_evidence"), 1,
+		"A seated misfire records Hard Evidence exactly once.")
+	session.advance(5.0)
+	assert_eq(session.snapshot()["captures"].size(), 0)
+
+
+func test_a_queued_patron_promotes_only_after_the_panels_close() -> void:
+	var session = SESSION_SCRIPT.new()
+	_start_physical_session(session)
+	assert_true(session.debug_force_bathroom(&"patron_june"))
+	assert_true(session.debug_force_bathroom(&"patron_mara"))
+	assert_true(session.activate_trapdoor())  # June stands in entering_bathroom; capture begins.
+	# While the panels are open or closing, the door stays locked and Mara waits.
+	session.advance(0.61)
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"closing")
+	assert_eq(session.snapshot()["debug_views"][&"patron_mara"]["activity"], &"bathroom_queued")
+	# After closure the room frees and the one waiting Patron promotes.
+	session.advance(0.5)
+	assert_eq(session.snapshot()["bathroom_owner"], &"patron_mara")
+	assert_eq(session.snapshot()["debug_views"][&"patron_mara"]["activity"], &"entering_bathroom")
+
+
+func test_an_investigator_cannot_claim_the_bathroom_while_it_is_locked() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"mirror_check")
+	# A single missing-Companion maximum drives Mara to investigate the bathroom.
+	assert_true(session.apply_suspicion_stimulus(&"patron_mara", &"missing_companion_40"))
+	assert_true(session.activate_trapdoor())  # June begins falling; the bathroom locks.
+	assert_true(bool(session.snapshot()["trapdoor"]["locked"]))
+	session.advance(0.1)
+	assert_eq(session.snapshot()["debug_views"][&"patron_mara"]["activity"], &"waiting_investigation",
+		"No investigator claims the bathroom while the Trapdoor is open or closing.")
+
+
+func test_repeated_activation_is_rejected_through_open_falling_closing_and_cooldown() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"mirror_check")
+	assert_true(session.activate_trapdoor())
+	assert_false(session.activate_trapdoor(), "Rejected while falling.")
+	session.advance(0.61)
+	assert_false(session.activate_trapdoor(), "Rejected while closing.")
+	session.advance(0.41)
+	assert_false(session.activate_trapdoor(), "Rejected during the control cooldown.")
+	session.advance(3.1)
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"closed")
+
+
+func test_activation_never_captures_a_patron_who_entered_after_the_snapshot() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	# Seated June is a protected misfire, so the snapshot arms no one.
+	assert_true(session.activate_trapdoor())
+	# Let the whole open/close/cooldown pass; no one is captured by that activation.
+	session.advance(6.0)
+	assert_eq(session.snapshot()["captures"].size(), 0,
+		"An activation only ever acts on the occupant it snapshotted.")
+
+
+func test_activation_with_no_occupant_opens_and_closes_without_a_capture() -> void:
+	var session = SESSION_SCRIPT.new()
+	session.start(707)
+	session.advance(1.1)
+	assert_eq(session.snapshot()["bathroom_owner"], &"")
+	assert_true(session.activate_trapdoor())
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"open")
+	assert_eq(session.snapshot()["trapdoor"]["falling_patron"], &"")
+	# The empty pulse holds open, closes, then cools down; no one is captured.
+	session.advance(2.1)
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"closing")
+	session.advance(3.5)
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"closed")
+	assert_eq(session.snapshot()["captures"].size(), 0)
+
+
+func test_restart_clears_every_trapdoor_and_pending_capture_field() -> void:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"mirror_check")
+	assert_true(session.activate_trapdoor())
+	assert_eq(session.snapshot()["trapdoor"]["state"], &"falling")
+	session.restart(707)
+	var trap: Dictionary = session.snapshot()["trapdoor"]
+	assert_eq(trap["state"], &"closed")
+	assert_eq(trap["falling_patron"], &"")
+	assert_eq(trap["eligible_occupant"], &"")
+	assert_false(bool(trap["locked"]))
+
+
+# --- Bathroom test drivers -----------------------------------------------------
+# Setup and walking are separate so a test can stage its own occupants (a queued
+# Companion, say) and then walk one Patron through the visit without a restart.
+
+func _start_physical_session(session) -> void:
+	session.start(707)
+	session.advance(1.1)
+	session.set_physical_navigation_enabled(true)
+
+
+func _arrive(session, patron_id: StringName) -> void:
+	assert_true(session.patron_destination_reached(patron_id))
+	session.advance(0.1)
+
+
+func _walk_entering_to_mirror(session, patron_id: StringName) -> void:
+	_arrive(session, patron_id)  # Reach the mirror; Mirror Check begins.
+
+
+func _walk_mirror_to_seated(session, patron_id: StringName) -> void:
+	session.advance(5.1)  # Mirror Check completes; walk to the toilet begins.
+	_arrive(session, patron_id)  # Reach the toilet; Seated Bathroom Use begins.
+
+
+func _walk_seated_to_handwashing(session, patron_id: StringName) -> void:
+	var use_seconds: float = session.debug_patron_view(patron_id).get("bathroom_use_seconds", 12.0)
+	session.advance(use_seconds + 0.1)  # Seated Use completes; walk to the sink begins.
+	_arrive(session, patron_id)  # Reach the sink; Handwashing begins.
+
+
+func _walk_handwashing_to_socializing(session, patron_id: StringName) -> void:
+	session.advance(5.1)  # Handwashing completes; walk to the exit begins.
+	_arrive(session, patron_id)  # Reach the exit; the visit completes.
+
+
+func _drive_into_mirror_check(session, patron_id: StringName) -> void:
+	_start_physical_session(session)
+	assert_true(session.debug_force_bathroom(patron_id))
+	_walk_entering_to_mirror(session, patron_id)
+
+
+func _drive_into_seated_use(session, patron_id: StringName) -> void:
+	_drive_into_mirror_check(session, patron_id)
+	_walk_mirror_to_seated(session, patron_id)
+
+
+func _drive_into_handwashing(session, patron_id: StringName) -> void:
+	_drive_into_seated_use(session, patron_id)
+	_walk_seated_to_handwashing(session, patron_id)
+
+
+func _drive_to_bathroom_phase(session, patron_id: StringName, phase: StringName) -> void:
+	match phase:
+		&"entering_bathroom":
+			_start_physical_session(session)
+			assert_true(session.debug_force_bathroom(patron_id))
+		&"mirror_check":
+			_drive_into_mirror_check(session, patron_id)
+		&"moving_to_toilet":
+			_drive_into_mirror_check(session, patron_id)
+			session.advance(5.1)
+		&"seated_bathroom_use":
+			_drive_into_seated_use(session, patron_id)
+		&"moving_to_sink":
+			_drive_into_seated_use(session, patron_id)
+			var use_seconds: float = session.debug_patron_view(patron_id).get("bathroom_use_seconds", 12.0)
+			session.advance(use_seconds + 0.1)
+		&"handwashing":
+			_drive_into_handwashing(session, patron_id)
+		&"standing_bathroom_exit":
+			_drive_into_handwashing(session, patron_id)
+			session.advance(5.1)
+
+
+func _sampled_bathroom_use_seconds(_seed: int) -> float:
+	var session = SESSION_SCRIPT.new()
+	_drive_to_bathroom_phase(session, &"patron_june", &"seated_bathroom_use")
+	return session.debug_patron_view(&"patron_june").get("bathroom_use_seconds", -1.0)
 
 
 func _has_event(events: Array, event_name: StringName, actor_id: StringName) -> bool:

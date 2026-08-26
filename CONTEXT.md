@@ -47,8 +47,12 @@ The visible current condition of a Patron, including activity, mood, Suspicion b
 _Avoid_: Patron Profile, hidden state
 
 **Emote Bubble**:
-The single overhead icon that shows one actor's urgent intention or expressive change. It is presentational only: it never acknowledges, blocks, or changes gameplay, and it carries no name, value, percentage, countdown, or hidden cause.
+The single overhead icon that shows one actor's urgent intention or expressive change. It is presentational only and can contain Emote Progress without showing an exact value or hidden cause.
 _Avoid_: Thought bubble, status icon
+
+**Emote Progress**:
+A vertical fill inside an Emote Bubble that shows progress through the current observable activity phase. Consecutive phases reset the fill and start it again.
+_Avoid_: Countdown, action timer
 
 **Hover Summary**:
 The small temporary view of a Cultist or Patron that appears while the pointer rests on that person.
@@ -91,6 +95,22 @@ _Avoid_: Bathroom meter
 **Bathroom Line**:
 The single waiting position for a Patron who intends to use the occupied bathroom.
 _Avoid_: Bathroom Action Queue, waiting room
+
+**Bathroom Visit**:
+A Patron's three-phase bathroom sequence: Mirror Check, Seated Bathroom Use, then Handwashing.
+_Avoid_: Bathroom Action, toilet cycle
+
+**Mirror Check**:
+The five-second standing phase in which a Patron looks in the bathroom mirror before using the toilet.
+_Avoid_: Bathroom entry pause, approach phase
+
+**Seated Bathroom Use**:
+The protected toilet phase whose duration is sampled from eight through fifteen seconds for each Bathroom Visit.
+_Avoid_: Seated use, toilet pause
+
+**Handwashing**:
+The five-second standing phase after Seated Bathroom Use and before the Patron leaves the bathroom.
+_Avoid_: Bathroom exit pause, standing exit
 
 **Intoxication**:
 A slowly decaying four-level condition increased by finishing drinks; its highest level is **Max Drunk**.

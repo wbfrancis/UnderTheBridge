@@ -17,10 +17,14 @@ const ACTIVITY_ROOMS := {
 	&"awaiting_drink": &"main_hall",
 	&"drinking": &"main_hall",
 	&"socializing": &"main_hall",
-	&"entering_bathroom": &"hallway",
+	&"entering_bathroom": &"bathroom",
 	&"bathroom_queued": &"hallway",
+	&"mirror_check": &"bathroom",
+	&"moving_to_toilet": &"bathroom",
 	&"seated_bathroom_use": &"bathroom",
-	&"standing_bathroom_exit": &"hallway",
+	&"moving_to_sink": &"bathroom",
+	&"handwashing": &"bathroom",
+	&"standing_bathroom_exit": &"bathroom",
 	&"investigation_search": &"bathroom",
 	&"waiting_investigation": &"bathroom",
 	&"captured": &"bathroom",
@@ -60,9 +64,19 @@ const OFFER_ACCEPTANCE_PERCENT := 80.0
 const OFFER_REFUSAL_COOLDOWN_SECONDS := 60.0
 const INTOXICATION_DECAY_SECONDS := 240.0
 const BATHROOM_CHECK_SECONDS := 5.0
+# Bathroom Visit phase timings. Mirror Check and Handwashing are fixed standing
+# phases; Seated Bathroom Use samples one whole-number duration per visit.
+const BATHROOM_MIRROR_SECONDS := 5.0
+const BATHROOM_HANDWASH_SECONDS := 5.0
+const BATHROOM_USE_MIN_SECONDS := 8
+const BATHROOM_USE_MAX_SECONDS := 15
 # Danger-chain timings, ported from the bathroom danger spike and TECHNICAL_DESIGN §6/§7.1.
 const TRAPDOOR_OPEN_SECONDS := 2.0
 const TRAPDOOR_COOLDOWN_SECONDS := 3.0
+# A captured Patron falls for a bounded time, then the panels close. Final removal
+# and slot release happen only after the panels finish closing.
+const TRAPDOOR_FALL_SECONDS := 0.6
+const TRAPDOOR_CLOSE_SECONDS := 0.4
 const INVESTIGATION_SECONDS := 5.0
 const ESCAPE_SHOCK_SECONDS := 2.0
 const ESCAPE_TRAVEL_SECONDS := 6.0
@@ -103,8 +117,14 @@ const STAY_BEHIND_MAXIMUM := 90.0
 const MAXIMUM_SUSPICION := 100.0
 const TIME_EPSILON := 0.0001
 # Bathroom activities where the occupant stands (capturable by the Trapdoor pulse).
+# Every travel leg and both fixed standing phases are vulnerable; only the seated
+# toilet phase protects the Patron.
 const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
 	&"entering_bathroom",
+	&"mirror_check",
+	&"moving_to_toilet",
+	&"moving_to_sink",
+	&"handwashing",
 	&"standing_bathroom_exit",
 	&"investigation_search",
 ]
@@ -112,7 +132,11 @@ const STANDING_BATHROOM_ACTIVITIES: Array[StringName] = [
 # fires (a seated Hard-Evidence witness escapes through `escape_after_bathroom` instead).
 const DISPATCH_EXCLUDED_ACTIVITIES: Array[StringName] = [
 	&"entering_bathroom",
+	&"mirror_check",
+	&"moving_to_toilet",
 	&"seated_bathroom_use",
+	&"moving_to_sink",
+	&"handwashing",
 	&"standing_bathroom_exit",
 ]
 const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
@@ -215,6 +239,8 @@ var _perception_log: Dictionary = {}
 var _trapdoor_state: StringName = &"closed"
 var _trapdoor_remaining: float = 0.0
 var _trapdoor_eligible_occupant: StringName = &""
+var _trapdoor_falling_patron: StringName = &""
+var _trapdoor_fall_ratio: float = 0.0
 var _captures: Array[Dictionary] = []
 var _active_intercept: Dictionary = {}
 var _defeat: bool = false
@@ -275,6 +301,8 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_trapdoor_state = &"closed"
 	_trapdoor_remaining = 0.0
 	_trapdoor_eligible_occupant = &""
+	_trapdoor_falling_patron = &""
+	_trapdoor_fall_ratio = 0.0
 	_captures.clear()
 	_active_intercept.clear()
 	_defeat = false
@@ -615,7 +643,7 @@ func _urgent_intention(patron: Dictionary) -> StringName:
 	match patron["activity"]:
 		&"awaiting_drink":
 			return &"ordering"
-		&"bathroom_queued", &"entering_bathroom", &"waiting_investigation":
+		&"bathroom_queued", &"entering_bathroom", &"mirror_check", &"moving_to_toilet", &"seated_bathroom_use", &"moving_to_sink", &"handwashing", &"waiting_investigation":
 			return &"bathroom"
 		&"investigation_search":
 			return &"investigating"
@@ -633,11 +661,12 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 	var patron: Dictionary = _patrons[patron_id]
 	var view := normal_patron_view(patron_id)
 	var lifecycle: StringName = patron["lifecycle"]
-	return {
+	var state: StringName = _public_emote_state(patron, view)
+	var row := {
 		"id": patron_id,
 		"kind": &"patron",
-		"present": lifecycle not in [&"not_arrived", &"captured", &"exited"],
-		"state": _public_emote_state(patron, view),
+		"present": lifecycle not in [&"not_arrived", &"capturing", &"captured", &"exited"],
+		"state": state,
 		"changes": [],
 		"public": {
 			"activity": view["visible_activity"],
@@ -647,6 +676,36 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 			"order": String(view["order_state"]),
 			"drug_cue": String(view["known_drugged_drink"]),
 		},
+	}
+	# Prototype information policy: the bathroom emote exposes the three phase names
+	# and their normalized progress. A future locked policy would omit this field;
+	# the bathroom simulation never branches on it.
+	if state == &"bathroom":
+		row["progress"] = _bathroom_emote_progress(patron)
+	return row
+
+
+# The three consecutive vertical fills of the Bathroom Visit. Walking between
+# stations invents no progress; only the timed phases carry a ratio. The UI owns
+# no timer: it receives one normalized ratio and the phase identity.
+func _bathroom_emote_progress(patron: Dictionary) -> Dictionary:
+	var elapsed := float(patron["activity_elapsed"])
+	match patron["activity"]:
+		&"mirror_check":
+			return _phase_progress(&"mirror", 0, elapsed, BATHROOM_MIRROR_SECONDS)
+		&"seated_bathroom_use":
+			return _phase_progress(&"toilet", 1, elapsed, maxf(float(patron["bathroom_use_seconds"]), 0.001))
+		&"handwashing":
+			return _phase_progress(&"handwashing", 2, elapsed, BATHROOM_HANDWASH_SECONDS)
+	return {"phase": &"", "index": -1, "count": 3, "ratio": 0.0}
+
+
+func _phase_progress(phase: StringName, index: int, elapsed: float, duration: float) -> Dictionary:
+	return {
+		"phase": phase,
+		"index": index,
+		"count": 3,
+		"ratio": clampf(elapsed / duration, 0.0, 1.0),
 	}
 
 
@@ -718,6 +777,7 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"bladder": patron["bladder"],
 		"bathroom_probability": probability,
 		"next_bathroom_check_in": maxf(0.0, float(patron["next_bathroom_check_at"]) - _simulated_seconds) if patron["bathroom_checks_active"] else -1.0,
+		"bathroom_use_seconds": patron["bathroom_use_seconds"],
 		"intoxication_level": patron["intoxication"],
 		"ideal_intoxication_level": patron["ideal_intoxication"],
 		"overdrink_limit": patron["overdrink_limit"],
@@ -791,6 +851,10 @@ func snapshot() -> Dictionary:
 			"state": _trapdoor_state,
 			"remaining": _trapdoor_remaining,
 			"eligible_occupant": _trapdoor_eligible_occupant,
+			"locked": _trapdoor_locked(),
+			"falling_patron": _trapdoor_falling_patron,
+			"fall_ratio": _trapdoor_fall_ratio,
+			"close_ratio": _trapdoor_close_ratio(),
 		},
 		"captures": _captures.duplicate(true),
 		"defeat": _defeat,
@@ -918,6 +982,7 @@ func _new_patron(
 		"offer_refused_until": -1.0,
 		"bathroom_checks_active": false,
 		"next_bathroom_check_at": -1.0,
+		"bathroom_use_seconds": 0.0,
 		"recent_bathroom_rolls": [],
 		"navigation_destination": &"entrance" if lifecycle == &"not_arrived" else &"seat",
 		"navigation_arrived": true,
@@ -1001,21 +1066,35 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 			):
 				_start_order(patron_id, patron)
 		&"bathroom_queued":
-			if _bathroom_occupant().is_empty():
+			if _bathroom_occupant().is_empty() and not _trapdoor_locked():
 				_interaction_registry.release_actor(patron_id)
 				if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
-					_set_activity(patron, &"entering_bathroom", &"bathroom")
+					_begin_bathroom_visit(patron_id, patron)
 					_start_missing_companion_clock(patron_id)
 					_record(&"bathroom_line_promoted", patron_id)
 		&"entering_bathroom":
 			if _movement_complete(patron, 2.0):
-				_set_activity(patron, &"seated_bathroom_use", &"bathroom")
+				_set_activity(patron, &"mirror_check", &"mirror")
+				_record(&"bathroom_mirror_check", patron_id)
+		&"mirror_check":
+			if patron["activity_elapsed"] >= BATHROOM_MIRROR_SECONDS:
+				_set_activity(patron, &"moving_to_toilet", &"toilet")
+		&"moving_to_toilet":
+			if _movement_complete(patron, 2.0):
+				_set_activity(patron, &"seated_bathroom_use", &"toilet")
 				_record(&"bathroom_seated", patron_id)
 		&"seated_bathroom_use":
-			if patron["activity_elapsed"] >= 8.0:
+			if patron["activity_elapsed"] >= float(patron["bathroom_use_seconds"]):
 				patron["bladder"] = 0.0
-				_set_activity(patron, &"standing_bathroom_exit", &"bathroom_exit")
+				_set_activity(patron, &"moving_to_sink", &"sink")
 				_record(&"bladder_emptied", patron_id)
+		&"moving_to_sink":
+			if _movement_complete(patron, 2.0):
+				_set_activity(patron, &"handwashing", &"sink")
+				_record(&"bathroom_handwashing", patron_id)
+		&"handwashing":
+			if patron["activity_elapsed"] >= BATHROOM_HANDWASH_SECONDS:
+				_set_activity(patron, &"standing_bathroom_exit", &"bathroom_exit")
 		&"standing_bathroom_exit":
 			if _movement_complete(patron, 3.0):
 				_interaction_registry.release_actor(patron_id)
@@ -1445,9 +1524,9 @@ func _advance_bathroom_checks(patron_id: StringName, patron: Dictionary) -> void
 		_record(&"bathroom_check", patron_id, roll_event)
 		patron["next_bathroom_check_at"] = float(patron["next_bathroom_check_at"]) + BATHROOM_CHECK_SECONDS
 		if roll <= probability:
-			if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+			if not _trapdoor_locked() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 				patron["bathroom_checks_active"] = false
-				_set_activity(patron, &"entering_bathroom", &"bathroom")
+				_begin_bathroom_visit(patron_id, patron)
 				_start_missing_companion_clock(patron_id)
 				_record(&"bathroom_chosen", patron_id, {"roll": roll, "probability": probability})
 				return
@@ -1464,22 +1543,53 @@ func _advance_bathroom_checks(patron_id: StringName, patron: Dictionary) -> void
 # Patron model; maximum-Suspicion behaviour is driven by PatronSuspicion.maximum_response.
 
 
+# One pulse. Activation snapshots the current occupant and resolves eligibility
+# from that snapshot; it never arms a later Patron. A standing occupant begins a
+# finite fall; a seated occupant is a protected misfire; an empty room just opens.
 func activate_trapdoor() -> bool:
 	if _trapdoor_state != &"closed":
 		return false
-	_trapdoor_state = &"open"
-	_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
 	var occupant := _bathroom_occupant()
 	_trapdoor_eligible_occupant = occupant
 	_record(&"trapdoor_opened", occupant)
-	if not occupant.is_empty():
-		var activity: StringName = _patrons[occupant]["activity"]
-		if _is_standing_bathroom_activity(activity):
-			_capture_occupant(&"trapdoor")
-		elif activity == &"seated_bathroom_use":
+	if not occupant.is_empty() and _is_standing_bathroom_activity(_patrons[occupant]["activity"]):
+		_begin_trapdoor_fall(occupant)
+	else:
+		_trapdoor_state = &"open"
+		_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
+		if not occupant.is_empty() and _patrons[occupant]["activity"] == &"seated_bathroom_use":
 			_apply_seated_hard_evidence(occupant)
 	_emit_snapshot()
 	return true
+
+
+# A standing snapped occupant enters the finite capture: the door holds them in
+# `trapdoor_falling`, the bathroom stays reserved, and only closure makes it terminal.
+func _begin_trapdoor_fall(occupant: StringName) -> void:
+	_trapdoor_state = &"falling"
+	_trapdoor_remaining = TRAPDOOR_FALL_SECONDS
+	_trapdoor_fall_ratio = 0.0
+	_trapdoor_falling_patron = occupant
+	var patron: Dictionary = _patrons[occupant]
+	patron["lifecycle"] = &"capturing"
+	patron["bathroom_checks_active"] = false
+	_set_activity(patron, &"trapdoor_falling", &"trapdoor")
+	_patrons[occupant] = patron
+	_record(&"trapdoor_capture_started", occupant)
+
+
+func _trapdoor_locked() -> bool:
+	return _trapdoor_state in [&"open", &"falling", &"closing"]
+
+
+func _bathroom_available_for_entry() -> bool:
+	return _bathroom_occupant().is_empty() and not _trapdoor_locked()
+
+
+func _trapdoor_close_ratio() -> float:
+	if _trapdoor_state != &"closing":
+		return 0.0
+	return clampf(1.0 - _trapdoor_remaining / TRAPDOOR_CLOSE_SECONDS, 0.0, 1.0)
 
 
 func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
@@ -1542,7 +1652,7 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	_interaction_registry.release_actor(patron_id)
 	patron["bathroom_checks_active"] = false
 	if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
-		_set_activity(patron, &"entering_bathroom", &"bathroom")
+		_begin_bathroom_visit(patron_id, patron)
 		_start_missing_companion_clock(patron_id)
 	elif _interaction_registry.request_slot(patron_id, BATHROOM_LINE_SLOT):
 		_set_activity(patron, &"bathroom_queued", &"bathroom_line")
@@ -1554,29 +1664,37 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	return true
 
 
+# Finite state machine: open|falling -> closing -> cooldown -> closed. Eligibility
+# was resolved at activation, so this only advances timers and finalizes the capture
+# after the panels finish closing.
 func _advance_trapdoor(step: float) -> void:
 	if _trapdoor_state == &"closed":
 		return
 	_trapdoor_remaining = maxf(0.0, _trapdoor_remaining - step)
-	var occupant := _bathroom_occupant()
-	if (
-			_trapdoor_state == &"open"
-			and not occupant.is_empty()
-			and occupant == _trapdoor_eligible_occupant
-			and _is_standing_bathroom_activity(_patrons[occupant]["activity"])
-	):
-		_capture_occupant(&"trapdoor")
+	if _trapdoor_state == &"falling":
+		_trapdoor_fall_ratio = clampf(
+			1.0 - _trapdoor_remaining / TRAPDOOR_FALL_SECONDS, 0.0, 1.0
+		)
 	if _trapdoor_remaining > TIME_EPSILON:
 		return
-	if _trapdoor_state == &"open":
-		_trapdoor_state = &"cooldown"
-		_trapdoor_remaining = TRAPDOOR_COOLDOWN_SECONDS
-		_trapdoor_eligible_occupant = &""
-		_record(&"trapdoor_cooldown", &"trapdoor")
-	else:
-		_trapdoor_state = &"closed"
-		_trapdoor_remaining = 0.0
-		_record(&"trapdoor_ready", &"trapdoor")
+	match _trapdoor_state:
+		&"open", &"falling":
+			_trapdoor_state = &"closing"
+			_trapdoor_remaining = TRAPDOOR_CLOSE_SECONDS
+			_record(&"trapdoor_closing", &"trapdoor")
+		&"closing":
+			# The panels have finished closing: remove the falling Patron now, not before.
+			if not _trapdoor_falling_patron.is_empty():
+				_finalize_trapdoor_capture()
+			_trapdoor_state = &"cooldown"
+			_trapdoor_remaining = TRAPDOOR_COOLDOWN_SECONDS
+			_trapdoor_eligible_occupant = &""
+			_record(&"trapdoor_cooldown", &"trapdoor")
+		&"cooldown":
+			_trapdoor_state = &"closed"
+			_trapdoor_remaining = 0.0
+			_trapdoor_fall_ratio = 0.0
+			_record(&"trapdoor_ready", &"trapdoor")
 
 
 func _advance_missing_companions(step: float) -> void:
@@ -1609,7 +1727,7 @@ func _advance_investigations(step: float) -> void:
 		if patron["lifecycle"] != &"investigating":
 			continue
 		if patron["activity"] == &"waiting_investigation":
-			if _bathroom_occupant().is_empty() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+			if _bathroom_available_for_entry() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 				_set_activity(patron, &"investigation_search", &"bathroom")
 				_patrons[patron_id] = patron
 				_record(&"investigation_started", patron_id)
@@ -1696,7 +1814,7 @@ func _request_investigation(patron_id: StringName) -> void:
 	if not StringName(patron["seat"]).is_empty():
 		_seat_owners[patron["seat"]] = &""
 		patron["seat"] = &""
-	if _bathroom_occupant().is_empty() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
+	if _bathroom_available_for_entry() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 		_set_activity(patron, &"investigation_search", &"bathroom")
 		_record(&"investigation_started", patron_id)
 	else:
@@ -1744,6 +1862,13 @@ func _capture_occupant(cause: StringName) -> void:
 	_record(&"capture", captured_id, {"cause": cause})
 
 
+# Runs only after the Trapdoor panels finish closing: the falling Patron becomes
+# terminal and the bathroom slot releases now, never before the panels are shut.
+func _finalize_trapdoor_capture() -> void:
+	_capture_occupant(&"trapdoor")
+	_trapdoor_falling_patron = &""
+
+
 func _apply_seated_hard_evidence(patron_id: StringName) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	var observer_is_max_drunk := int(patron["intoxication"]) >= 3
@@ -1752,6 +1877,16 @@ func _apply_seated_hard_evidence(patron_id: StringName) -> void:
 		patron["escape_after_bathroom"] = true
 		_patrons[patron_id] = patron
 	_record(&"trapdoor_seated_evidence", patron_id, {"max_drunk": observer_is_max_drunk})
+
+
+# Opens a Bathroom Visit: samples the one seeded Seated Bathroom Use duration for
+# this visit and starts the standing walk from the door to the mirror. The seeded
+# whole-number duration is drawn once here, never re-rolled mid-visit.
+func _begin_bathroom_visit(patron_id: StringName, patron: Dictionary) -> void:
+	patron["bathroom_use_seconds"] = float(_patron_rngs[patron_id].randi_range(
+		BATHROOM_USE_MIN_SECONDS, BATHROOM_USE_MAX_SECONDS
+	))
+	_set_activity(patron, &"entering_bathroom", &"mirror")
 
 
 func _start_missing_companion_clock(entered_id: StringName) -> void:
@@ -2709,9 +2844,9 @@ func _movement_complete(patron: Dictionary, fallback_seconds: float) -> bool:
 
 func _activity_requires_movement(activity: StringName) -> bool:
 	return activity in [
-		&"entering", &"entering_bathroom", &"standing_bathroom_exit",
-		&"investigation_search", &"escaping", &"helper_carrying",
-		&"being_dragged", &"following", &"normal_departure",
+		&"entering", &"entering_bathroom", &"moving_to_toilet", &"moving_to_sink",
+		&"standing_bathroom_exit", &"investigation_search", &"escaping",
+		&"helper_carrying", &"being_dragged", &"following", &"normal_departure",
 	]
 
 
@@ -2721,7 +2856,15 @@ func _destination_for_activity(activity: StringName, patron: Dictionary) -> Stri
 			return &"seat"
 		&"bathroom_queued":
 			return &"bathroom_line"
-		&"entering_bathroom", &"seated_bathroom_use", &"investigation_search", &"waiting_investigation":
+		&"entering_bathroom":
+			return &"mirror"
+		&"mirror_check":
+			return &"mirror"
+		&"moving_to_toilet", &"seated_bathroom_use":
+			return &"toilet"
+		&"moving_to_sink", &"handwashing":
+			return &"sink"
+		&"investigation_search", &"waiting_investigation":
 			return &"bathroom"
 		&"standing_bathroom_exit":
 			return &"bathroom_exit"
@@ -2750,7 +2893,11 @@ func _visible_activity(activity: StringName) -> String:
 		&"socializing": "Socializing",
 		&"bathroom_queued": "Waiting for bathroom",
 		&"entering_bathroom": "Going to bathroom",
+		&"mirror_check": "Checking the mirror",
+		&"moving_to_toilet": "Using bathroom",
 		&"seated_bathroom_use": "Using bathroom",
+		&"moving_to_sink": "Washing up",
+		&"handwashing": "Washing up",
 		&"standing_bathroom_exit": "Leaving bathroom",
 		&"waiting_investigation": "Waiting to investigate",
 		&"investigation_search": "Investigating",

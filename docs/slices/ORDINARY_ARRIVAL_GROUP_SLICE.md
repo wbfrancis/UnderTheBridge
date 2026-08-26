@@ -7,7 +7,8 @@ Ticket #7 integrates one authored pair's non-capture visit. It answers whether t
 - exclusive authored seats for June and Mara
 - one complete Order, service, drink, payment, and tip per Patron
 - seeded five-second bathroom checks only while eligible
-- bathroom occupancy and Bladder reset after seated use
+- a three-phase Bathroom Visit — Mirror Check, seeded 8–15s Seated Bathroom Use, Handwashing — with standing travel between the mirror, toilet, and sink stations
+- bathroom occupancy and Bladder reset at the end of Seated Bathroom Use
 - Intoxication gain and one-level decay after four drink-free minutes
 - Normal Departure at nine seated minutes, delayed by active visit behavior
 - separate normal and debug Patron snapshots

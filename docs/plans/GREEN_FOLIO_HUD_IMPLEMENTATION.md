@@ -1,6 +1,8 @@
 # Green Folio HUD implementation plan
 
 > Status, 2026-08-25: `PLAYBACK_AND_ACTION_CHAINS_IMPLEMENTATION.md` supersedes this historical plan's fixed four-tile queue and last-nonzero-speed pause details. The approved Green Folio composition and all other visual decisions remain in force.
+>
+> Status, 2026-08-26: complete and shipped. The Bottom HUD, playback, and Action Tile work described here landed with the playback and Action-Chain change; its review runner (`tools/green_folio_hud/run_review.sh`) still passes after the bathroom and Trapdoor work, at 1280×720, 1024×576, and 1920×1080.
 
 ## Goal
 

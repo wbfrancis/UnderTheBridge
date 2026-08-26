@@ -24,9 +24,9 @@ foreach ($Scale in @(1, 4)) {
 
     $ReportPath = Join-Path $ProjectRoot "artifacts/smart_object_commands/$Report"
     $Parsed = Get-Content $ReportPath -Raw | ConvertFrom-Json
-    if (-not $Parsed.passed -or $Parsed.step_count -ne 7) {
+    if (-not $Parsed.passed -or $Parsed.step_count -ne 6) {
         throw "Smart-object command validation failed at ${Scale}x."
     }
 }
 
-Write-Host "Smart-object command validation passed at 1x and 4x for all seven steps."
+Write-Host "Smart-object command validation passed at 1x and 4x for all six steps."

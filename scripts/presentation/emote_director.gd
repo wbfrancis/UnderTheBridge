@@ -70,6 +70,14 @@ const CATALOG := {
 	},
 }
 
+## Distinct icons for the three timed Bathroom Visit phases. Each replaces the
+## generic bathroom icon while its phase runs and carries its own vertical fill.
+const BATHROOM_PHASES := {
+	&"mirror": {"icon": "M", "label": "Mirror"},
+	&"toilet": {"icon": "T", "label": "Toilet"},
+	&"handwashing": {"icon": "H", "label": "Wash"},
+}
+
 ## Band ladders. A move up or down the ladder is public; the value behind it is not.
 const MOOD_BANDS: Array[String] = ["Miserable", "Unhappy", "Content", "Happy"]
 const DANGER_BANDS: Array[String] = ["Calm", "Uneasy", "Suspicious", "Alarmed", "Maximum"]
@@ -133,6 +141,7 @@ func _update_actor(actor_id: StringName, row: Dictionary) -> void:
 	var actor: Dictionary = _actors[actor_id]
 	actor["present"] = present
 	actor["state"] = StringName(row["state"]) if present else &"none"
+	actor["progress"] = row.get("progress", {}) if present else {}
 	if not present:
 		actor["pending"].clear()
 		actor["active"] = {}
@@ -262,7 +271,7 @@ func _bubble_for(actor_id: StringName) -> Dictionary:
 	if chosen.is_empty():
 		return {}
 	var entry: Dictionary = CATALOG[chosen]
-	return {
+	var bubble := {
 		"actor_id": actor_id,
 		"emote": chosen,
 		"category": entry["category"],
@@ -272,6 +281,21 @@ func _bubble_for(actor_id: StringName) -> Dictionary:
 		"color": entry["color"],
 		"label": entry["label"],
 	}
+	# While the bathroom state owns the bubble, expose the phase and its fill. A
+	# timed phase swaps in its own icon and a bottom-to-top ratio; travel between
+	# stations keeps the generic bathroom icon and invents no fill.
+	if chosen == &"bathroom":
+		var progress: Dictionary = actor.get("progress", {})
+		if not progress.is_empty():
+			var phase: StringName = StringName(progress.get("phase", &""))
+			bubble["phase_index"] = int(progress.get("index", -1))
+			bubble["phase_count"] = int(progress.get("count", 3))
+			if BATHROOM_PHASES.has(phase):
+				bubble["icon"] = BATHROOM_PHASES[phase]["icon"]
+				bubble["label"] = BATHROOM_PHASES[phase]["label"]
+				bubble["progress_phase"] = phase
+				bubble["progress_ratio"] = clampf(float(progress.get("ratio", 0.0)), 0.0, 1.0)
+	return bubble
 
 
 func _is_critical(state: StringName) -> bool:

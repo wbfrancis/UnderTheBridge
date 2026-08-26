@@ -32,11 +32,11 @@ for SCALE in 1 4; do
     echo "Smart-object command validation failed at ${SCALE}x." >&2
     exit 1
   fi
-  if ! grep -Eq '"step_count"[[:space:]]*:[[:space:]]*7' \
+  if ! grep -Eq '"step_count"[[:space:]]*:[[:space:]]*6' \
     "$PROJECT_ROOT/artifacts/smart_object_commands/$REPORT"; then
     echo "Smart-object command validation ran the wrong step count at ${SCALE}x." >&2
     exit 1
   fi
 done
 
-echo "Smart-object command validation passed at 1x and 4x for all seven steps."
+echo "Smart-object command validation passed at 1x and 4x for all six steps."

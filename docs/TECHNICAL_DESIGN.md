@@ -248,15 +248,21 @@ The first prototype may simplify reassignment presentation, but ownership and te
 
 ### 6.5 Bathroom occupancy
 
-The registry owns one occupant slot and one FIFO Bathroom Line slot. Additional Patrons retain bathroom intent at their seats until the line opens. The Patron activity owns phase timing:
+The registry owns one occupant slot and one FIFO Bathroom Line slot. Additional Patrons retain bathroom intent at their seats until the line opens. `OrdinaryVisitSession` owns the explicit phase states and their timing. Navigation arrival starts each timed phase; a timer never pretends an actor reached a station:
 
-1. 2 seconds standing entry
-2. 8 seconds seated use
-3. 3 seconds standing exit
+1. `entering_bathroom` — walk to the mirror, standing
+2. `mirror_check` — 5 seconds at the mirror, standing
+3. `moving_to_toilet` — walk to the toilet, standing
+4. `seated_bathroom_use` — a seeded whole number, 8–15 seconds, seated (sampled once per visit)
+5. `moving_to_sink` — walk to the sink, standing
+6. `handwashing` — 5 seconds at the sink, standing
+7. `standing_bathroom_exit` — walk to the exit, standing
 
-The Trapdoor owns a 2-second open pulse and 3-second cooldown. It queries occupant posture at activation and opening ticks; it does not arm a future fall.
+Every travel state and both fixed standing phases are Trapdoor-vulnerable; only `seated_bathroom_use` is protected. Completing the seated phase empties Bladder; the visit finishes only after Handwashing and exit travel.
 
-The bathroom danger-chain spike fixes the implementation rule behind that invariant: each activation stores the occupant identifier present when the pulse begins. Only that Patron can be captured by that pulse. Capture, cancellation, or queue promotion never transfers eligibility to the next occupant. A sober seated witness receives maximum Suspicion but remains seated; after completing the bathroom exit phase, that Patron begins the direct Escape branch. The Max Drunk `+25` downgrade does not create that pending Escape unless accumulated Suspicion independently reaches maximum.
+The Trapdoor is a finite state machine: `closed → open|falling → closing → cooldown → closed`. Activation snapshots the current occupant and resolves eligibility from that snapshot; it never arms a future Patron. A standing snapped occupant enters the transitional `trapdoor_falling` state and keeps the bathroom reservation; it falls for a bounded `TRAPDOOR_FALL_SECONDS` (about 0.6 s), the panels close over `TRAPDOOR_CLOSE_SECONDS` (about 0.4 s), and only after closure does the Patron become terminal `captured` and the slot release. The door reads locked (`open`, `falling`, or `closing`) so no queued Patron enters and no Investigator claims the room until the panels close; the existing 3-second control cooldown still follows and the door may unlock during it. A non-capture activation keeps the existing 2-second open display before the close. The simulation resolves eligibility from bathroom ownership and posture; presentation animates the panels and the fall from the authoritative snapshot (`state`, `fall_ratio`, `close_ratio`, `falling_patron`, `locked`) and never decides capture.
+
+Each activation stores the occupant identifier present when the pulse begins. Only that Patron can be captured by that pulse. Capture, cancellation, or queue promotion never transfers eligibility to the next occupant. A sober seated witness receives maximum Suspicion but remains seated; after completing the bathroom exit phase, that Patron begins the direct Escape branch. The Max Drunk `+25` downgrade does not create that pending Escape unless accumulated Suspicion independently reaches maximum.
 
 An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice check every 5 simulated seconds. Probability interpolates linearly from 1% at 50% to 90% at 100%. Selecting the intent stops further checks until the bathroom visit resolves; completing use sets Bladder to zero.
 
@@ -304,8 +310,8 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 | Soft recovery | after 20 quiet seconds, -5 per 10 seconds |
 | Unattended Body | after 3 seconds, +5 per visible non-Overdrink body every 5 seconds |
 | Companion influence | every 10 seconds, +up to 5 toward highest nearby group member |
-| Trapdoor | open 2 seconds, cooldown 3 seconds |
-| Bathroom | standing 2, seated 8, standing 3 seconds |
+| Trapdoor | non-capture open 2s; capture fall ~0.6s then close ~0.4s; cooldown 3s; door locked while open/falling/closing |
+| Bathroom | Mirror Check 5s, Seated Bathroom Use seeded 8–15s, Handwashing 5s, standing travel between stations |
 | Missing Companion | +25 at 20s, +25 at 30s, maximum at 40s |
 | Drugged Drink | drowsy at 10s, unconscious at 20s |
 | Escape | 2s shock, 140% movement, one 5s Intercept |

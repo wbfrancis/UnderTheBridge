@@ -37,11 +37,11 @@ for report in validation_1x.json validation.json; do
     echo "Movement navigation validation failed: $report" >&2
     exit 1
   fi
-  if ! grep -Eq '"actor_count"[[:space:]]*:[[:space:]]*11' \
+  if ! grep -Eq '"actor_count"[[:space:]]*:[[:space:]]*9' \
     "$PROJECT_ROOT/artifacts/movement_navigation/$report"; then
     echo "Movement navigation actor count failed: $report" >&2
     exit 1
   fi
 done
 
-echo "Movement navigation validation passed at 1x and 4x for all 11 actors."
+echo "Movement navigation validation passed at 1x and 4x for all 9 actors."

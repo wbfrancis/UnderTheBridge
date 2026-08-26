@@ -30,9 +30,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 foreach ($Name in @("validation_1x.json", "validation.json")) {
     $ReportPath = Join-Path $ProjectRoot "artifacts/movement_navigation/$Name"
     $Report = Get-Content $ReportPath -Raw | ConvertFrom-Json
-    if (-not $Report.passed -or $Report.actor_count -ne 11) {
+    if (-not $Report.passed -or $Report.actor_count -ne 9) {
         throw "Movement navigation validation failed: $Name"
     }
 }
 
-Write-Host "Movement navigation validation passed at 1x and 4x for all 11 actors."
+Write-Host "Movement navigation validation passed at 1x and 4x for all 9 actors."
