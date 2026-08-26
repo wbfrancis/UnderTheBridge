@@ -1,0 +1,38 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+readonly BASE_REPO="${UNDERTHEBRIDGE_REPO:-/Users/wfrancis/Documents/repos/UnderTheBridge}"
+readonly SCENE_PATH="scenes/prototypes/avatar_motion_review.tscn"
+readonly GODOT_BIN="${GODOT_BIN:-/Applications/Godot_mono.app/Contents/MacOS/Godot}"
+
+if [[ ! -x "$GODOT_BIN" ]]; then
+	print -u2 "Godot was not found at: $GODOT_BIN"
+	exit 1
+fi
+
+if [[ ! -d "$BASE_REPO/.git" ]]; then
+	print -u2 "UnderTheBridge was not found at: $BASE_REPO"
+	exit 1
+fi
+
+project_root=""
+while IFS= read -r line; do
+	if [[ "$line" == worktree\ * ]]; then
+		candidate="${line#worktree }"
+		if [[ -f "$candidate/$SCENE_PATH" ]]; then
+			project_root="$candidate"
+			break
+		fi
+	fi
+done < <(git -C "$BASE_REPO" worktree list --porcelain)
+
+if [[ -z "$project_root" ]]; then
+	print -u2 "The avatar-motion test scene was not found in any UnderTheBridge worktree."
+	exit 1
+fi
+
+exec "$GODOT_BIN" \
+	--editor \
+	--path "$project_root" \
+	"res://$SCENE_PATH"
