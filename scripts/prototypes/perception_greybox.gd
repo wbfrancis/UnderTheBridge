@@ -367,7 +367,9 @@ func _wheel_pan_delta(event: InputEventMouseButton) -> Vector2:
 
 
 func _update_camera_pan(delta: float) -> void:
-	var pan := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	var pan := Input.get_vector(
+		"camera_pan_left", "camera_pan_right", "camera_pan_up", "camera_pan_down"
+	)
 	if pan.is_zero_approx() and _trackpad_pan_hold_remaining > 0.0:
 		pan = _trackpad_pan_intent
 	_trackpad_pan_hold_remaining = maxf(0.0, _trackpad_pan_hold_remaining - delta)
