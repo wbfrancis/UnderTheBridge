@@ -41,11 +41,17 @@ const BRASS := Color("A8793E")
 const DANGER := Color("A14C3E")
 
 const HUD_HEIGHT := 166.0
-const TILE_COUNT := 4
+## The Action Tile strip keeps this many tiles of footprint while the Selected
+## Cultist queue is empty, then grows one tile per pending Action beyond it.
+const MIN_TILE_FOOTPRINT := 4
 const TILE_SIZE := 54.0
 const TILE_GAP := 6.0
 const TILES_LEFT := 26.0
 const TILES_BOTTOM_GAP := 12.0
+## The pending strip scrolls once it would reach this share of the screen width,
+## so a long Action Queue never runs under the Night or Patron zones.
+const TILES_MAX_WIDTH_RATIO := 0.5
+const CONNECTOR_WIDTH := 8.0
 const PORTRAIT_SIZE := Vector2(54.0, 62.0)
 const PORTRAIT_CAPTION_HEIGHT := 32.0
 const CLOCK_SIZE := 92.0
@@ -89,9 +95,16 @@ const SUSPICION_BANDS := {
 const INTOXICATION_BANDS := {"Sober": 0.1, "Buzzed": 0.4, "Drunk": 0.72, "Max Drunk": 1.0}
 
 const SPEED_CONTROLS := {&"speed_1": 1.0, &"speed_2": 2.0, &"speed_4": 4.0}
+const SPEED_HINTS := {&"speed_1": "1", &"speed_2": "2", &"speed_4": "3"}
+const SPEED_LABELS := {
+	&"speed_1": "Normal speed (1)", &"speed_2": "Double speed (2)",
+	&"speed_4": "Four times speed (3)",
+}
+const SPEED_LOCK_HELP := "Escape limits the Night to 1x"
 const UI_SCALE_STEPS: Array[float] = [0.75, 1.0, 1.25, 1.5]
 
-## Time control is dead while an Outcome Modal blocks the Night.
+## Time control is dead while an Outcome Modal or the Pause Menu blocks the Night.
+## Pause Menu dismissal and Resume are not listed, so they still reach the adapter.
 const TIME_INTENTS: Array[StringName] = [
 	&"set_time_scale", &"toggle_pause", &"advance_debug_time", &"select_scenario",
 	&"open_pause_menu",
@@ -100,8 +113,11 @@ const TIME_INTENTS: Array[StringName] = [
 var _view: Dictionary = empty_view()
 var _ui_scale := 1.0
 var _root: Control
-var _tiles_row: HBoxContainer
-var _tile_slots: Array[Dictionary] = []
+var _tiles_strip: HBoxContainer
+var _active_tile: Dictionary = {}
+var _pending_scroll: ScrollContainer
+var _pending_row: HBoxContainer
+var _pending_tiles: Array[Dictionary] = []
 var _cultist_portrait: TextureRect
 var _cultist_name: Label
 var _cultist_activity: Label
@@ -160,8 +176,10 @@ static func empty_view() -> Dictionary:
 			"remaining_label": "18m 00s",
 			"progress_ratio": 0.0,
 			"time_scale": 0.0,
-			"last_nonzero_scale": 1.0,
-			"paused": true,
+			"selected_speed": 1.0,
+			"plain_paused": false,
+			"speed_enabled": {1.0: true, 2.0: true, 4.0: true},
+			"speed_lock_reason": &"",
 			"phase": &"preparation",
 		},
 		"inspected_patron": {},
@@ -174,15 +192,6 @@ static func empty_view() -> Dictionary:
 		"settings": {"emote_labels": false, "ui_scale": 1.0, "reduced_motion": false},
 		"pause_menu_open": false,
 	}
-
-
-## Which Simulation Speed the pause control asks for next. Space pauses at any
-## running speed and resumes the last accepted nonzero one. The world adapter
-## owns the remembered value; the rule lives beside the control that uses it.
-static func resume_scale(current_scale: float, last_nonzero_scale: float) -> float:
-	if current_scale > 0.0:
-		return 0.0
-	return last_nonzero_scale if last_nonzero_scale > 0.0 else 1.0
 
 
 func _ready() -> void:
@@ -237,7 +246,7 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 		&"toggle_pause":
 			_emit(&"toggle_pause", {})
 		&"cancel_tile":
-			_cancel_tile(int(payload.get("index", -1)))
+			_cancel_tile(payload)
 		&"close_patron":
 			_emit(&"close_inspected_patron", {})
 		&"open_pause_menu":
@@ -273,8 +282,11 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 ## this instead of walking the control tree.
 func inspect() -> Dictionary:
 	var tiles: Array[Dictionary] = []
-	for index in range(_tile_slots.size()):
-		var slot: Dictionary = _tile_slots[index]
+	var slots: Array[Dictionary] = [_active_tile]
+	for slot: Dictionary in _pending_tiles:
+		if (slot["root"] as Control).visible:
+			slots.append(slot)
+	for slot: Dictionary in slots:
 		var data: Dictionary = slot["data"]
 		tiles.append({
 			"filled": not data.is_empty(),
@@ -284,13 +296,18 @@ func inspect() -> Dictionary:
 			"label": String(data.get("label", "")),
 			"target_label": String(data.get("target_label", "")),
 			"progress_ratio": data.get("progress_ratio", null),
+			"chain_id": int(data.get("chain_id", -1)),
+			"generated": bool(data.get("generated", false)),
+			"connector_left": (slot["left"] as ColorRect).visible,
+			"connector_right": (slot["right"] as ColorRect).visible,
 			"cancel_visible": (slot["cancel"] as Button).visible,
-			"rect": (slot["button"] as Control).get_rect(),
+			"rect": (slot["button"] as Control).get_global_rect(),
 		})
 	var night: Dictionary = _view["night"]
 	return {
 		"action_tiles": tiles,
-		"action_tiles_visible": _tiles_row.visible,
+		"action_tiles_visible": _tiles_strip.visible,
+		"pending_viewport_rect": _pending_scroll.get_global_rect(),
 		"cultist": {
 			"name": _cultist_name.text,
 			"activity": _cultist_activity.text,
@@ -317,9 +334,11 @@ func inspect() -> Dictionary:
 			"clock_minutes": _clock.clock_minutes(),
 			"progress_ratio": float(night["progress_ratio"]),
 			"time_scale": float(night["time_scale"]),
-			"paused": bool(night["paused"]),
+			"plain_paused": bool(night["plain_paused"]),
 			"selected_speed": _selected_speed(),
-			"pause_pressed": _pause_button.button_pressed,
+			"playback_action": "pause" if float(night["time_scale"]) > 0.0 else "play",
+			"speed_enabled": (night["speed_enabled"] as Dictionary).duplicate(),
+			"speed_disabled": _disabled_speeds(),
 			"content_left_inset": _left_inset(_night_zone, _clock_hover),
 		},
 		"settings_open": _settings_panel.visible,
@@ -339,13 +358,15 @@ func inspect() -> Dictionary:
 func reserved_rects() -> Array[Rect2]:
 	var rects: Array[Rect2] = []
 	rects.append(_scaled_rect(_root.get_node("Frame") as Control))
-	if _tiles_row.visible:
-		rects.append(_scaled_rect(_tiles_row))
+	if _tiles_strip.visible:
+		rects.append(_scaled_rect(_tiles_strip))
 	for panel: Control in [_settings_panel, _developer_panel]:
 		if panel.visible:
 			rects.append(_scaled_rect(panel))
 	if _pause_menu.visible or _outcome_modal.visible:
 		rects.append(Rect2(Vector2.ZERO, _viewport_size()))
+	elif _feedback_panel.visible:
+		rects.append(_scaled_rect(_feedback_panel))
 	return rects
 
 
@@ -372,19 +393,22 @@ func _handle_escape() -> void:
 	if _outcome_modal.visible:
 		return
 	if _pause_menu.visible:
-		_emit(&"resume_night", {})
+		# Escape restores the pre-menu playback state; only Resume starts the
+		# selected speed. The two paths stay distinct.
+		_emit(&"dismiss_pause_menu", {})
 		return
 	_emit(&"open_pause_menu", {})
 
 
-func _cancel_tile(index: int) -> void:
-	if index < 0 or index >= _tile_slots.size():
+# Cancellation is bound to a stable Action id, not a tile position, so a tile that
+# scrolled still cancels the right Action. The command seam applies the chain
+# cascade; the HUD only submits which Action the player pressed.
+func _cancel_tile(payload: Dictionary) -> void:
+	var action_id := int(payload.get("action_id", -1))
+	var active := bool(payload.get("active", false))
+	if action_id < 0:
 		return
-	var data: Dictionary = _tile_slots[index]["data"]
-	if data.is_empty() or not bool(data.get("cancellable", false)):
-		return
-	var action_id := int(data.get("id", -1))
-	if bool(data.get("active", false)):
+	if active:
 		_emit(&"cancel_active_action", {"action_id": action_id})
 	else:
 		_emit(&"remove_pending_action", {"action_id": action_id})
@@ -448,37 +472,112 @@ func _render_cultist() -> void:
 	_cultist_portrait.modulate = Color(cultist.get("tint", CREAM))
 
 
+# The strip pins the active tile at the left and grows one square per pending
+# Action to the right, scrolling once it would reach the safe screen width. An
+# empty queue keeps a four-tile footprint. Cancellation is bound to stable Action
+# ids, and a subtle connector joins adjacent tiles of one Action Chain.
 func _render_action_tiles() -> void:
 	var tiles: Array = _view["action_tiles"]
-	_tiles_row.visible = not _view["selected_cultist"].is_empty()
-	for index in range(TILE_COUNT):
-		var slot: Dictionary = _tile_slots[index]
-		var data: Dictionary = tiles[index] if index < tiles.size() else {}
-		slot["data"] = data
+	_tiles_strip.visible = not _view["selected_cultist"].is_empty()
+
+	var active_data: Dictionary = {}
+	var pending: Array = []
+	for entry: Dictionary in tiles:
+		if bool(entry.get("active", false)) and active_data.is_empty():
+			active_data = entry
+		else:
+			pending.append(entry)
+
+	var placeholders := 0
+	if active_data.is_empty() and pending.is_empty():
+		placeholders = MIN_TILE_FOOTPRINT - 1
+
+	_apply_tile(_active_tile, active_data, {})
+	_active_tile["connect_right"] = _shares_chain(
+		active_data, pending[0] if not pending.is_empty() else {}
+	)
+	_set_connector(_active_tile, false, false)
+	_set_connector(_active_tile, true, bool(_active_tile["connect_right"]))
+
+	var needed := pending.size() + placeholders
+	_ensure_pending_tiles(needed)
+	var previous := active_data
+	for index in range(_pending_tiles.size()):
+		var slot: Dictionary = _pending_tiles[index]
 		var button := slot["button"] as Button
-		var icon := slot["icon"] as TextureRect
-		var fill := slot["fill"] as ColorRect
-		var cancel := slot["cancel"] as Button
-		var filled := not data.is_empty()
-		var active := filled and bool(data.get("active", false))
-		var style := _tile_style(filled, active)
-		for state: String in ["normal", "hover", "pressed", "disabled"]:
-			button.add_theme_stylebox_override(state, style)
-		button.disabled = not filled
-		icon.visible = filled
-		if filled:
-			icon.texture = _action_icon(StringName(data.get("icon", "")))
-			icon.modulate = Color("FFF2C9") if active else Color("C9B986")
-		var ratio: Variant = data.get("progress_ratio", null) if active else null
-		fill.visible = ratio != null
-		if ratio != null:
-			_set_fill_ratio_vertical(fill, float(ratio))
-		cancel.visible = filled and bool(data.get("cancellable", false))
-		button.tooltip_text = (
-			"%s · %s" % [data.get("label", ""), data.get("target_label", "")]
-			if filled
-			else ""
-		)
+		if index >= needed:
+			button.get_parent().visible = false
+			slot["data"] = {}
+			continue
+		button.get_parent().visible = true
+		var data: Dictionary = pending[index] if index < pending.size() else {}
+		_apply_tile(slot, data, previous)
+		_set_connector(slot, true, false)
+		previous = data
+
+	_update_pending_scroll_width(needed)
+
+
+# Draws one tile from a display-ready Action view, or clears it to an empty slot.
+func _apply_tile(slot: Dictionary, data: Dictionary, previous: Dictionary) -> void:
+	slot["data"] = data
+	var button := slot["button"] as Button
+	var icon := slot["icon"] as TextureRect
+	var fill := slot["fill"] as ColorRect
+	var cancel := slot["cancel"] as Button
+	var filled := not data.is_empty()
+	var active := filled and bool(data.get("active", false))
+	var style := _tile_style(filled, active)
+	for state: String in ["normal", "hover", "pressed", "disabled"]:
+		button.add_theme_stylebox_override(state, style)
+	button.disabled = not filled
+	icon.visible = filled
+	if filled:
+		icon.texture = _action_icon(StringName(data.get("icon", "")))
+		icon.modulate = Color("FFF2C9") if active else Color("C9B986")
+	var ratio: Variant = data.get("progress_ratio", null) if active else null
+	fill.visible = ratio != null
+	if ratio != null:
+		_set_fill_ratio_vertical(fill, float(ratio))
+	cancel.visible = filled and bool(data.get("cancellable", false))
+	button.tooltip_text = (
+		"%s · %s" % [data.get("label", ""), data.get("target_label", "")]
+		if filled
+		else ""
+	)
+	_set_connector(slot, false, filled and _shares_chain(previous, data))
+
+
+# Two Action views belong to one Action Chain when they carry the same
+# nonnegative chain id.
+func _shares_chain(first: Dictionary, second: Dictionary) -> bool:
+	if first.is_empty() or second.is_empty():
+		return false
+	var chain_id := int(first.get("chain_id", -1))
+	return chain_id >= 0 and chain_id == int(second.get("chain_id", -1))
+
+
+func _set_connector(slot: Dictionary, on_right: bool, visible: bool) -> void:
+	var key := "right" if on_right else "left"
+	(slot[key] as ColorRect).visible = visible
+
+
+func _ensure_pending_tiles(count: int) -> void:
+	while _pending_tiles.size() < count:
+		var slot := _make_tile()
+		_pending_row.add_child(slot["root"])
+		_pending_tiles.append(slot)
+
+
+func _update_pending_scroll_width(count: int) -> void:
+	var content := float(count) * TILE_SIZE + maxf(0.0, float(count - 1)) * TILE_GAP
+	var maximum := _root.size.x * TILES_MAX_WIDTH_RATIO
+	var visible_tile_count := maxi(1, int(floor((maximum + TILE_GAP) / (TILE_SIZE + TILE_GAP))))
+	var whole_tile_width := (
+		float(visible_tile_count) * TILE_SIZE
+		+ float(visible_tile_count - 1) * TILE_GAP
+	)
+	_pending_scroll.custom_minimum_size = Vector2(minf(content, whole_tile_width), TILE_SIZE)
 
 
 func _render_night() -> void:
@@ -486,15 +585,45 @@ func _render_night() -> void:
 	_clock.set_clock_minutes(float(night["clock_minutes"]))
 	_set_fill_ratio_horizontal(_night_fill, float(night["progress_ratio"]))
 	_night_track.tooltip_text = "Night %d%%" % int(round(float(night["progress_ratio"]) * 100.0))
-	var paused := bool(night["paused"])
-	var scale := float(night["time_scale"])
-	_pause_button.button_pressed = paused
+	var running := float(night["time_scale"]) > 0.0
+	# The playback button shows the action a press performs, not the current state.
+	_pause_button.icon = _icon("pause" if running else "play")
+	_pause_button.tooltip_text = (
+		"Pause the Night (Space)" if running else "Resume the Night (Space)"
+	)
+	var selected := float(night["selected_speed"])
+	var enabled: Dictionary = night["speed_enabled"]
 	for control: StringName in _speed_buttons:
 		var button := _speed_buttons[control] as Button
-		button.button_pressed = not paused and is_equal_approx(scale, SPEED_CONTROLS[control])
+		var value: float = SPEED_CONTROLS[control]
+		var is_enabled := bool(enabled.get(value, true))
+		button.disabled = not is_enabled
+		# The selected speed stays visibly pressed even while the Night is paused.
+		_apply_selected_style(button, is_equal_approx(selected, value))
+		button.tooltip_text = SPEED_LABELS[control] if is_enabled else SPEED_LOCK_HELP
 	_clock_hover.tooltip_text = "%s · Closing %s · %s remaining" % [
 		night["clock_label"], night["closing_label"], night["remaining_label"],
 	]
+
+
+# A selected speed carries the pressed StyleBox, so selection never relies on
+# color alone: it reads as a depressed brass key against the unselected ones.
+func _apply_selected_style(button: Button, selected: bool) -> void:
+	if selected:
+		var style := _selected_control_style()
+		for state: String in ["normal", "hover", "pressed"]:
+			button.add_theme_stylebox_override(state, style)
+		button.add_theme_color_override("font_color", DARK_FOLIO)
+	else:
+		for state: String in ["normal", "hover", "pressed"]:
+			button.remove_theme_stylebox_override(state)
+		button.remove_theme_color_override("font_color")
+
+
+func _speed_button_help(control: StringName) -> String:
+	var value: float = SPEED_CONTROLS[control]
+	var enabled: Dictionary = _view["night"]["speed_enabled"]
+	return SPEED_LABELS[control] if bool(enabled.get(value, true)) else SPEED_LOCK_HELP
 
 
 func _render_patron() -> void:
@@ -550,9 +679,12 @@ func _render_feedback() -> void:
 		return
 	_feedback_label.text = text
 	_feedback_panel.reset_size()
+	var feedback_y := _root.size.y - HUD_HEIGHT - _feedback_panel.size.y - 10.0
+	if _tiles_strip.visible:
+		feedback_y = _tiles_strip.position.y - _feedback_panel.size.y - 8.0
 	_feedback_panel.position = Vector2(
 		(_root.size.x - _feedback_panel.size.x) * 0.5,
-		_root.size.y - HUD_HEIGHT - _feedback_panel.size.y - 10.0
+		maxf(8.0, feedback_y)
 	)
 	_feedback_panel.visible = true
 	_feedback_remaining = FEEDBACK_SECONDS
@@ -620,10 +752,18 @@ func _outcome_title_for(kind: StringName) -> String:
 
 
 func _selected_speed() -> float:
+	return float(_view["night"]["selected_speed"])
+
+
+# The speeds the controls actually render as disabled, read from the live button
+# state so a test proves the Escape lock reached the buttons.
+func _disabled_speeds() -> Array:
+	var disabled: Array = []
 	for control: StringName in _speed_buttons:
-		if (_speed_buttons[control] as Button).button_pressed:
-			return SPEED_CONTROLS[control]
-	return 0.0
+		if (_speed_buttons[control] as Button).disabled:
+			disabled.append(SPEED_CONTROLS[control])
+	disabled.sort()
+	return disabled
 
 
 # --- Construction ------------------------------------------------------------
@@ -774,21 +914,21 @@ func _build_night_zone() -> Control:
 	playback.alignment = BoxContainer.ALIGNMENT_CENTER
 	playback.add_theme_constant_override("separation", 5)
 	column.add_child(playback)
+	# A stateless command button: its icon and label are the action a press
+	# performs. Pause while running, Play while in Plain Pause.
 	_pause_button = _icon_button("pause", "Pause the Night (Space)")
 	_pause_button.custom_minimum_size = Vector2(36.0, PLAYBACK_HEIGHT)
-	_pause_button.toggle_mode = true
 	_pause_button.pressed.connect(func() -> void: activate(&"toggle_pause"))
 	playback.add_child(_pause_button)
-	var hints := {&"speed_1": "1", &"speed_2": "2", &"speed_4": "3"}
-	var labels := {&"speed_1": "Normal speed (1)", &"speed_2": "Double speed (2)", &"speed_4": "Four times speed (3)"}
 	for control: StringName in [&"speed_1", &"speed_2", &"speed_4"]:
+		# A stateless command button. It never toggles its own pressed state; the
+		# selected speed is rendered from the authoritative snapshot instead.
 		var button := Button.new()
-		button.text = hints[control]
-		button.toggle_mode = true
+		button.text = SPEED_HINTS[control]
 		button.custom_minimum_size = Vector2(32.0, PLAYBACK_HEIGHT)
-		button.tooltip_text = labels[control]
+		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect(func() -> void: activate(control))
-		_connect_hover(button, func() -> String: return labels[control])
+		_connect_hover(button, func() -> String: return _speed_button_help(control))
 		_speed_buttons[control] = button
 		playback.add_child(button)
 	return panel
@@ -886,55 +1026,115 @@ func _build_utilities() -> Control:
 
 
 func _build_action_tiles() -> void:
-	_tiles_row = HBoxContainer.new()
-	_tiles_row.name = "ActionTiles"
-	_tiles_row.add_theme_constant_override("separation", int(TILE_GAP))
-	_tiles_row.position = Vector2(
+	_tiles_strip = HBoxContainer.new()
+	_tiles_strip.name = "ActionTiles"
+	_tiles_strip.add_theme_constant_override("separation", int(TILE_GAP))
+	_tiles_strip.position = Vector2(
 		TILES_LEFT, _root.size.y - HUD_HEIGHT - TILE_SIZE - TILES_BOTTOM_GAP
 	)
-	_root.add_child(_tiles_row)
-	for index in range(TILE_COUNT):
-		var button := Button.new()
-		button.custom_minimum_size = Vector2(TILE_SIZE, TILE_SIZE)
-		button.focus_mode = Control.FOCUS_NONE
-		_tiles_row.add_child(button)
-		var icon := TextureRect.new()
-		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-		icon.offset_left = 12.0
-		icon.offset_top = 12.0
-		icon.offset_right = -12.0
-		icon.offset_bottom = -12.0
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var fill := ColorRect.new()
-		fill.color = Color(0.212, 0.439, 0.333, 0.72)
-		fill.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-		fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		button.add_child(fill)
-		button.add_child(icon)
-		var cancel := _icon_button("close", "Cancel this Action")
-		cancel.custom_minimum_size = Vector2(20.0, 20.0)
-		cancel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-		cancel.offset_left = -20.0
-		cancel.offset_top = 0.0
-		cancel.offset_right = 0.0
-		cancel.offset_bottom = 20.0
-		# The corner affordance drops the theme's button padding so the mark itself
-		# stays large enough to read and to hit.
-		for state: String in ["normal", "hover", "pressed"]:
-			cancel.add_theme_stylebox_override(state, _corner_style(state == "hover"))
-		cancel.pressed.connect(func() -> void: activate(&"cancel_tile", {"index": index}))
-		button.add_child(cancel)
-		_connect_hover(button, func() -> String:
-			var data: Dictionary = _tile_slots[index]["data"]
-			if data.is_empty():
-				return ""
-			return "%s · %s" % [data.get("label", ""), data.get("target_label", "")]
-		)
-		_tile_slots.append({
-			"button": button, "icon": icon, "fill": fill, "cancel": cancel, "data": {},
+	_root.add_child(_tiles_strip)
+
+	# The active tile is pinned outside the scroll so it never slides away.
+	_active_tile = _make_tile()
+	_tiles_strip.add_child(_active_tile["root"])
+
+	_pending_scroll = ScrollContainer.new()
+	_pending_scroll.name = "PendingTiles"
+	_pending_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_pending_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_pending_scroll.custom_minimum_size = Vector2(0.0, TILE_SIZE)
+	_pending_scroll.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_tiles_strip.add_child(_pending_scroll)
+	_pending_row = HBoxContainer.new()
+	_pending_row.add_theme_constant_override("separation", int(TILE_GAP))
+	_pending_scroll.add_child(_pending_row)
+
+
+# One reusable Action Tile: a square command button, its icon, a vertical
+# progress fill, a corner cancel affordance, and two chain connectors that reach
+# into the gaps on either side. The connectors carry no layout width.
+func _make_tile() -> Dictionary:
+	var root := Control.new()
+	root.custom_minimum_size = Vector2(TILE_SIZE, TILE_SIZE)
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(TILE_SIZE, TILE_SIZE)
+	button.set_anchors_preset(Control.PRESET_FULL_RECT)
+	button.focus_mode = Control.FOCUS_NONE
+	root.add_child(button)
+	var icon := TextureRect.new()
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.offset_left = 12.0
+	icon.offset_top = 12.0
+	icon.offset_right = -12.0
+	icon.offset_bottom = -12.0
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := ColorRect.new()
+	fill.color = Color(0.212, 0.439, 0.333, 0.72)
+	fill.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(fill)
+	button.add_child(icon)
+	var cancel := _icon_button("close", "Cancel this Action")
+	cancel.custom_minimum_size = Vector2(20.0, 20.0)
+	cancel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	cancel.offset_left = -20.0
+	cancel.offset_top = 0.0
+	cancel.offset_right = 0.0
+	cancel.offset_bottom = 20.0
+	# The corner affordance drops the theme's button padding so the mark itself
+	# stays large enough to read and to hit.
+	for state: String in ["normal", "hover", "pressed"]:
+		cancel.add_theme_stylebox_override(state, _corner_style(state == "hover"))
+	button.add_child(cancel)
+	var left := _tile_connector(false)
+	var right := _tile_connector(true)
+	button.add_child(left)
+	button.add_child(right)
+	var slot := {
+		"root": root, "button": button, "icon": icon, "fill": fill, "cancel": cancel,
+		"left": left, "right": right, "data": {},
+	}
+	cancel.pressed.connect(func() -> void:
+		var data: Dictionary = slot["data"]
+		if data.is_empty():
+			return
+		activate(&"cancel_tile", {
+			"action_id": int(data.get("id", -1)), "active": bool(data.get("active", false)),
 		})
+	)
+	_connect_hover(button, func() -> String:
+		var data: Dictionary = slot["data"]
+		if data.is_empty():
+			return ""
+		return "%s · %s" % [data.get("label", ""), data.get("target_label", "")]
+	)
+	return slot
+
+
+# A subtle brass bar that reaches into the tile gap on one side. It is a hairline
+# overlay, so it never changes the square grid the tiles keep.
+func _tile_connector(on_right: bool) -> ColorRect:
+	var bar := ColorRect.new()
+	bar.color = BRASS
+	bar.visible = false
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.anchor_top = 0.5
+	bar.anchor_bottom = 0.5
+	bar.offset_top = -3.0
+	bar.offset_bottom = 3.0
+	if on_right:
+		bar.anchor_left = 1.0
+		bar.anchor_right = 1.0
+		bar.offset_left = -2.0
+		bar.offset_right = TILE_GAP + 2.0
+	else:
+		bar.anchor_left = 0.0
+		bar.anchor_right = 0.0
+		bar.offset_left = -(TILE_GAP + 2.0)
+		bar.offset_right = 2.0
+	return bar
 
 
 func _build_menus() -> void:
@@ -1346,6 +1546,15 @@ func _track_style() -> StyleBoxFlat:
 	return style
 
 
+func _selected_control_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = BRASS
+	style.border_color = CREAM
+	style.set_border_width_all(2)
+	style.set_content_margin_all(4)
+	return style
+
+
 func _corner_style(highlighted: bool) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = DANGER if highlighted else Color(0.21, 0.14, 0.09, 0.9)
@@ -1394,7 +1603,7 @@ func _apply_ui_scale(value: float) -> void:
 	_root.scale = Vector2(scale, scale)
 	_root.position = Vector2.ZERO
 	_root.size = _viewport_size() / scale
-	_tiles_row.position = Vector2(
+	_tiles_strip.position = Vector2(
 		TILES_LEFT, _root.size.y - HUD_HEIGHT - TILE_SIZE - TILES_BOTTOM_GAP
 	)
 

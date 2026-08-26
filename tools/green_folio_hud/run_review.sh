@@ -38,6 +38,14 @@ capture() {
 }
 
 capture night "$FRAMES"
+capture running_1 60 --hud-preview=running_1
+capture plain_pause_2 60 --hud-preview=plain_pause_2
+capture escape_lock 60 --hud-preview=escape_lock
+capture empty_queue 60 --hud-preview=empty_queue
+capture long_queue 60 --hud-preview=long_queue
+capture move_talk_chain 60 --hud-preview=move_talk_chain
+capture chain_unrelated 60 --hud-preview=chain_unrelated
+capture pause_from_plain 60 --hud-preview=pause_from_plain
 capture inspected "$FRAMES" --inspect-patron=patron_june --hud-preview=quiet
 capture action_queue "$FRAMES" --hud-preview=queue
 capture settings_menu "$FRAMES" --hud-preview=settings
@@ -57,11 +65,17 @@ capture_resolution() {
   "$GODOT_BIN" --path "$PROJECT_ROOT" --fixed-fps=60 --disable-vsync \
     --rendering-method gl_compatibility --resolution "$resolution" "$SCENE" -- \
     "--stage=full_cast" "--capture-frames=60" "--identify-patron=patron_june" \
-    --inspect-patron=patron_june --hud-preview=quiet "$@" \
+    --inspect-patron=patron_june "$@" \
     "--capture=res://artifacts/green_folio_hud/${name}.png"
 }
 
-capture_resolution inspected_1024 1024x576
-capture_resolution inspected_1920 1920x1080
+capture_resolution inspected_1024 1024x576 --hud-preview=quiet
+capture_resolution inspected_1920 1920x1080 --hud-preview=quiet
+capture_resolution plain_pause_2_1024 1024x576 --hud-preview=plain_pause_2
+capture_resolution plain_pause_2_1920 1920x1080 --hud-preview=plain_pause_2
+capture_resolution long_queue_1024 1024x576 --hud-preview=long_queue
+capture_resolution long_queue_1920 1920x1080 --hud-preview=long_queue
+capture_resolution move_talk_chain_1024 1024x576 --hud-preview=move_talk_chain
+capture_resolution move_talk_chain_1920 1920x1080 --hud-preview=move_talk_chain
 
 echo "Green Folio HUD approval frames written to $ARTIFACT_DIR"

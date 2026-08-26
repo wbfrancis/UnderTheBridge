@@ -1,5 +1,7 @@
 # Green Folio HUD implementation plan
 
+> Status, 2026-08-25: `PLAYBACK_AND_ACTION_CHAINS_IMPLEMENTATION.md` supersedes this historical plan's fixed four-tile queue and last-nonzero-speed pause details. The approved Green Folio composition and all other visual decisions remain in force.
+
 ## Goal
 
 Replace the temporary top-heavy UI in the current playable prototype with the approved Green Folio Bottom HUD. Keep the existing world, camera, commands, simulation, and debug scenarios working.

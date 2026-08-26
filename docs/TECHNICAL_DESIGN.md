@@ -46,10 +46,17 @@ flowchart TD
 
 **CultistCommandSystem**
 
-- Interface: reset for a new Night, register an authored smart object, resolve the context options for one Selected Cultist and one target, issue a command in Replace or Append mode, remove a pending Action, accept navigation reached/failed callbacks, revalidate queued targets, report the active navigation request, return normal/debug snapshots.
-- Hides: the command catalog, Action Queue lifecycle, target revalidation, the approach stage, the Commitment Point, execution dispatch, and reservation cleanup.
-- Invariant: one active plus at most three pending Actions across Move and contextual commands; an empty queue leaves the Cultist idle; the gameplay effect fires exactly once, at the Commitment Point.
-- Boundary: `GameSession` owns every eligibility rule and every operation. The command seam asks `command_availability` and dispatches; it never restates a rule. Target references carry kind, id, position, and approach slot — never a scene node. See `docs/adr/0002-unify-the-cultist-command-seam.md`.
+- Interface: reset for a new Night, register an authored smart object, resolve context options, issue a command in Replace or Append mode with an adjacency fact, cancel by stable Action id, accept navigation and proximity results, revalidate targets, report the active request, return normal/debug snapshots.
+- Hides: the command catalog, unlimited Action Queue lifecycle, Action Chain policy, Generated Move insertion, target revalidation, the Commitment Point, execution dispatch, cascade rules, and reservation transfer.
+- Invariant: one active Action precedes any number of pending Actions; queue length never rejects a valid command; one Action Chain shares one stable identity; the gameplay effect fires exactly once at the Commitment Point.
+- Boundary: `GameSession` owns every eligibility rule and operation. The scene adapter supplies current position, live Approach Position, and adjacency, then drives navigation. The command seam decides whether to create a Generated Move and how to change a chain. Target references carry kind, id, position, and approach slot — never a scene node. See ADR 0002 and `docs/adr/0003-use-visible-action-chains.md`.
+
+**NightPlayback**
+
+- Interface: reset with a real `GameSession`, submit one playback intent, synchronize after simulation changes, and return a display-ready snapshot.
+- Hides: selected Simulation Speed, Plain Pause, Pause Menu return state, Escape lock synchronization, accepted no-op speed selection, and repeated feedback serials.
+- Invariant: `GameSession.set_time_scale()` remains the only authority; the selected speed changes only after acceptance; Plain Pause does not clear the selected speed.
+- Boundary: keyboard and Bottom HUD intents cross this module. The Bottom HUD renders only the accepted snapshot. The Pause Menu and Outcome Modal keep their existing input blocks.
 
 **EmoteDirector**
 
@@ -108,9 +115,9 @@ The selected Cultist snapshot includes stable Action identifiers for the active 
 
 ## 4. Simulation time and randomness
 
-A central simulation clock owns pause and speed. All gameplay durations consume its scaled delta. Individual actors must not use wall-clock time or uncoordinated `Timer` nodes.
+A central simulation clock in `GameSession` owns pause and speed. All gameplay durations consume its scaled delta. Individual actors must not use wall-clock time or uncoordinated `Timer` nodes.
 
-Navigation and animation receive the same speed state while UI continues processing during pause. Starting Escape requests 1x. The movement spike decides whether speed is implemented through a shared scaled delta or a safe engine time-scale adapter; callers do not depend on that choice.
+`NightPlayback` owns interactive transitions and exposes the selected speed separately from the accepted current scale. Navigation and animation receive the accepted scale while UI continues during Plain Pause. A new interactive Night starts at 1x. Escape forces 1x and reduces the available scales to pause and 1x. The Pause Menu records and restores the prior state on dismissal, while Resume starts the selected speed.
 
 Each Night has one seed. Rescue Persuasion, staying-behind, bathroom choice, Ideal Intoxication, Overdrink Limit, Offer Drink acceptance, social intervals, and Companion Mood reactions draw from the injected seeded random source. Results and failures record the seed for reproduction.
 
@@ -213,7 +220,9 @@ stateDiagram-v2
     Completed --> [*]
 ```
 
-An Action definition provides target rules, reservation needs, approach distance, duration, Commitment Point, visible label, and completion effect. Runtime Actions hold target identity and progress.
+An Action definition provides target rules, reservation needs, proximity policy, duration, Commitment Point, visible label, and completion effect. Runtime Actions hold serializable target identity, progress, stable Action id, Action Chain id, chain position, and generated status.
+
+A nonadjacent Patron command creates a Generated Move and requested Action under one Action Chain id. The Generated Move reserves and tracks the Patron's live Approach Position. Its completion transfers the same reservation to the requested Action. Cancellation or failure removes all unfinished chain links and releases the reservation once, then activates the next unrelated Action. A pending Patron Action rechecks proximity when it reaches the queue head and inserts one Generated Move if the Patron moved away.
 
 Dragging is an Action mode that owns the body association until completion or drop. A drop releases navigation/interaction reservations and makes the victim Unattended after the grace period.
 
@@ -314,8 +323,12 @@ Automate only:
 - formula bounds and representative Suspicion/Friendship/stay cases
 - representative bathroom-choice bounds and deterministic seeded roll
 - Action Queue replace, Shift-append, pending-row removal, pre/post-Commitment cancellation, and invalid-target progression
+- unlimited Action Queue order, stable Action Chain metadata, Generated Move insertion, cascade cancellation/failure, and unrelated progression
 - context resolution and one success plus one ineligible path for every catalog command
 - approach-slot contention producing one owner and one visible rejection
+- reservation transfer across Generated Move and its requested Patron Action without a release gap
+- the complete `NightPlayback` transition table against a real `GameSession`
+- the Bottom HUD intent to `NightPlayback` to `GameSession` to rendered HUD integration route
 - the normal command snapshot and menu labels carrying no hidden simulation value
 - emote priority, preemption, transient timing, pause, deduplication, and reset
 - a recursive forbidden-key scan proving `emote_view` carries no hidden simulation value

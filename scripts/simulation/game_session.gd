@@ -64,6 +64,26 @@ func set_time_scale(value: float) -> bool:
 	return true
 
 
+## The current selected time scale. NightPlayback reads it to synchronize the HUD
+## after the simulation changes the scale on its own (an Escape forcing 1x).
+func current_time_scale() -> float:
+	return _time_scale
+
+
+## True while the Night still accepts a Simulation Speed change. It closes at
+## Results, where the Outcome Modal owns the screen.
+func accepts_time_control() -> bool:
+	return _phase != &"results"
+
+
+## The player-readable Simulation Speed lock. Escape is observable, so exposing
+## the reduced set of speeds is safe; no hidden escaping-Patron value crosses it.
+func time_control() -> Dictionary:
+	if _phase != &"results" and _ordinary_visits.has_active_escape():
+		return {"available_scales": [0.0, 1.0], "lock_reason": &"active_escape"}
+	return {"available_scales": SUPPORTED_TIME_SCALES.duplicate(), "lock_reason": &""}
+
+
 func report_patron_stimulus(
 		patron_id: StringName,
 		stimulus: StringName,
@@ -466,6 +486,7 @@ func snapshot() -> Dictionary:
 		"night_seed": _night_seed,
 		"simulated_seconds": _simulated_seconds,
 		"time_scale": _time_scale,
+		"time_control": time_control(),
 		"phase": _phase,
 		"phase_label": _phase_label(),
 		"clock_label": _clock_label(),

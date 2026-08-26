@@ -15,6 +15,14 @@ New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 $Frames = 180
 $Frames_ = @(
     @{ Name = "night";           Extra = @() },
+    @{ Name = "running_1"; Frames = 60; Extra = @("--hud-preview=running_1") },
+    @{ Name = "plain_pause_2"; Frames = 60; Extra = @("--hud-preview=plain_pause_2") },
+    @{ Name = "escape_lock"; Frames = 60; Extra = @("--hud-preview=escape_lock") },
+    @{ Name = "empty_queue"; Frames = 60; Extra = @("--hud-preview=empty_queue") },
+    @{ Name = "long_queue"; Frames = 60; Extra = @("--hud-preview=long_queue") },
+    @{ Name = "move_talk_chain"; Frames = 60; Extra = @("--hud-preview=move_talk_chain") },
+    @{ Name = "chain_unrelated"; Frames = 60; Extra = @("--hud-preview=chain_unrelated") },
+    @{ Name = "pause_from_plain"; Frames = 60; Extra = @("--hud-preview=pause_from_plain") },
     @{ Name = "inspected";       Extra = @("--inspect-patron=patron_june", "--hud-preview=quiet") },
     @{ Name = "action_queue";    Extra = @("--hud-preview=queue") },
     @{ Name = "settings_menu";   Extra = @("--hud-preview=settings") },
@@ -41,12 +49,19 @@ foreach ($Frame in $Frames_) {
 
 foreach ($Responsive in @(
     @{ Name = "inspected_1024"; Resolution = "1024x576" },
-    @{ Name = "inspected_1920"; Resolution = "1920x1080" }
+    @{ Name = "inspected_1920"; Resolution = "1920x1080" },
+    @{ Name = "plain_pause_2_1024"; Resolution = "1024x576"; Preview = "plain_pause_2" },
+    @{ Name = "plain_pause_2_1920"; Resolution = "1920x1080"; Preview = "plain_pause_2" },
+    @{ Name = "long_queue_1024"; Resolution = "1024x576"; Preview = "long_queue" },
+    @{ Name = "long_queue_1920"; Resolution = "1920x1080"; Preview = "long_queue" },
+    @{ Name = "move_talk_chain_1024"; Resolution = "1024x576"; Preview = "move_talk_chain" },
+    @{ Name = "move_talk_chain_1920"; Resolution = "1920x1080"; Preview = "move_talk_chain" }
 )) {
     $CapturePath = "res://artifacts/green_folio_hud/$($Responsive.Name).png"
+    $Preview = if ($Responsive.Preview) { @("--hud-preview=$($Responsive.Preview)") } else { @("--hud-preview=quiet") }
     & $GodotBin --path $ProjectRoot --fixed-fps=60 --disable-vsync --rendering-method gl_compatibility `
         --resolution $Responsive.Resolution $Scene -- "--stage=full_cast" "--capture-frames=60" `
-        "--identify-patron=patron_june" "--inspect-patron=patron_june" "--hud-preview=quiet" `
+        "--identify-patron=patron_june" "--inspect-patron=patron_june" @($Preview) `
         "--capture=$CapturePath"
     if ($LASTEXITCODE -ne 0) { throw "Green Folio HUD responsive capture failed for $($Responsive.Name)." }
 }

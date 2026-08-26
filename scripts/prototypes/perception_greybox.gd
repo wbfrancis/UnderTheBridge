@@ -11,6 +11,7 @@ const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_percepti
 const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
 const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_actor_3d.gd")
 const COMMAND_SYSTEM_SCRIPT := preload("res://scripts/actions/cultist_command_system.gd")
+const NIGHT_PLAYBACK_SCRIPT := preload("res://scripts/presentation/night_playback.gd")
 const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
 const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
 const BOTTOM_HUD_SCENE: PackedScene = preload("res://scenes/ui/bottom_hud.tscn")
@@ -69,6 +70,10 @@ const BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS := 16.0
 const AUTOMATED_RUN_SCALE := 4.0
 const NAVIGATION_FLOOR_Y := 0.18
 const MAX_DESTINATION_SNAP_METERS := 1.5
+# A Cultist is adjacent to a Patron once it stands within this distance of the
+# Patron's live Approach Position. It follows the Cultist navigation arrival
+# radius (0.38) with a small settle margin, so "reached" and "adjacent" agree.
+const CULTIST_ADJACENCY_TOLERANCE := 0.55
 # Authored smart targets. "pick" is the clickable volume, "approach" the floor
 # point the Cultist walks to before the command commits.
 const SMART_OBJECTS := {
@@ -169,6 +174,7 @@ var _next_patron_move_id := 1
 var _latest_state: Dictionary = {}
 var _cultist_nodes: Dictionary = {}
 var _commands = COMMAND_SYSTEM_SCRIPT.new()
+var _playback = NIGHT_PLAYBACK_SCRIPT.new()
 var _smart_object_root: Node3D
 var _context_menu: PanelContainer
 var _context_menu_rows: VBoxContainer
@@ -186,7 +192,6 @@ var _hud_preview_outcome: StringName = &""
 var _hud_preview := ""
 var _feedback_serial := 0
 var _last_feedback := ""
-var _last_nonzero_scale := 1.0
 var _accepted_time_scale := 0.0
 var _focus_active := false
 var _focus_from := Vector3.ZERO
@@ -501,13 +506,32 @@ func _ready_for_commands() -> bool:
 
 func _issue_command(command: StringName, target: Dictionary, append_to_queue: bool) -> void:
 	_close_context_menu()
+	# The adapter contributes one geometry fact: is the Selected Cultist already
+	# adjacent to a Patron target? The command seam decides what that means.
+	var context: Dictionary = {}
+	if StringName(target.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_PATRON:
+		context["is_adjacent"] = _cultist_adjacent_to_patron(
+			_selected_cultist_id, StringName(target["id"])
+		)
 	var outcome: Dictionary = _commands.issue(
-		_selected_cultist_id, command, target, append_to_queue
+		_selected_cultist_id, command, target, append_to_queue, context
 	)
 	_movement_feedback = outcome["message"]
 	_sync_cultist_navigation(_selected_cultist_id)
 	_refresh_move_markers()
 	_refresh_hud(_session.snapshot())
+
+
+# The live geometry fact the command seam asks for: whether the Cultist already
+# stands at the Patron's valid Approach Position within the arrival tolerance.
+func _cultist_adjacent_to_patron(cultist_id: StringName, patron_id: StringName) -> bool:
+	if not _cultist_nodes.has(cultist_id) or not _patron_nodes.has(patron_id):
+		return false
+	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+	var patron_position := (_patron_nodes[patron_id] as NavigableActor3D).global_position
+	patron_position.y = NAVIGATION_FLOOR_Y
+	var approach := _patron_approach_point(patron_position, actor.global_position)
+	return actor.global_position.distance_to(approach) <= CULTIST_ADJACENCY_TOLERANCE
 
 
 func _floor_destination(screen_position: Vector2) -> Variant:
@@ -598,6 +622,12 @@ func _sync_cultist_navigation(cultist_id: StringName) -> void:
 	if request.is_empty():
 		actor.cancel_navigation()
 		return
+	# A Patron Action whose prerequisites finished asks for a proximity check, not
+	# navigation: the Generated Move does the walking. The command seam either
+	# commits the Action or inserts a Generated Move; the adapter never edits a chain.
+	if StringName(request["mode"]) == &"check_proximity":
+		_resolve_active_proximity(cultist_id, request)
+		return
 	var action_id: int = request["action_id"]
 	var approach := _approach_position(request, actor.global_position)
 	if actor.active_action_id() == action_id:
@@ -607,6 +637,21 @@ func _sync_cultist_navigation(cultist_id: StringName) -> void:
 		if actor.target_position().distance_to(approach) <= 0.6:
 			return
 	actor.navigate(action_id, approach)
+
+
+# Reports the live proximity result for the active Patron Action and re-syncs
+# once the command seam responds, so a commit advances to the next Action and an
+# inserted Generated Move starts navigating in the same step.
+func _resolve_active_proximity(cultist_id: StringName, request: Dictionary) -> void:
+	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
+	actor.cancel_navigation()
+	var approach := _approach_position(request, actor.global_position)
+	var is_adjacent := actor.global_position.distance_to(approach) <= CULTIST_ADJACENCY_TOLERANCE
+	var outcome: Dictionary = _commands.resolve_proximity(
+		cultist_id, int(request["action_id"]), is_adjacent
+	)
+	if bool(outcome.get("changed", false)):
+		_sync_cultist_navigation(cultist_id)
 
 
 # A Patron target moves, so the approach point tracks their live position.
@@ -1194,8 +1239,8 @@ func _run_command_validation(report_path: String) -> void:
 			"detail": "prepare_drink",
 		})
 
-		steps.append(await _validate_step(
-			&"patron_command", &"cultist_01", &"talk", _actor_target(&"patron_june"),
+		steps.append(await _validate_patron_chain(
+			&"cultist_01", &"patron_june",
 			func() -> bool: return _session.snapshot()["conversations"].has(&"cultist_01")
 		))
 
@@ -1264,6 +1309,58 @@ func _validate_step(
 		"passed": settled and effect,
 		"detail": String(_commands.snapshot()["cultists"][cultist_id]["feedback"]["message"]),
 		"actor_position": [actor.global_position.x, actor.global_position.z],
+	}
+
+
+# Crosses the production command and navigation seams for one nonadjacent Talk.
+# The check moves the live Patron node after navigation starts, so the Generated
+# Move must update its destination before the requested Action can complete.
+func _validate_patron_chain(
+		cultist_id: StringName, patron_id: StringName, verify: Callable
+) -> Dictionary:
+	var issued: Dictionary = _commands.issue(
+		cultist_id, &"talk", _actor_target(patron_id), false, {"is_adjacent": false}
+	)
+	if not bool(issued["accepted"]):
+		return {"step": &"patron_action_chain", "passed": false, "detail": String(issued["message"])}
+	var generated_ids: Array = issued["generated_action_ids"]
+	var queue: Dictionary = _commands.snapshot()["cultists"][cultist_id]
+	var active: Dictionary = queue["active"]
+	var pending: Array = queue["pending"]
+	var chain_visible: bool = bool(
+		generated_ids.size() == 1
+		and active["command"] == COMMAND_SYSTEM_SCRIPT.GENERATED_MOVE
+		and pending.size() == 1
+		and pending[0]["command"] == &"talk"
+		and int(active["chain_id"]) == int(pending[0]["chain_id"])
+	)
+	var reservation_held: bool = bool(_commands.snapshot()["reserved_slots"].get(cultist_id, &"") == (
+		&"approach_patron_june"
+	))
+
+	_sync_cultist_navigation(cultist_id)
+	var cultist := _cultist_nodes[cultist_id] as NavigableActor3D
+	var first_destination := cultist.target_position()
+	var patron := _patron_nodes[patron_id] as NavigableActor3D
+	patron.global_position += Vector3(1.2, 0.0, 0.0)
+	_sync_cultist_navigation(cultist_id)
+	var moved_destination := cultist.target_position()
+	var tracked_live_position: bool = first_destination.distance_to(moved_destination) > 0.5
+
+	var settled := await _wait_for_command(cultist_id, 2_400)
+	var effect: bool = verify.call()
+	var reservation_released: bool = not _commands.snapshot()["reserved_slots"].has(cultist_id)
+	return {
+		"step": &"patron_action_chain",
+		"passed": chain_visible and reservation_held and tracked_live_position
+			and settled and effect and reservation_released,
+		"detail": "Generated Move -> Talk completed after a live target move",
+		"chain_id": int(issued["chain_id"]),
+		"generated_action_id": int(generated_ids[0]) if not generated_ids.is_empty() else -1,
+		"requested_action_id": int(issued["action_id"]),
+		"tracked_live_position": tracked_live_position,
+		"reservation_held": reservation_held,
+		"reservation_released": reservation_released,
 	}
 
 
@@ -1961,11 +2058,10 @@ func _set_scenario(scenario_id: String) -> void:
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
 	_session.set_physical_patron_navigation_enabled(true)
-	# A freshly staged scenario waits for the player. A rendered capture or a
-	# validation report drives the Night itself, so it must stay running.
-	if not _is_automated_run():
-		_last_nonzero_scale = 1.0
-		_session.set_time_scale(0.0)
+	# The interactive Night starts running at 1x. A rendered capture or a
+	# validation report drives the Night at its own requested speed; resetting the
+	# playback to 1x keeps the session scale nonzero so those advances still run.
+	_playback.reset(_session, 1.0)
 	_update_camera_for_scenario()
 	_refresh(_session.snapshot())
 
@@ -1979,7 +2075,16 @@ func _preview_hud_state(state_id: String) -> void:
 	_movement_feedback = ""
 	_feedback_serial += 1
 	match state_id:
-		"quiet":
+		"quiet", "running_1", "empty_queue":
+			_refresh_hud(_session.snapshot())
+		"plain_pause_2":
+			_submit_playback(&"select_speed", {"value": 2.0})
+			_submit_playback(&"toggle_plain_pause", {})
+		"escape_lock":
+			_submit_playback(&"select_speed", {"value": 4.0})
+			_session.report_patron_stimulus(&"patron_clara", &"drink_dosed_seen")
+			_session.advance(0.2)
+			_playback.synchronize()
 			_refresh_hud(_session.snapshot())
 		"settings":
 			_bottom_hud.activate(&"settings_menu")
@@ -1988,9 +2093,9 @@ func _preview_hud_state(state_id: String) -> void:
 		"clock_hover":
 			_bottom_hud.preview_clock_hover()
 		"speed_2":
-			_request_time_scale(2.0)
+			_submit_playback(&"select_speed", {"value": 2.0})
 		"speed_4":
-			_request_time_scale(4.0)
+			_submit_playback(&"select_speed", {"value": 4.0})
 		"reduced_motion":
 			_reduced_motion = true
 			_refresh_hud(_session.snapshot())
@@ -2001,12 +2106,30 @@ func _preview_hud_state(state_id: String) -> void:
 			_advance_emotes(0.0)
 		"pause":
 			_open_pause_menu()
+		"pause_from_plain":
+			_submit_playback(&"select_speed", {"value": 2.0})
+			_submit_playback(&"toggle_plain_pause", {})
+			_open_pause_menu()
 		"queue":
 			_issue_command(&"talk", _actor_target(&"patron_june"), false)
 			_issue_command(
 				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
 			)
 			_issue_command(&"prepare_drink", _smart_target(&"bar_work_position"), true)
+		"long_queue":
+			for index in range(10):
+				_issue_command(
+					&"move",
+					_floor_target(Vector3(-8.0 + float(index), NAVIGATION_FLOOR_Y, 4.0)),
+					index > 0
+				)
+		"move_talk_chain":
+			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+		"chain_unrelated":
+			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+			_issue_command(
+				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
+			)
 		_:
 			_hud_preview_outcome = StringName(state_id.trim_prefix("outcome_"))
 			_refresh_hud(_session.snapshot())
@@ -2165,6 +2288,10 @@ func _world_simulation_scale() -> float:
 
 
 func _refresh_hud(state: Dictionary) -> void:
+	# The simulation may have changed the scale on its own (an Escape forcing 1x),
+	# so re-read the authority before drawing the playback controls.
+	_playback.synchronize()
+	_pause_menu_open = bool(_playback.snapshot()["pause_menu_open"])
 	_accepted_time_scale = float(state["time_scale"])
 	if _movement_feedback != _last_feedback:
 		_last_feedback = _movement_feedback
@@ -2193,17 +2320,7 @@ func _hud_view(state: Dictionary) -> Dictionary:
 	return {
 		"selected_cultist": _selected_cultist_view(state),
 		"action_tiles": _action_tile_views(),
-		"night": {
-			"clock_label": state["clock_label"],
-			"clock_minutes": state["clock_minutes"],
-			"closing_label": state["closing_label"],
-			"remaining_label": "%dm %02ds" % [remaining / 60, remaining % 60],
-			"progress_ratio": clampf(elapsed / night_length, 0.0, 1.0),
-			"time_scale": state["time_scale"],
-			"last_nonzero_scale": _last_nonzero_scale,
-			"paused": is_zero_approx(float(state["time_scale"])),
-			"phase": state["phase"],
-		},
+		"night": _night_view(state, remaining, elapsed, night_length),
 		"inspected_patron": _inspected_patron_view(state),
 		"outcome": {
 			"visible": bool(results["visible"]) or not _hud_preview_outcome.is_empty(),
@@ -2224,7 +2341,29 @@ func _hud_view(state: Dictionary) -> Dictionary:
 			"reduced_motion": _reduced_motion,
 		},
 		"feedback": {"text": _movement_feedback, "serial": _feedback_serial},
-		"pause_menu_open": _pause_menu_open,
+		"pause_menu_open": bool(_playback.snapshot()["pause_menu_open"]),
+	}
+
+
+# The playback half of the Night view comes from NightPlayback; the clock and
+# progress half comes from the session snapshot. NightPlayback owns every
+# selected-speed, Plain Pause, and Escape-lock decision.
+func _night_view(
+		state: Dictionary, remaining: int, elapsed: float, night_length: float
+) -> Dictionary:
+	var playback: Dictionary = _playback.snapshot()
+	return {
+		"clock_label": state["clock_label"],
+		"clock_minutes": state["clock_minutes"],
+		"closing_label": state["closing_label"],
+		"remaining_label": "%dm %02ds" % [remaining / 60, remaining % 60],
+		"progress_ratio": clampf(elapsed / night_length, 0.0, 1.0),
+		"time_scale": playback["time_scale"],
+		"selected_speed": playback["selected_speed"],
+		"plain_paused": playback["plain_paused"],
+		"speed_enabled": playback["speed_enabled"],
+		"speed_lock_reason": playback["speed_lock_reason"],
+		"phase": state["phase"],
 	}
 
 
@@ -2266,12 +2405,16 @@ func _action_tile_views() -> Array[Dictionary]:
 func _action_tile_view(action: Dictionary, is_active: bool) -> Dictionary:
 	return {
 		"id": int(action["id"]),
-		"icon": action["command"],
+		"icon": action.get("icon", action["command"]),
 		"label": action["label"],
 		"target_label": action["target_label"],
 		"active": is_active,
 		"cancellable": bool(action["cancellable"]),
 		"progress_ratio": _active_navigation_ratio(int(action["id"])) if is_active else null,
+		"chain_id": int(action.get("chain_id", -1)),
+		"chain_index": int(action.get("chain_index", 0)),
+		"chain_size": int(action.get("chain_size", 1)),
+		"generated": bool(action.get("generated", false)),
 	}
 
 
@@ -2350,20 +2493,23 @@ func _outcome_cause(state: Dictionary, results: Dictionary) -> String:
 func _on_hud_intent(kind: StringName, payload: Dictionary) -> void:
 	match kind:
 		&"set_time_scale":
-			_request_time_scale(float(payload["value"]))
+			_submit_playback(&"select_speed", {"value": float(payload["value"])})
 		&"toggle_pause":
-			_toggle_pause()
+			_submit_playback(&"toggle_plain_pause", {})
 		&"cancel_active_action":
-			_cancel_active_action()
+			_cancel_active_action(int(payload.get("action_id", -1)))
 		&"remove_pending_action":
 			_on_pending_removed(int(payload["action_id"]))
 		&"close_inspected_patron":
 			_inspected_patron_id = &""
 			_refresh_hud(_session.snapshot())
 		&"open_pause_menu":
-			_open_pause_menu()
+			_close_context_menu()
+			_submit_playback(&"open_pause_menu", {})
+		&"dismiss_pause_menu":
+			_submit_playback(&"dismiss_pause_menu", {})
 		&"resume_night":
-			_close_pause_menu()
+			_submit_playback(&"resume_from_pause_menu", {})
 		&"restart_night":
 			get_tree().reload_current_scene()
 		&"quit_game":
@@ -2410,53 +2556,36 @@ func _handle_hud_shortcut(event: InputEvent) -> bool:
 	return false
 
 
-# GameSession is the only Simulation Speed authority. A refused speed leaves the
-# HUD on the accepted snapshot and says why.
-func _request_time_scale(value: float) -> void:
-	if _session.set_time_scale(value):
-		if value > 0.0:
-			_last_nonzero_scale = value
-	else:
-		_movement_feedback = "%dx is not available right now." % int(value)
+# One route for playback intent. NightPlayback owns the transitions; GameSession
+# stays the authority that accepts or rejects a time scale. A refusal carries a
+# display-ready line, which the HUD's feedback area shows.
+func _submit_playback(kind: StringName, payload: Dictionary) -> void:
+	var result: Dictionary = _playback.submit(kind, payload)
+	var feedback := String(result.get("feedback", ""))
+	if not feedback.is_empty():
+		_movement_feedback = feedback
 		# A repeated refusal must show again, even with the same words.
 		_feedback_serial += 1
 	_refresh_hud(_session.snapshot())
 
 
-func _toggle_pause() -> void:
-	var current := float(_session.snapshot()["time_scale"])
-	if current > 0.0:
-		_last_nonzero_scale = current
-	_request_time_scale(BottomHud.resume_scale(current, _last_nonzero_scale))
-
-
 func _advance_debug_time(seconds: float) -> void:
-	var restore := float(_session.snapshot()["time_scale"])
+	var restore := _session.current_time_scale()
 	_session.set_time_scale(1.0)
 	_session.advance(seconds)
 	_session.set_time_scale(restore)
+	_playback.synchronize()
 	_refresh_hud(_session.snapshot())
 
 
 func _open_pause_menu() -> void:
-	if _pause_menu_open:
-		return
-	_pause_menu_open = true
-	var current := float(_session.snapshot()["time_scale"])
-	if current > 0.0:
-		_last_nonzero_scale = current
 	_close_context_menu()
-	_request_time_scale(0.0)
+	_submit_playback(&"open_pause_menu", {})
 
 
-func _close_pause_menu() -> void:
-	if not _pause_menu_open:
-		return
-	_pause_menu_open = false
-	_request_time_scale(_last_nonzero_scale)
-
-
-func _cancel_active_action() -> void:
+# Cancelling the active tile cascades through its whole Action Chain, so a
+# Generated Move and its dependent Patron Action leave together.
+func _cancel_active_action(_action_id: int = -1) -> void:
 	var outcome: Dictionary = _commands.request_cancel_active(_selected_cultist_id)
 	_movement_feedback = outcome["message"]
 	_sync_cultist_navigation(_selected_cultist_id)
@@ -2464,8 +2593,10 @@ func _cancel_active_action() -> void:
 	_refresh_hud(_session.snapshot())
 
 
+# Removing a pending tile removes every unfinished link of its Action Chain.
 func _on_pending_removed(action_id: int) -> void:
 	if _commands.remove_pending(_selected_cultist_id, action_id):
+		_sync_cultist_navigation(_selected_cultist_id)
 		_refresh_move_markers()
 		_refresh_hud(_session.snapshot())
 
@@ -2514,7 +2645,7 @@ func _cultist_summary_text(cultist_id: StringName, state: Dictionary) -> String:
 	var cultist: Dictionary = state["cultists"][cultist_id]
 	var queues: Dictionary = _commands.snapshot()["cultists"]
 	var queue_count: int = int(queues[cultist_id]["action_count"]) if queues.has(cultist_id) else 0
-	return "[color=#8fc4af][b]%s[/b][/color]\nStatus  %s\nAction Queue  %d/4" % [
+	return "[color=#8fc4af][b]%s[/b][/color]\nStatus  %s\nAction Queue  %d" % [
 		_cultist_display_name(cultist_id), _humanize(cultist["activity"]), queue_count,
 	]
 

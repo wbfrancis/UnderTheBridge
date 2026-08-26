@@ -36,7 +36,7 @@ The prototype uses a compressed diegetic clock. Preparation begins just before s
 | Active operation | 7:00-7:15 PM | 15 minutes | Arrivals, service, social play, capture, investigation, and escape. |
 | Closing | 7:15-7:17 PM | 2 minutes | No new Orders; remaining eligible Patrons prepare to leave. |
 
-The player may pause and issue commands at any time. Available speeds are pause, 1x, 2x, and 4x. Starting an Escape forces the game back to 1x but does not pause it.
+The player may use Plain Pause and issue commands at any time. A new Night starts at 1x. Space and the Bottom HUD toggle Plain Pause, which keeps the selected 1x, 2x, or 4x speed visible. Selecting a speed resumes at that speed, while selecting the active running speed changes nothing. The Pause Menu blocks gameplay input; Escape dismissal restores the prior state, while Resume starts the selected speed. Starting an Escape selects 1x and disables 2x and 4x, but Plain Pause and intercept commands remain available. The Outcome Modal blocks all playback controls.
 
 ## 5. Authored patron cast
 
@@ -272,15 +272,15 @@ Each escaping Patron permits one Intercept Action. A Cultist who reaches them st
 
 ## 14. Cultist commands and autonomy
 
-Each Cultist owns one active Action and three pending Actions. A normal command clears pending Actions and interrupts the current Action only before its Commitment Point. If the current Action is committed, it finishes before the new command. Holding Shift while issuing a command appends it instead.
+Each Cultist owns one active Action followed by any number of pending Actions. A normal command clears unfinished work and interrupts the current Action only before its Commitment Point. If the current Action is committed, it finishes before the replacement. Holding Shift while issuing a command appends it. Queue length never rejects a valid command.
 
-The HUD shows the complete ordered Action Queue for the selected Cultist: active Action first, followed by up to three pending Actions. Each row shows the Action name, target when relevant, and a small `x` control.
+The HUD shows the complete ordered Action Queue for the selected Cultist. It pins the active Action Tile at the left and scrolls pending Action Tiles horizontally. The empty queue keeps a four-tile visual footprint. Each tile shows the Action, target, progress when stable, and a cancel control.
 
 - Clicking `x` on a pending Action removes it immediately.
 - Clicking `x` on the active Action requests cancellation under the normal Commitment Point rules.
 - Once the active Action has crossed its Commitment Point, its `x` is disabled because removal cannot undo the consequence.
 
-Cancellation loses elapsed time but no abstract resource. Invalid targets fail with a visible reason and the Cultist continues to the next Action. Dragging can always be interrupted by dropping the body. Cultist switching is instantaneous, and the queue panel updates to the newly selected Cultist.
+Cancellation loses elapsed time but no abstract resource. Cancelling any unfinished Action in an Action Chain removes every unfinished link in that chain. Invalid targets and failed prerequisites report one visible reason, remove unfinished dependent links, and start the next unrelated Action. Completed gameplay effects remain complete. Dragging can always be interrupted by dropping the body. Cultist switching is instantaneous, and the queue panel updates to the newly selected Cultist.
 
 When the queue is empty, the Cultist idles. Cultists never move or serve through safe autonomy.
 
@@ -302,7 +302,9 @@ The menu lists only commands that relate to the target. A command whose target r
 
 A Patron target offers Talk, Serve Order, Offer Drink, Offer Cigarette, Knock Out, Pick Up Body, Intercept, Lead to Tunnel, and Rescue Persuasion. The bar work position offers Prepare Drink and Prepare Drugged Drink; a Cultist carries at most one Prepared Drink, and an Offer Drink spends it whether or not the Patron takes it. The bathroom Trapdoor control offers Activate Trapdoor. The Tunnel Intake is a destination for a drag or a follow that is already under way; it creates no Capture command of its own. While a Cultist drags a body, the floor menu adds Drop Body Here.
 
-Choosing a command reserves the authored approach position, then the Cultist walks there. The approach is interruptible and the gameplay effect fires exactly once, at the Commitment Point, after arrival. A reservation conflict rejects the command with a visible reason instead of creating a hidden wait queue. The target is rechecked when the menu opens, when the command is chosen, before movement starts, and at the Commitment Point; a stale target fails visibly, releases its reservation, and the queue advances.
+Every Patron command needs proximity. If the Cultist is not adjacent, choosing one creates a visible `Generated Move → requested Action` chain. The Generated Move tracks the Patron's live valid Approach Position. The chain reserves that position when it becomes active and keeps one reservation through the requested Action. A small connector joins its Action Tiles.
+
+The approach is interruptible and the gameplay effect fires exactly once, at the Commitment Point, after arrival. A reservation conflict rejects the command with a visible reason instead of creating a hidden wait queue. The target is rechecked when the menu opens, when the command is chosen, before movement starts, and at the Commitment Point; a stale target fails visibly, releases its reservation, and the next unrelated Action starts.
 
 ### Movement and navigation
 

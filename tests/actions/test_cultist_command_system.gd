@@ -38,9 +38,11 @@ func _object_target(object_id: StringName) -> Dictionary:
 	return {"kind": &"smart_object", "id": object_id, "position": Vector3.ZERO}
 
 
-# Issues a command and walks it to its Commitment Point.
+# Issues a command already adjacent to its target, then walks it to the
+# Commitment Point. Passing is_adjacent skips the Generated Move so the requested
+# Action is active at once, which keeps the catalog effect tests direct.
 func _run(commands, cultist_id: StringName, command: StringName, target: Dictionary) -> Dictionary:
-	var issued: Dictionary = commands.issue(cultist_id, command, target, false)
+	var issued: Dictionary = commands.issue(cultist_id, command, target, false, {"is_adjacent": true})
 	if not bool(issued["accepted"]):
 		return {"accepted": false, "committed": false, "reason": issued["reason"]}
 	var reached: Dictionary = commands.notify_reached(cultist_id, int(issued["action_id"]))
@@ -78,26 +80,38 @@ func test_normal_command_replaces_and_shift_command_appends() -> void:
 	assert_true(queue["pending"].is_empty(), "A normal command clears every pending Action.")
 
 
-func test_mixed_move_and_context_commands_keep_order_and_the_four_action_limit() -> void:
+func test_a_large_queue_is_never_rejected_for_its_length() -> void:
 	var pair := _seated_night()
 	var commands = pair[1]
 
 	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), false)
-	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), true)
-	commands.issue(&"cultist_01", &"move", _floor_target(-2.0, 4.0), true)
-	commands.issue(&"cultist_01", &"offer_cigarette", _patron_target(&"patron_mara"), true)
-	var overflow: Dictionary = commands.issue(
-		&"cultist_01", &"move", _floor_target(4.0, 4.0), true
-	)
+	# Well past the old four-Action limit: every append is still accepted.
+	for index in range(40):
+		var appended: Dictionary = commands.issue(
+			&"cultist_01", &"move", _floor_target(float(index), 4.0), true
+		)
+		assert_true(bool(appended["accepted"]), "No command is rejected because the queue is large.")
+		assert_ne(appended["reason"], &"queue_full", "The queue-full rejection no longer exists.")
+	assert_eq(int(_queue(commands, &"cultist_01")["action_count"]), 41)
 
-	assert_false(bool(overflow["accepted"]), "One active and three pending Actions is the limit.")
-	assert_eq(overflow["reason"], &"queue_full")
+
+func test_mixed_move_and_context_commands_keep_the_order_they_were_queued() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var adjacent := {"is_adjacent": true}
+	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), false)
+	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), true, adjacent)
+	commands.issue(&"cultist_01", &"move", _floor_target(-2.0, 4.0), true)
+	commands.issue(&"cultist_01", &"offer_cigarette", _patron_target(&"patron_mara"), true, adjacent)
+	commands.issue(&"cultist_01", &"move", _floor_target(4.0, 4.0), true)
+
 	var queue := _queue(commands, &"cultist_01")
-	assert_eq(int(queue["action_count"]), 4)
+	assert_eq(int(queue["action_count"]), 5)
 	var order: Array = [queue["active"]["command"]]
 	for entry: Dictionary in queue["pending"]:
 		order.append(entry["command"])
-	assert_eq(order, [&"move", &"talk", &"move", &"offer_cigarette"],
+	assert_eq(order, [&"move", &"talk", &"move", &"offer_cigarette", &"move"],
 		"Move and context Actions keep the order the player queued them in.")
 
 
@@ -171,7 +185,7 @@ func test_cancellation_cannot_undo_an_action_past_its_commitment_point() -> void
 	var commands = pair[1]
 
 	var issued: Dictionary = commands.issue(
-		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
 	)
 	commands.notify_reached(&"cultist_01", int(issued["action_id"]))
 	assert_false(session.snapshot()["conversations"].is_empty(),
@@ -206,7 +220,7 @@ func test_the_normal_snapshot_marks_each_action_cancellable_without_hidden_state
 	var commands = pair[1]
 
 	var issued: Dictionary = commands.issue(
-		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
 	)
 	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), true)
 	var queue := _queue(commands, &"cultist_01")
@@ -218,15 +232,15 @@ func test_the_normal_snapshot_marks_each_action_cancellable_without_hidden_state
 	assert_eq(queue["active"]["stage"], &"approaching",
 		"An Action before its Commitment Point is still approaching.")
 
-	# The flag adds one display field and drags no internal payload with it.
+	# The view adds display and chain fields only; no internal payload leaks.
 	var expected: Array[String] = [
-		"id", "command", "label", "target_kind", "target_id", "target_label", "stage",
-		"cancellable",
+		"id", "command", "icon", "label", "target_kind", "target_id", "target_label", "stage",
+		"cancellable", "chain_id", "chain_index", "chain_size", "generated",
 	]
 	var keys: Array = queue["active"].keys()
 	keys.sort()
 	expected.sort()
-	assert_eq(keys, expected as Array, "An Action view carries display fields only.")
+	assert_eq(keys, expected as Array, "An Action view carries display and chain fields only.")
 
 
 func test_the_effect_fires_once_at_commitment_and_a_later_command_cannot_reverse_it() -> void:
@@ -251,7 +265,7 @@ func test_a_stale_target_fails_visibly_and_advances_the_queue() -> void:
 	var commands = pair[1]
 
 	var issued: Dictionary = commands.issue(
-		&"cultist_01", &"serve_order", _patron_target(&"patron_june"), false
+		&"cultist_01", &"serve_order", _patron_target(&"patron_june"), false, {"is_adjacent": true}
 	)
 	assert_true(bool(issued["accepted"]))
 	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), true)
@@ -274,7 +288,7 @@ func test_navigation_failure_releases_the_reservation_and_reports_a_reason() -> 
 	var commands = pair[1]
 
 	var issued: Dictionary = commands.issue(
-		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
 	)
 	commands.notify_failed(&"cultist_01", int(issued["action_id"]), &"path_stuck")
 
@@ -304,6 +318,158 @@ func test_two_cultists_requesting_one_approach_produce_one_owner_and_one_rejecti
 	var reserved: Dictionary = commands.snapshot()["reserved_slots"]
 	assert_eq(reserved.get(&"cultist_01", &""), &"bar_work_position")
 	assert_false(reserved.has(&"cultist_02"), "A rejected command creates no hidden wait queue.")
+
+
+# --- Generated Move and Action Chains -----------------------------------------
+
+func test_every_patron_command_is_proximity_dependent() -> void:
+	var catalog: Dictionary = CultistCommandSystem.CATALOG
+	for command: StringName in CultistCommandSystem.PATRON_COMMANDS:
+		assert_true(bool(catalog[command].get("requires_proximity", false)),
+			"%s is a Patron command, so it needs a Generated Move when not adjacent." % command)
+	for command: StringName in [&"move", &"drop_body", &"prepare_drink", &"activate_trapdoor"]:
+		assert_false(bool(catalog[command].get("requires_proximity", false)),
+			"%s is not proximity-dependent." % command)
+
+
+func test_nonadjacent_talk_creates_a_visible_move_then_talk_chain() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+	)
+	assert_true(bool(issued["accepted"]))
+	assert_eq(issued["generated_action_ids"].size(), 1,
+		"A nonadjacent Talk gains one Generated Move prerequisite.")
+	assert_eq(int(issued["action_id"]), int(_queue(commands, &"cultist_01")["pending"][0]["id"]),
+		"The returned action_id is the requested Talk, not the Generated Move.")
+
+	var queue := _queue(commands, &"cultist_01")
+	var active: Dictionary = queue["active"]
+	assert_eq(active["command"], &"generated_move", "The Generated Move runs first.")
+	assert_eq(active["label"], "Move", "The Generated Move renders as Move.")
+	assert_eq(active["icon"], &"move")
+	assert_true(bool(active["generated"]))
+	assert_eq(queue["pending"][0]["command"], &"talk")
+	assert_gt(int(active["chain_id"]), -1)
+	assert_eq(int(active["chain_id"]), int(queue["pending"][0]["chain_id"]),
+		"The Generated Move and the Talk share one Action Chain identity.")
+
+
+func test_nonadjacent_offer_cigarette_creates_a_visible_move_chain() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	commands.issue(&"cultist_01", &"offer_cigarette", _patron_target(&"patron_june"), false)
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(queue["active"]["command"], &"generated_move")
+	assert_eq(queue["pending"][0]["command"], &"offer_cigarette",
+		"Every Patron command follows the catalog-wide proximity rule.")
+
+
+func test_adjacent_patron_command_creates_no_generated_move() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
+	)
+	assert_true(issued["generated_action_ids"].is_empty(),
+		"An adjacent Patron command needs no Generated Move.")
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(queue["active"]["command"], &"talk")
+	assert_true(queue["pending"].is_empty())
+
+
+func test_shift_appends_a_full_chain_after_unrelated_work() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), false)
+	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), true)
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(queue["active"]["command"], &"move", "The unrelated Move keeps running.")
+	var order: Array = queue["pending"].map(func(a: Dictionary) -> StringName: return a["command"])
+	assert_eq(order, [&"generated_move", &"talk"], "Shift appends the whole chain after it.")
+
+
+func test_a_patron_that_moves_before_activation_inserts_a_generated_move() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
+	)
+	# The Talk is at the head but the Patron drifted out of reach before it started.
+	var outcome: Dictionary = commands.resolve_proximity(
+		&"cultist_01", int(issued["action_id"]), false
+	)
+	assert_true(bool(outcome.get("inserted_move", false)))
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(queue["active"]["command"], &"generated_move",
+		"A Patron who moved gains a Generated Move at the head.")
+	assert_eq(queue["pending"][0]["command"], &"talk")
+
+
+func test_generated_move_and_dependent_action_share_one_reservation() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+	)
+	assert_eq(commands.snapshot()["reserved_slots"].get(&"cultist_01", &""),
+		&"approach_patron_june", "The Generated Move reserves the Approach Position.")
+	var move_id := int(commands.active_request(&"cultist_01")["action_id"])
+	commands.notify_reached(&"cultist_01", move_id)
+	assert_eq(commands.snapshot()["reserved_slots"].get(&"cultist_01", &""),
+		&"approach_patron_june",
+		"The reservation stays through the chain with no release gap.")
+	var talk_id := int(issued["action_id"])
+	assert_true(bool(commands.resolve_proximity(&"cultist_01", talk_id, true)["committed"]),
+		"Adjacent at the head, the Talk commits.")
+
+
+func test_cancelling_a_chain_tile_removes_all_links_and_releases_reservation() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false
+	)
+	# Cancelling the dependent Talk tile drops its Generated Move too.
+	assert_true(commands.remove_pending(&"cultist_01", int(issued["action_id"])))
+	var queue := _queue(commands, &"cultist_01")
+	assert_true(queue["active"].is_empty(), "The whole chain left the queue.")
+	assert_false(commands.snapshot()["reserved_slots"].has(&"cultist_01"),
+		"Cancelling the chain releases its one reservation.")
+
+
+func test_navigation_failure_cancels_dependent_links_and_starts_the_next_action() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+
+	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), false)
+	var unrelated: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(-6.0, 4.0), true
+	)
+	var move_id := int(commands.active_request(&"cultist_01")["action_id"])
+	commands.notify_failed(&"cultist_01", move_id, &"path_stuck")
+
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(int(queue["active"]["id"]), int(unrelated["action_id"]),
+		"The next unrelated Action starts after the chain fails.")
+	assert_false(commands.snapshot()["reserved_slots"].has(&"cultist_01"))
+
+
+func test_no_queue_full_reason_appears_in_normal_behavior() -> void:
+	var pair := _seated_night()
+	var commands = pair[1]
+	for index in range(12):
+		commands.issue(&"cultist_01", &"move", _floor_target(float(index), 4.0), true)
+	var text := JSON.stringify(commands.snapshot())
+	assert_false(text.contains("queue_full"), "The queue-full reason is gone from the snapshot.")
 
 
 # --- Catalog: Patron targets ---------------------------------------------------

@@ -16,7 +16,7 @@ The interactive scene is `scenes/slices/service_action_queue_slice.tscn`. Its gu
 
 - `OrderSystem` owns the Order from `open` to exactly one terminal state: `served` or `cancelled`. Only it records payment and tips.
 - `ServiceSliceSession` composes three Cultist Action Queues, one authored Patron, one Order, and physical Prepared Drink state. It emits snapshots and visible service events.
-- `CultistActionQueue` remains the authority for one active and up to three pending Actions, cancellation before the Commitment Point, pending removal, stale-target failure, and progression.
+- `CultistActionQueue` remains the authority for one active and any number of pending Actions, cancellation before the Commitment Point, pending removal, stale-target failure, Action Chain cascade, and progression. This older slice still uses the same shared queue without setting a capacity.
 - The HUD stores no gameplay truth. It submits commands and rebuilds its selected-Cultist view from emitted snapshots.
 
 The slice uses a provisional balance value of `$5` payment, `$2` tip within 30 seconds, `$1` within 45 seconds, and no tip afterward. Those values are data candidates for later tuning, not a new economy system.
