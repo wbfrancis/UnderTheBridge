@@ -158,15 +158,18 @@ func value() -> float:
 	return clampf(_base + modifier_total(), MINIMUM, MAXIMUM)
 
 
-func band() -> String:
-	var current := value()
-	if current >= 80.0:
+static func band_for_value(value_: float) -> String:
+	if value_ >= 80.0:
 		return "Happy"
-	if current >= 50.0:
+	if value_ >= 50.0:
 		return "Content"
-	if current >= 25.0:
+	if value_ >= 25.0:
 		return "Unhappy"
 	return "Miserable"
+
+
+func band() -> String:
+	return band_for_value(value())
 
 
 func tip_multiplier() -> float:
