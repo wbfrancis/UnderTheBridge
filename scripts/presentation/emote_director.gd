@@ -26,6 +26,10 @@ const CATALOG := {
 		"category": &"persistent", "critical": true, "priority": 80,
 		"icon": "Z", "shape": &"circle", "color": "9aa7b4", "label": "Out cold",
 	},
+	&"cultist_incapacitated": {
+		"category": &"persistent", "critical": true, "priority": 80,
+		"icon": "Z", "shape": &"circle", "color": "9aa7b4", "label": "Knocked Out",
+	},
 	# Transients sit above the ordinary states so a change stays readable.
 	&"danger_reaction": {
 		"category": &"transient", "critical": false, "priority": 75, "duration": 2.5,
@@ -43,13 +47,13 @@ const CATALOG := {
 		"category": &"transient", "critical": false, "priority": 70, "duration": 2.0,
 		"icon": "v", "shape": &"square", "color": "d3be76", "label": "Unhappy",
 	},
-	&"drink_result": {
-		"category": &"transient", "critical": false, "priority": 68, "duration": 1.75,
-		"icon": "U", "shape": &"circle", "color": "e2a56e", "label": "Drink",
+	&"service_smile": {
+		"category": &"transient", "critical": false, "priority": 68, "duration": 2.0,
+		"icon": ":)", "shape": &"circle", "color": "8fbf9f", "label": "Pleased",
 	},
-	&"command_result": {
-		"category": &"transient", "critical": false, "priority": 66, "duration": 1.25,
-		"icon": "*", "shape": &"square", "color": "b9a0db", "label": "Order done",
+	&"service_frown": {
+		"category": &"transient", "critical": false, "priority": 68, "duration": 2.0,
+		"icon": ":(", "shape": &"circle", "color": "d3be76", "label": "Unhappy",
 	},
 	# Ordinary persistent states.
 	&"bathroom": {
@@ -64,10 +68,6 @@ const CATALOG := {
 		"category": &"persistent", "critical": false, "priority": 40,
 		"icon": "~", "shape": &"circle", "color": "e6edf3", "label": "Talking",
 	},
-	&"cultist_action": {
-		"category": &"persistent", "critical": false, "priority": 30,
-		"icon": "+", "shape": &"square", "color": "8fc4af", "label": "Working",
-	},
 }
 
 ## Distinct icons for the three timed Bathroom Visit phases. Each replaces the
@@ -79,7 +79,7 @@ const BATHROOM_PHASES := {
 }
 
 ## Band ladders. A move up or down the ladder is public; the value behind it is not.
-const MOOD_BANDS: Array[String] = ["Miserable", "Unhappy", "Content", "Happy"]
+const SATISFACTION_BANDS: Array[String] = ["Miserable", "Unhappy", "Content", "Happy"]
 const DANGER_BANDS: Array[String] = ["Calm", "Uneasy", "Suspicious", "Alarmed", "Maximum"]
 const RAPPORT_BANDS: Array[String] = ["Stranger", "Acquainted", "Friendly", "Trusted"]
 
@@ -137,11 +137,18 @@ func snapshot() -> Dictionary:
 func _update_actor(actor_id: StringName, row: Dictionary) -> void:
 	var present := bool(row["present"])
 	if not _actors.has(actor_id):
-		_actors[actor_id] = {"state": &"none", "present": present, "pending": [], "active": {}}
+		_actors[actor_id] = {
+			"state": &"none",
+			"present": present,
+			"pending": [],
+			"active": {},
+			"last_event_id": null,
+		}
 	var actor: Dictionary = _actors[actor_id]
 	actor["present"] = present
 	actor["state"] = StringName(row["state"]) if present else &"none"
 	actor["progress"] = row.get("progress", {}) if present else {}
+	actor["ordered_drink"] = String(row.get("public", {}).get("ordered_drink", "")) if present else ""
 	if not present:
 		actor["pending"].clear()
 		actor["active"] = {}
@@ -150,6 +157,7 @@ func _update_actor(actor_id: StringName, row: Dictionary) -> void:
 
 	var changes: Array[StringName] = []
 	changes.assign(row.get("changes", []))
+	changes.append_array(_event_changes(actor, row.get("events", [])))
 	changes.append_array(_band_changes(actor_id, row.get("public", {})))
 	# A critical state owns the actor: it suppresses transients while it lasts,
 	# so nothing stale can resume when the state ends.
@@ -161,6 +169,19 @@ func _update_actor(actor_id: StringName, row: Dictionary) -> void:
 		_queue_transient(actor, kind)
 
 
+## Consumes each public event identity once. Snapshot reads can repeat one event
+## across many frames without restarting its transient.
+func _event_changes(actor: Dictionary, events: Array) -> Array[StringName]:
+	var changes: Array[StringName] = []
+	for event: Dictionary in events:
+		var event_id: Variant = event.get("id", null)
+		if event_id == null or event_id == actor["last_event_id"]:
+			continue
+		actor["last_event_id"] = event_id
+		changes.append(StringName(event.get("kind", &"")))
+	return changes
+
+
 ## Turns public band movement into public transients. The band label is what the
 ## player already reads in the Hover Summary; the number behind it stays hidden.
 func _band_changes(actor_id: StringName, public: Dictionary) -> Array[StringName]:
@@ -169,19 +190,23 @@ func _band_changes(actor_id: StringName, public: Dictionary) -> Array[StringName
 	_previous[actor_id] = public.duplicate(true)
 	if before.is_empty():
 		return changes
-	var mood := _band_step(MOOD_BANDS, before.get("mood", ""), public.get("mood", ""))
-	if mood > 0:
+	# The bubble ids stay mood_up and mood_down: they name emote art, not the
+	# meter, and the player reads them as "their mood went up".
+	var satisfaction := _band_step(
+		SATISFACTION_BANDS, before.get("satisfaction", ""), public.get("satisfaction", "")
+	)
+	if satisfaction > 0:
 		changes.append(&"mood_up")
-	elif mood < 0:
+	elif satisfaction < 0:
 		changes.append(&"mood_down")
 	if _band_step(DANGER_BANDS, before.get("danger", ""), public.get("danger", "")) > 0:
 		changes.append(&"danger_reaction")
 	if _band_step(RAPPORT_BANDS, before.get("rapport", ""), public.get("rapport", "")) > 0:
 		changes.append(&"relationship_gain")
 	if before.get("order", "") != public.get("order", "") and public.get("order", "") == "served":
-		changes.append(&"drink_result")
+		changes.append(&"service_smile")
 	elif before.get("activity", "") != "Drinking" and public.get("activity", "") == "Drinking":
-		changes.append(&"drink_result")
+		changes.append(&"service_smile")
 	return changes
 
 
@@ -295,6 +320,8 @@ func _bubble_for(actor_id: StringName) -> Dictionary:
 				bubble["label"] = BATHROOM_PHASES[phase]["label"]
 				bubble["progress_phase"] = phase
 				bubble["progress_ratio"] = clampf(float(progress.get("ratio", 0.0)), 0.0, 1.0)
+	elif chosen == &"ordering" and not String(actor.get("ordered_drink", "")).is_empty():
+		bubble["label"] = "Wants %s" % String(actor["ordered_drink"]).capitalize()
 	return bubble
 
 

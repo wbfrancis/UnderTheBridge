@@ -49,6 +49,7 @@ func _patron() -> Dictionary:
 		"tint": Color.WHITE,
 		"visible_activity": "Drinking",
 		"mood": "Content",
+		"satisfaction_band": "Content",
 		"suspicion_band": "Uneasy",
 		"intoxication": "Buzzed",
 		"order_state": "Served",
@@ -118,6 +119,20 @@ func _kinds() -> Array[StringName]:
 	for entry: Dictionary in _intents:
 		kinds.append(entry["kind"])
 	return kinds
+
+
+func test_patron_queue_controls_are_debug_only_and_keep_stable_action_identity() -> void:
+	var patron := _patron()
+	patron["debug_action_queue"] = {"active": {"id": 42, "name": &"drinking"}, "pending": []}
+	await _render({"inspected_patron": patron, "developer": {"visible": false}})
+	assert_false(_hud.inspect()["patron_queue_visible"])
+	_hud.activate(&"debug_cancel_patron_action", {"patron_id": patron["id"], "action_id": 42})
+	assert_false(_kinds().has(&"debug_cancel_patron_action"))
+	await _render({"inspected_patron": patron, "developer": {"visible": true}})
+	assert_true(_hud.inspect()["patron_queue_visible"])
+	_hud.activate(&"debug_cancel_patron_action", {"patron_id": patron["id"], "action_id": 42})
+	assert_eq(_last(&"debug_cancel_patron_action")["action_id"], 42)
+	assert_eq(_last(&"debug_cancel_patron_action")["patron_id"], patron["id"])
 
 
 func _last(kind: StringName) -> Dictionary:
@@ -541,15 +556,13 @@ func test_settings_intents_carry_their_new_value() -> void:
 
 	_hud.activate(&"set_emote_labels", {"enabled": true})
 	_hud.activate(&"set_ui_scale", {"scale": 1.25})
-	_hud.activate(&"set_reduced_motion", {"enabled": true})
 
 	assert_true(bool(_last(&"set_emote_labels")["enabled"]))
 	assert_eq(float(_last(&"set_ui_scale")["scale"]), 1.25)
-	assert_true(bool(_last(&"set_reduced_motion")["enabled"]))
 
 
 func test_the_ui_scale_setting_keeps_the_hud_on_the_bottom_edge() -> void:
-	await _render({"settings": {"emote_labels": false, "ui_scale": 1.25, "reduced_motion": false}})
+	await _render({"settings": {"emote_labels": false, "ui_scale": 1.25}})
 
 	assert_almost_eq(float(_hud.inspect()["ui_scale"]), 1.25, 0.001)
 	var viewport := get_viewport().get_visible_rect()
@@ -602,3 +615,101 @@ func test_a_closed_outcome_leaves_the_time_controls_alive() -> void:
 
 	_hud.activate(&"speed_2")
 	assert_eq(_kinds(), [&"set_time_scale"] as Array[StringName])
+
+
+# --- Live-review remediation: full Outcome report ----------------------------
+
+func _full_outcome() -> Dictionary:
+	return {
+		"visible": true,
+		"kind": &"victory",
+		"cause": "The Night closed with the Capture quota met and no alarm raised.",
+		"captures": 3,
+		"capture_quota": 3,
+		"progress_ratio": 1.0,
+		"capture_methods": [
+			{"label": "Trapdoor", "count": 2},
+			{"label": "Knockout", "count": 0},
+			{"label": "Friendship Capture", "count": 1},
+		],
+		"revenue": 40,
+		"tips": 7,
+		"orders_served": 5,
+		"orders_cancelled": 2,
+		"orders_missed": 1,
+		"groups_missed_at_door": 2,
+		"suspicion_band": "Alarmed",
+		"interceptions": 3,
+		"unattended_body_seconds": 95.0,
+	}
+
+
+func test_the_outcome_modal_reports_every_metric_and_omits_zero_methods() -> void:
+	await _render({"outcome": _full_outcome()})
+
+	var state: Dictionary = _hud.inspect()
+	assert_true(bool(state["outcome_visible"]))
+	assert_eq(state["outcome_title"], "Success")
+	assert_eq(state["outcome_quota_label"], "Captures 3 / 3")
+	assert_true(bool(state["outcome_methods_visible"]))
+	# Only nonzero methods appear, in the order they were given.
+	assert_eq(state["outcome_capture_methods"], [
+		{"label": "Trapdoor", "count": 2},
+		{"label": "Friendship Capture", "count": 1},
+	], "The zero-total Knockout row is omitted.")
+	var stats: Dictionary = state["outcome_stats"]
+	assert_eq(stats["revenue"], "$40")
+	assert_eq(stats["tips"], "$7")
+	assert_eq(stats["orders_served"], "5")
+	assert_eq(stats["orders_cancelled"], "2")
+	assert_eq(stats["orders_missed"], "1")
+	assert_eq(stats["groups_missed_at_door"], "2")
+	assert_eq(stats["suspicion_band"], "Alarmed")
+	assert_eq(stats["interceptions"], "3")
+	assert_eq(stats["unattended_body_time"], "1m 35s")
+	assert_eq(state["outcome_actions"], ["restart", "quit"],
+		"The full report keeps Restart and Quit reachable.")
+
+
+func test_an_outcome_with_no_captures_hides_the_method_section() -> void:
+	var outcome := _outcome(&"failed", 0)
+	outcome["capture_methods"] = []
+	await _render({"outcome": outcome})
+
+	var state: Dictionary = _hud.inspect()
+	assert_false(bool(state["outcome_methods_visible"]),
+		"With no Capture the method section stays hidden.")
+	assert_eq(state["outcome_capture_methods"], [])
+
+
+# --- Live-review remediation: Controls Card ----------------------------------
+
+func test_the_controls_card_blocks_time_and_dismisses_through_its_button() -> void:
+	await _render({
+		"controls": {"visible": true, "dismiss_label": "Begin the Night"},
+		"night": _night(1.0, false),
+	})
+
+	var state: Dictionary = _hud.inspect()
+	assert_true(bool(state["controls_visible"]))
+	assert_eq(state["controls_dismiss_label"], "Begin the Night")
+	assert_eq(state["controls_service_help"],
+		"Serve: make Wine, Beer, or Liquor at the bar. Right-click the finished drink, choose Serve Drink To, then choose a Patron.")
+
+	# The blocking card holds every time control.
+	_hud.activate(&"speed_2")
+	_hud.activate(&"toggle_pause")
+	_hud.activate(&"escape")
+	assert_eq(_kinds(), [] as Array[StringName],
+		"The blocking Controls Card holds the Night before it is dismissed.")
+
+	# Only its own button closes it.
+	_hud.activate(&"close_controls")
+	assert_eq(_kinds(), [&"close_controls"] as Array[StringName])
+
+
+func test_the_pause_menu_reopens_the_controls_card() -> void:
+	await _render({"pause_menu_open": true})
+	_hud.activate(&"open_controls")
+	assert_eq(_kinds(), [&"open_controls"] as Array[StringName],
+		"The Pause Menu Controls entry reopens the same card.")

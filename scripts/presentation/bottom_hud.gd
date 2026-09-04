@@ -72,16 +72,20 @@ const COMMAND_ICONS := {
 	&"move": "move",
 	&"drop_body": "drop_body",
 	&"talk": "talk",
-	&"serve_order": "serve_order",
-	&"offer_drink": "offer_drink",
+	&"ask_to_leave": "talk",
+	&"serve_drink": "serve_order",
+	&"pick_up_drink": "prepare_drink",
 	&"offer_cigarette": "offer_cigarette",
 	&"knock_out": "knock_out",
 	&"pick_up_body": "pick_up_body",
 	&"intercept": "intercept",
 	&"lead_to_tunnel": "lead_to_tunnel",
 	&"rescue_persuasion": "rescue_persuasion",
-	&"prepare_drink": "prepare_drink",
-	&"prepare_drugged_drink": "prepare_drugged_drink",
+	&"make_wine": "prepare_drink",
+	&"make_beer": "prepare_drink",
+	&"make_liquor": "prepare_drink",
+	&"drug_drink": "prepare_drugged_drink",
+	&"admit_group": "move",
 	&"activate_trapdoor": "activate_trapdoor",
 }
 const FALLBACK_ACTION_ICON := "action_fallback"
@@ -107,6 +111,8 @@ const UI_SCALE_STEPS: Array[float] = [0.75, 1.0, 1.25, 1.5]
 ## Pause Menu dismissal and Resume are not listed, so they still reach the adapter.
 const TIME_INTENTS: Array[StringName] = [
 	&"set_time_scale", &"toggle_pause", &"advance_debug_time", &"select_scenario",
+	&"debug_cancel_patron_action", &"debug_force_patron_action",
+	&"debug_clear_patron_queue", &"debug_pause_patron_planner",
 	&"open_pause_menu",
 ]
 
@@ -135,8 +141,12 @@ var _patron_name: Label
 var _patron_detail: VBoxContainer
 var _patron_zone: PanelContainer
 var _patron_activity: Label
+var _patron_mood: Label
 var _patron_meters: Dictionary = {}
 var _patron_close: Button
+var _patron_queue_panel: PanelContainer
+var _patron_queue_rows: VBoxContainer
+var _patron_queue_signature := ""
 var _settings_button: Button
 var _developer_button: Button
 var _menu_scrim: Control
@@ -145,7 +155,6 @@ var _developer_panel: PanelContainer
 var _scenario_buttons: Dictionary = {}
 var _debug_toggle: Button
 var _emote_toggle: Button
-var _reduced_motion_toggle: Button
 var _ui_scale_buttons: Dictionary = {}
 var _developer_built := false
 var _pause_menu: Control
@@ -154,6 +163,20 @@ var _outcome_title: Label
 var _outcome_cause: Label
 var _outcome_quota: Label
 var _outcome_fill: ColorRect
+var _outcome_methods_header: Label
+var _outcome_methods: GridContainer
+var _outcome_revenue: Label
+var _outcome_tips: Label
+var _outcome_served: Label
+var _outcome_cancelled: Label
+var _outcome_missed: Label
+var _outcome_groups_missed: Label
+var _outcome_suspicion: Label
+var _outcome_intercepts: Label
+var _outcome_body_time: Label
+var _controls_modal: Control
+var _controls_dismiss: Button
+var _controls_service_help: Label
 var _hover_panel: PanelContainer
 var _hover_label: Label
 var _hover_text := ""
@@ -186,10 +209,17 @@ static func empty_view() -> Dictionary:
 		"outcome": {
 			"visible": false, "kind": &"", "cause": "",
 			"captures": 0, "capture_quota": 3, "progress_ratio": 0.0,
+			"capture_methods": [],
+			"revenue": 0, "tips": 0,
+			"orders_served": 0, "orders_cancelled": 0, "orders_missed": 0,
+			"groups_missed_at_door": 0,
+			"suspicion_band": "Calm", "interceptions": 0,
+			"unattended_body_seconds": 0.0,
 		},
 		"feedback": {"text": "", "serial": 0},
 		"developer": {"visible": false, "scenario_id": "", "scenarios": []},
-		"settings": {"emote_labels": false, "ui_scale": 1.0, "reduced_motion": false},
+		"settings": {"emote_labels": false, "ui_scale": 1.0},
+		"controls": {"visible": false, "dismiss_label": "Begin the Night"},
 		"pause_menu_open": false,
 	}
 
@@ -213,10 +243,12 @@ func render(view: Dictionary) -> void:
 	_render_action_tiles()
 	_render_night()
 	_render_patron()
+	_render_patron_debug_queue()
 	_render_feedback()
 	_render_menus()
 	_render_pause_menu()
 	_render_outcome()
+	_render_controls()
 	_bind_press_feedback()
 
 
@@ -251,6 +283,13 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 			_emit(&"close_inspected_patron", {})
 		&"open_pause_menu":
 			_emit(&"open_pause_menu", {})
+		&"open_controls":
+			_emit(&"open_controls", {})
+		&"close_controls":
+			_emit(&"close_controls", {})
+		&"reset_controls_card":
+			_close_menus()
+			_emit(&"reset_controls_card", {})
 		&"resume":
 			_emit(&"resume_night", {})
 		&"restart":
@@ -265,12 +304,12 @@ func activate(control: StringName, payload: Dictionary = {}) -> void:
 			_emit(&"advance_debug_time", {"seconds": float(payload.get("seconds", 1.0))})
 		&"set_debug_visible":
 			_emit(&"set_debug_visible", {"enabled": bool(payload.get("enabled", false))})
+		&"debug_cancel_patron_action", &"debug_force_patron_action", &"debug_clear_patron_queue", &"debug_pause_patron_planner":
+			_emit(control, payload)
 		&"set_emote_labels":
 			_emit(&"set_emote_labels", {"enabled": bool(payload.get("enabled", false))})
 		&"set_ui_scale":
 			_emit(&"set_ui_scale", {"scale": float(payload.get("scale", 1.0))})
-		&"set_reduced_motion":
-			_emit(&"set_reduced_motion", {"enabled": bool(payload.get("enabled", false))})
 		&"restart_scenario":
 			_close_menus()
 			_emit(&"select_scenario", {
@@ -345,10 +384,29 @@ func inspect() -> Dictionary:
 		},
 		"settings_open": _settings_panel.visible,
 		"developer_open": _developer_panel.visible,
+		"patron_queue_visible": _patron_queue_panel.visible,
 		"pause_menu_open": _pause_menu.visible,
 		"outcome_visible": _outcome_modal.visible,
 		"outcome_title": _outcome_title.text,
+		"outcome_cause": _outcome_cause.text,
+		"outcome_quota_label": _outcome_quota.text,
+		"outcome_methods_visible": _outcome_methods.visible,
+		"outcome_capture_methods": _outcome_method_rows(),
+		"outcome_stats": {
+			"revenue": _outcome_revenue.text,
+			"tips": _outcome_tips.text,
+			"orders_served": _outcome_served.text,
+			"orders_cancelled": _outcome_cancelled.text,
+			"orders_missed": _outcome_missed.text,
+			"groups_missed_at_door": _outcome_groups_missed.text,
+			"suspicion_band": _outcome_suspicion.text,
+			"interceptions": _outcome_intercepts.text,
+			"unattended_body_time": _outcome_body_time.text,
+		},
 		"outcome_actions": ["restart", "quit"] if _outcome_modal.visible else [],
+		"controls_visible": _controls_modal.visible,
+		"controls_dismiss_label": _controls_dismiss.text,
+		"controls_service_help": _controls_service_help.text,
 		"hover_help": _hover_text,
 		"feedback": _feedback_label.text if _feedback_panel.visible else "",
 		"ui_scale": _ui_scale,
@@ -365,7 +423,7 @@ func reserved_rects() -> Array[Rect2]:
 	for panel: Control in [_settings_panel, _developer_panel]:
 		if panel.visible:
 			rects.append(_scaled_rect(panel))
-	if _pause_menu.visible or _outcome_modal.visible:
+	if _blocking_modal_visible():
 		rects.append(Rect2(Vector2.ZERO, _viewport_size()))
 	elif _feedback_panel.visible:
 		rects.append(_scaled_rect(_feedback_panel))
@@ -375,13 +433,19 @@ func reserved_rects() -> Array[Rect2]:
 ## True while a modal blocks the Night. The world adapter stops advancing time
 ## and stops accepting world clicks while this holds.
 func is_blocking() -> bool:
-	return _outcome_modal.visible or _pause_menu.visible
+	return _blocking_modal_visible()
+
+
+func _blocking_modal_visible() -> bool:
+	return _outcome_modal.visible or _pause_menu.visible or _controls_modal.visible
 
 
 # --- Intent rules ------------------------------------------------------------
 
 func _emit(kind: StringName, payload: Dictionary) -> void:
-	if (_outcome_modal.visible or _pause_menu.visible) and kind in TIME_INTENTS:
+	if String(kind).begins_with("debug_") and not bool(_view["developer"]["visible"]):
+		return
+	if _blocking_modal_visible() and kind in TIME_INTENTS:
 		return
 	intent_submitted.emit(kind, payload)
 
@@ -392,7 +456,8 @@ func _handle_escape() -> void:
 	if _settings_panel.visible or _developer_panel.visible:
 		_close_menus()
 		return
-	if _outcome_modal.visible:
+	if _outcome_modal.visible or _controls_modal.visible:
+		# The blocking Controls Card is dismissed only by its own button.
 		return
 	if _pause_menu.visible:
 		# Escape restores the pre-menu playback state; only Resume starts the
@@ -648,7 +713,13 @@ func _render_patron() -> void:
 	if not selected:
 		return
 	_patron_activity.text = String(patron.get("visible_activity", ""))
-	_render_meter(&"mood", MOOD_BANDS, String(patron.get("mood", "")), Color("4B986D"))
+	if not String(patron.get("ordered_drink", "")).is_empty():
+		_patron_activity.text += " · %s" % String(patron["ordered_drink"])
+	_render_patron_mood(String(patron.get("mood", "")))
+	_render_meter(
+		&"mood", MOOD_BANDS, String(patron.get("satisfaction_band", "")), Color("4B986D"),
+		"Satisfaction"
+	)
 	_render_meter(
 		&"suspicion", SUSPICION_BANDS, String(patron.get("suspicion_band", "")), DANGER
 	)
@@ -658,7 +729,67 @@ func _render_patron() -> void:
 	)
 
 
-func _render_meter(key: StringName, bands: Dictionary, band: String, color: Color) -> void:
+func _render_patron_debug_queue() -> void:
+	if _patron_queue_panel == null:
+		return
+	var patron: Dictionary = _view["inspected_patron"]
+	var queue: Dictionary = patron.get("debug_action_queue", {})
+	_patron_queue_panel.visible = bool(_view["developer"]["visible"]) and not queue.is_empty()
+	if not _patron_queue_panel.visible:
+		return
+	var signature := "%s:%s" % [patron.get("id", &""), patron.get("debug_planner_paused", false)]
+	for entry: Dictionary in [queue.get("active", {})] + queue.get("paused", []) + queue.get("pending", []):
+		signature += ":%s:%s" % [entry.get("id", -1), entry.get("name", &"")]
+	if signature == _patron_queue_signature:
+		return
+	_patron_queue_signature = signature
+	for child in _patron_queue_rows.get_children():
+		_patron_queue_rows.remove_child(child)
+		child.queue_free()
+	_patron_queue_rows.add_child(_ink_label("PATRON ACTION QUEUE", 12))
+	var actions: Array[Dictionary] = []
+	if not queue.get("active", {}).is_empty():
+		actions.append(queue["active"])
+	actions.append_array(queue.get("paused", []))
+	actions.append_array(queue.get("pending", []))
+	for action: Dictionary in actions:
+		var row := HBoxContainer.new()
+		var label := _ink_label(String(action["name"]).replace("_", " ").capitalize(), 12)
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var cancel := Button.new()
+		cancel.text = "Cancel"
+		cancel.pressed.connect(func() -> void:
+			activate(&"debug_cancel_patron_action", {
+				"patron_id": patron["id"], "action_id": int(action["id"]),
+			})
+		)
+		row.add_child(cancel)
+		_patron_queue_rows.add_child(row)
+	var controls := HBoxContainer.new()
+	for spec: Dictionary in [
+		{"label": "Force", "action": &"debug_force_patron_action"},
+		{"label": "Clear", "action": &"debug_clear_patron_queue"},
+		{
+			"label": "Resume" if bool(patron.get("debug_planner_paused", false)) else "Pause",
+			"action": &"debug_pause_patron_planner",
+		},
+	]:
+		var button := Button.new()
+		button.text = spec["label"]
+		button.pressed.connect(func() -> void:
+			activate(spec["action"], {
+				"patron_id": patron["id"],
+				"paused": not bool(patron.get("debug_planner_paused", false)),
+			})
+		)
+		controls.add_child(button)
+	_patron_queue_rows.add_child(controls)
+
+
+func _render_meter(
+	key: StringName, bands: Dictionary, band: String, color: Color, title: String = ""
+) -> void:
 	var meter: Dictionary = _patron_meters[key]
 	var fill := meter["fill"] as ColorRect
 	fill.color = color
@@ -666,8 +797,20 @@ func _render_meter(key: StringName, bands: Dictionary, band: String, color: Colo
 	var label := meter["label"] as Label
 	label.text = band
 	(meter["track"] as Control).tooltip_text = "%s: %s" % [
-		String(key).capitalize(), band if not band.is_empty() else "Unknown",
+		title if not title.is_empty() else String(key).capitalize(),
+		band if not band.is_empty() else "Unknown",
 	]
+
+
+# The derived Mood word, shown beside the two bands it is derived from. The
+# prototype keeps all three so the derivation can be judged against its inputs;
+# the settled design shows this word alone.
+func _render_patron_mood(word: String) -> void:
+	_patron_mood.text = word
+	_patron_mood.add_theme_color_override(
+		"font_color", DANGER if PatronMood.FEAR_WORDS.has(word) else INK
+	)
+	_patron_mood.tooltip_text = "Mood: %s" % (word if not word.is_empty() else "Unknown")
 
 
 # One short line, above the HUD, for something the player asked for that the
@@ -717,7 +860,6 @@ func _render_menus() -> void:
 			)
 		_debug_toggle.button_pressed = bool(developer["visible"])
 	_emote_toggle.button_pressed = bool(settings["emote_labels"])
-	_reduced_motion_toggle.button_pressed = bool(settings["reduced_motion"])
 	for step: float in _ui_scale_buttons:
 		(_ui_scale_buttons[step] as Button).button_pressed = is_equal_approx(
 			step, float(settings["ui_scale"])
@@ -742,9 +884,64 @@ func _render_outcome() -> void:
 	_set_fill_ratio_horizontal(_outcome_fill, float(outcome["progress_ratio"]))
 	_outcome_fill.get_parent().tooltip_text = "Capture quota: %d of %d" % [captures, quota]
 
+	_render_outcome_methods(outcome.get("capture_methods", []))
+	_outcome_revenue.text = "$%d" % int(outcome.get("revenue", 0))
+	_outcome_tips.text = "$%d" % int(outcome.get("tips", 0))
+	_outcome_served.text = str(int(outcome.get("orders_served", 0)))
+	_outcome_cancelled.text = str(int(outcome.get("orders_cancelled", 0)))
+	_outcome_missed.text = str(int(outcome.get("orders_missed", 0)))
+	_outcome_groups_missed.text = str(int(outcome.get("groups_missed_at_door", 0)))
+	_outcome_suspicion.text = String(outcome.get("suspicion_band", "Calm"))
+	_outcome_intercepts.text = str(int(outcome.get("interceptions", 0)))
+	_outcome_body_time.text = _format_duration(float(outcome.get("unattended_body_seconds", 0.0)))
+
+
+# Rebuilds the causal capture-method rows. Only nonzero methods appear; when no
+# Patron was captured the whole section is hidden rather than left blank.
+func _render_outcome_methods(methods: Array) -> void:
+	for child in _outcome_methods.get_children():
+		_outcome_methods.remove_child(child)
+		child.free()
+	_outcome_methods_header.visible = not methods.is_empty()
+	_outcome_methods.visible = not methods.is_empty()
+	for method: Dictionary in methods:
+		if int(method.get("count", 0)) <= 0:
+			continue
+		_outcome_methods.add_child(_cream_label(String(method.get("label", "")), 13))
+		var count := _cream_label(str(int(method["count"])), 13)
+		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_outcome_methods.add_child(count)
+
+
+static func _format_duration(seconds: float) -> String:
+	var total := int(round(maxf(0.0, seconds)))
+	return "%dm %02ds" % [total / 60, total % 60]
+
+
+# The capture-method rows currently drawn, as {label, count} pairs, for tests
+# and the world adapter to read without walking the control tree.
+func _outcome_method_rows() -> Array:
+	var rows: Array = []
+	var children := _outcome_methods.get_children()
+	for i in range(0, children.size(), 2):
+		if i + 1 >= children.size():
+			break
+		rows.append({
+			"label": (children[i] as Label).text,
+			"count": int((children[i + 1] as Label).text),
+		})
+	return rows
+
 
 func _outcome_modal_wanted() -> bool:
 	return bool(_view["outcome"]["visible"])
+
+
+func _render_controls() -> void:
+	var controls: Dictionary = _view["controls"]
+	_controls_modal.visible = bool(controls["visible"])
+	_controls_dismiss.text = String(controls.get("dismiss_label", "Begin the Night"))
 
 
 func _outcome_title_for(kind: StringName) -> String:
@@ -784,13 +981,33 @@ func _build() -> void:
 
 	_build_action_tiles()
 	_build_frame()
+	_build_patron_debug_queue()
 	_build_menus()
 	_build_pause_menu()
 	_build_outcome_modal()
+	_build_controls_modal()
 	_build_hover_help()
 	_build_feedback_line()
 	_close_menus()
 	set_process(false)
+
+
+func _build_patron_debug_queue() -> void:
+	_patron_queue_panel = PanelContainer.new()
+	_patron_queue_panel.name = "PatronDebugQueue"
+	_patron_queue_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_patron_queue_panel.position = Vector2(-510.0, -HUD_HEIGHT - 190.0)
+	_patron_queue_panel.custom_minimum_size = Vector2(350.0, 0.0)
+	_patron_queue_panel.add_theme_stylebox_override("panel", _paper_style())
+	_patron_queue_panel.visible = false
+	_root.add_child(_patron_queue_panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_%s" % side, 8)
+	_patron_queue_panel.add_child(margin)
+	_patron_queue_rows = VBoxContainer.new()
+	_patron_queue_rows.add_theme_constant_override("separation", 4)
+	margin.add_child(_patron_queue_rows)
 
 
 func _build_frame() -> void:
@@ -973,6 +1190,9 @@ func _build_patron_zone() -> Control:
 	_patron_activity = _ink_label("", 13)
 	_patron_activity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(_patron_activity)
+	_patron_mood = _ink_label("", 13)
+	_patron_mood.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	header.add_child(_patron_mood)
 	_patron_close = _icon_button("close", "Clear the Inspected Patron")
 	_patron_close.custom_minimum_size = Vector2(44.0, 36.0)
 	_patron_close.expand_icon = false
@@ -1192,10 +1412,6 @@ func _build_settings_menu() -> void:
 		button.pressed.connect(func() -> void: activate(&"set_ui_scale", {"scale": step}))
 		_ui_scale_buttons[step] = button
 		scale_row.add_child(button)
-	_reduced_motion_toggle = _menu_toggle("Reduced motion", func(pressed: bool) -> void:
-		activate(&"set_reduced_motion", {"enabled": pressed})
-	)
-	column.add_child(_reduced_motion_toggle)
 
 
 # The developer menu is built once, from the scenario list the first render
@@ -1242,6 +1458,10 @@ func _build_developer_menu() -> void:
 	restart.text = "Restart scenario"
 	restart.pressed.connect(func() -> void: activate(&"restart_scenario"))
 	column.add_child(restart)
+	var reset_controls := Button.new()
+	reset_controls.text = "Reset Controls Card"
+	reset_controls.pressed.connect(func() -> void: activate(&"reset_controls_card"))
+	column.add_child(reset_controls)
 
 
 func _menu_toggle(text: String, handler: Callable) -> Button:
@@ -1259,6 +1479,7 @@ func _build_pause_menu() -> void:
 	for entry: Array in [
 		["Resume", &"resume", "play"],
 		["Restart", &"restart", "restart"],
+		["Controls", &"open_controls", ""],
 		["Settings", &"settings_menu", "settings"],
 		["Quit", &"quit", "quit"],
 	]:
@@ -1274,17 +1495,46 @@ func _build_pause_menu() -> void:
 func _build_outcome_modal() -> void:
 	_outcome_modal = _modal_root("OutcomeModal")
 	var column := _outcome_modal.get_node("Panel/Column") as VBoxContainer
+	column.custom_minimum_size = Vector2(360.0, 0.0)
 	_outcome_title = _cream_label("Operation Failed", 26)
+	_outcome_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_outcome_title)
 	_outcome_cause = _cream_label("", 14)
 	_outcome_cause.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_outcome_cause.custom_minimum_size = Vector2(320.0, 0.0)
+	_outcome_cause.custom_minimum_size = Vector2(360.0, 0.0)
 	column.add_child(_outcome_cause)
 	_outcome_quota = _cream_label("Captures 0 / 3", 13)
 	column.add_child(_outcome_quota)
 	var track := _track(26.0)
 	_outcome_fill = _track_fill(track, Color("4D996F"))
 	column.add_child(track)
+
+	# Captures grouped by their causal method. Rebuilt each frame so that a
+	# zero-total method never leaves an empty row behind.
+	_outcome_methods_header = _cream_label("Capture methods", 13)
+	column.add_child(_outcome_methods_header)
+	_outcome_methods = GridContainer.new()
+	_outcome_methods.columns = 2
+	_outcome_methods.add_theme_constant_override("h_separation", 24)
+	_outcome_methods.add_theme_constant_override("v_separation", 2)
+	column.add_child(_outcome_methods)
+
+	# The rest of the Night's report, as aligned label/value pairs.
+	var stats := GridContainer.new()
+	stats.columns = 2
+	stats.add_theme_constant_override("h_separation", 24)
+	stats.add_theme_constant_override("v_separation", 3)
+	column.add_child(stats)
+	_outcome_revenue = _stat_row(stats, "Drink revenue")
+	_outcome_tips = _stat_row(stats, "Tips")
+	_outcome_served = _stat_row(stats, "Orders served")
+	_outcome_cancelled = _stat_row(stats, "Orders cancelled")
+	_outcome_missed = _stat_row(stats, "Orders missed")
+	_outcome_groups_missed = _stat_row(stats, "Groups Missed at Door")
+	_outcome_suspicion = _stat_row(stats, "Highest Suspicion")
+	_outcome_intercepts = _stat_row(stats, "Escapes intercepted")
+	_outcome_body_time = _stat_row(stats, "Unattended Body time")
+
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 8)
@@ -1297,6 +1547,70 @@ func _build_outcome_modal() -> void:
 		button.custom_minimum_size = Vector2(140.0, 34.0)
 		button.pressed.connect(func() -> void: activate(control))
 		row.add_child(button)
+
+
+# A label/value pair on the Outcome report grid. Returns the value label so the
+# caller can update it each frame; the value column is right-aligned.
+func _stat_row(grid: GridContainer, caption: String) -> Label:
+	grid.add_child(_cream_label(caption, 13))
+	var value := _cream_label("", 13)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_child(value)
+	return value
+
+
+# The blocking Controls Card. Static content: it states the objective and every
+# input, but never the capture routes. It is built once and only toggled.
+func _build_controls_modal() -> void:
+	_controls_modal = _modal_root("ControlsCard")
+	var column := _controls_modal.get_node("Panel/Column") as VBoxContainer
+	column.custom_minimum_size = Vector2(420.0, 0.0)
+	var title := _cream_label("Controls Card", 24)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(title)
+	var objective := _cream_label(
+		"Serve your Patrons, meet the Capture quota, and keep the speakeasy from exposure.",
+		14
+	)
+	objective.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective.custom_minimum_size = Vector2(420.0, 0.0)
+	column.add_child(objective)
+
+	var rows := GridContainer.new()
+	rows.columns = 2
+	rows.add_theme_constant_override("h_separation", 18)
+	rows.add_theme_constant_override("v_separation", 4)
+	column.add_child(rows)
+	for entry: Array in [
+		["Left-click", "Select a Cultist, or inspect a Patron."],
+		["Right-click", "Move the Cultist there, or open the Context Menu on a target."],
+		["Shift + right-click", "Add the Action to the queue instead of replacing it."],
+		["Camera", "Pan with the arrow keys or W A S D. Zoom with - and =."],
+		["Pause", "Space or the Pause button. Escape opens the Pause Menu."],
+		["Speed", "Press 1, 2, or 3 for 1x, 2x, or 4x."],
+	]:
+		var key := _cream_label(String(entry[0]), 13)
+		rows.add_child(key)
+		var detail := _cream_label(String(entry[1]), 13)
+		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail.custom_minimum_size = Vector2(280.0, 0.0)
+		rows.add_child(detail)
+	_controls_service_help = _cream_label(
+		"Serve: make Wine, Beer, or Liquor at the bar. Right-click the finished drink, choose Serve Drink To, then choose a Patron.",
+		13
+	)
+	_controls_service_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_controls_service_help.custom_minimum_size = Vector2(420.0, 0.0)
+	column.add_child(_controls_service_help)
+
+	_controls_dismiss = Button.new()
+	_controls_dismiss.text = "Begin the Night"
+	_controls_dismiss.icon = _icon("play")
+	_controls_dismiss.custom_minimum_size = Vector2(200.0, 34.0)
+	_controls_dismiss.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_controls_dismiss.pressed.connect(func() -> void: activate(&"close_controls"))
+	column.add_child(_controls_dismiss)
 
 
 func _modal_root(node_name: String) -> Control:
@@ -1485,8 +1799,7 @@ func _bind_press_feedback() -> void:
 
 func _on_button_down(button: Button) -> void:
 	button.pivot_offset = button.size * 0.5
-	if not bool(_view["settings"]["reduced_motion"]):
-		button.scale = Vector2(0.97, 0.97)
+	button.scale = Vector2(0.97, 0.97)
 
 
 func _on_button_up(button: Button) -> void:

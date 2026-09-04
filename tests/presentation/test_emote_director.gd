@@ -80,11 +80,11 @@ func test_an_absent_actor_shows_nothing() -> void:
 
 func test_escape_preempts_everything_and_investigation_preempts_ordinary_states() -> void:
 	var director = _director()
-	var calm := {"mood": "Content", "danger": "Calm", "rapport": "Stranger"}
+	var calm := {"satisfaction": "Content", "danger": "Calm", "rapport": "Stranger"}
 	director.update(_view([_row(&"patron_a", &"ordering", calm)]), 0.1, false)
 	# A Mood drop queues a transient over the ordinary Ordering state.
 	director.update(_view([
-		_row(&"patron_a", &"ordering", {"mood": "Unhappy", "danger": "Calm", "rapport": "Stranger"})
+		_row(&"patron_a", &"ordering", {"satisfaction": "Unhappy", "danger": "Calm", "rapport": "Stranger"})
 	]), 0.1, false)
 	assert_eq(_shown(director)[&"patron_a"], &"mood_down",
 		"A transient reads over an ordinary persistent state.")
@@ -101,15 +101,15 @@ func test_escape_preempts_everything_and_investigation_preempts_ordinary_states(
 
 func test_a_critical_state_suppresses_transients_and_none_resume_afterwards() -> void:
 	var director = _director()
-	var calm := {"mood": "Content", "danger": "Calm", "rapport": "Stranger"}
+	var calm := {"satisfaction": "Content", "danger": "Calm", "rapport": "Stranger"}
 	director.update(_view([_row(&"patron_a", &"none", calm)]), 0.1, false)
 	# The Mood drop arrives in the same update that turns the Patron unconscious.
 	director.update(_view([
-		_row(&"patron_a", &"unconscious", {"mood": "Miserable", "danger": "Calm", "rapport": "Stranger"})
+		_row(&"patron_a", &"unconscious", {"satisfaction": "Miserable", "danger": "Calm", "rapport": "Stranger"})
 	]), 0.1, false)
 	assert_eq(_shown(director)[&"patron_a"], &"unconscious")
 
-	director.update(_view([_row(&"patron_a", &"none", {"mood": "Miserable", "danger": "Calm", "rapport": "Stranger"})]), 0.1, false)
+	director.update(_view([_row(&"patron_a", &"none", {"satisfaction": "Miserable", "danger": "Calm", "rapport": "Stranger"})]), 0.1, false)
 	assert_false(_shown(director).has(&"patron_a"),
 		"When the critical state ends the director recomputes; no stale transient resumes.")
 

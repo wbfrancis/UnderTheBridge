@@ -6,11 +6,36 @@ const GAME_SESSION_PATH := "res://scripts/simulation/game_session.gd"
 func _advance_and_serve_night(session) -> void:
 	# Every service call is an explicit player command; no Cultist acts on its own.
 	var served_patrons: Dictionary = {}
-	for checkpoint in [95.0, 185.0, 305.0, 425.0]:
-		session.advance(checkpoint - float(session.snapshot()["simulated_seconds"]))
+	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
+		session.advance(arrival - float(session.snapshot()["simulated_seconds"]))
+		assert_true(session.begin_admit_group(&"cultist_03"))
+		session.advance(4.2)
+		session.command_action_state(&"admit_group", &"cultist_03", &"front_entrance")
+		session.advance(14.0)
 		for patron_id: StringName in session.snapshot()["debug_patron_views"]:
 			if not served_patrons.has(patron_id) and session.serve_patron_order(patron_id, &"cultist_01"):
 				served_patrons[patron_id] = true
+	session.advance(1080.0 - float(session.snapshot()["simulated_seconds"]))
+
+
+func _advance_with_admissions(session, target_seconds: float) -> void:
+	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
+		if arrival > target_seconds:
+			break
+		if float(session.snapshot()["simulated_seconds"]) < arrival:
+			session.advance(arrival - float(session.snapshot()["simulated_seconds"]))
+		if session.begin_admit_group(&"cultist_03"):
+			session.advance(4.2)
+			session.command_action_state(&"admit_group", &"cultist_03", &"front_entrance")
+	if float(session.snapshot()["simulated_seconds"]) < target_seconds:
+		session.advance(target_seconds - float(session.snapshot()["simulated_seconds"]))
+
+
+func _complete_safe_night(session) -> void:
+	_advance_with_admissions(session, 10.0)
+	assert_true(session.begin_ask_to_leave(&"cultist_01", &"patron_june"))
+	session.advance(10.1)
+	session.command_action_state(&"ask_to_leave", &"cultist_01", &"patron_june")
 	session.advance(1080.0 - float(session.snapshot()["simulated_seconds"]))
 
 
@@ -109,7 +134,7 @@ func test_cultist_snapshot_exposes_active_capture_activity_and_target() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
 	var windup: Dictionary = session.snapshot()["cultists"][&"cultist_01"]
@@ -184,7 +209,7 @@ func test_ten_restarts_release_all_actor_and_interaction_state() -> void:
 	var session = game_session_script.new()
 	session.start_night(707)
 	for restart_index in range(10):
-		session.advance(100.0)
+		_advance_with_admissions(session, 10.0)
 		assert_true(session.debug_force_bathroom(&"patron_june"))
 		assert_true(session.debug_force_bathroom(&"patron_mara"))
 		session.restart_night(800 + restart_index)
@@ -201,11 +226,40 @@ func test_ten_restarts_release_all_actor_and_interaction_state() -> void:
 			"A restarted Night leaves no Cultist Action behind.")
 
 
+func test_the_normal_view_reports_a_mood_word_derived_from_both_meters() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	_advance_with_admissions(session, 10.0)
+
+	# Any arrived Patron will do: the derivation is a property of the model, not
+	# of one authored Patron.
+	var observed_patron: StringName = session.snapshot()["normal_patron_views"].keys()[0]
+	var observable: Dictionary = session.snapshot()["normal_patron_views"][observed_patron]
+	assert_eq(observable["mood"], "Content", "A calm Patron reports their Satisfaction band.")
+	assert_eq(observable["satisfaction_band"], "Content")
+
+	# Fear takes the word over once Suspicion reaches the Suspicious band, while
+	# the Satisfaction band underneath keeps reporting the meter unchanged.
+	for i: int in range(10):
+		session.report_patron_stimulus(observed_patron, &"cancelled_order")
+	observable = session.snapshot()["normal_patron_views"][observed_patron]
+	assert_true(
+		observable["mood"] in ["Wary", "Afraid", "Panicked"],
+		"A frightened Patron reports fear, not service: got %s." % observable["mood"]
+	)
+	assert_eq(
+		observable["satisfaction_band"], "Content",
+		"Suspicion never moves the Satisfaction meter."
+	)
+	assert_false(observable.has("suspicion"), "Normal play must not expose exact Suspicion.")
+
+
 func test_personal_suspicion_is_independent_and_hidden_behind_normal_bands() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	assert_true(session.report_patron_stimulus(&"patron_june", &"cancelled_order"))
 	assert_true(session.report_patron_stimulus(&"patron_june", &"cancelled_order"))
@@ -228,7 +282,7 @@ func test_soft_suspicion_recovers_only_after_quiet_period_at_approved_rate() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(181.1)
+	_advance_with_admissions(session, 100.0)
 	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 0, 5, 0, 0))
 	session.report_patron_stimulus(&"patron_elias", &"cancelled_order")
 	session.report_patron_stimulus(&"patron_elias", &"cancelled_order")
@@ -257,7 +311,7 @@ func test_hard_evidence_creates_permanent_maximum_suspicion_and_escape_response(
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	assert_true(session.report_patron_stimulus(&"patron_mara", &"drink_dosed_seen"))
 	var observed: Dictionary = session.snapshot()
@@ -276,7 +330,7 @@ func test_max_drunk_observer_converts_each_hard_evidence_event_to_recoverable_tw
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	assert_true(session.report_patron_stimulus(&"patron_june", &"knockout_witnessed", true))
 	var first: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
@@ -298,7 +352,7 @@ func test_approved_danger_and_missing_companion_causes_select_their_responses() 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	assert_true(session.report_patron_stimulus(&"patron_june", &"knockout_heard"))
 	var june: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
@@ -317,7 +371,7 @@ func test_auditory_danger_reaches_only_rooms_in_the_hearing_relationship() -> vo
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	var same_room: Array = session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_01")
 	assert_true(&"patron_june" in same_room, "Patrons in the source room hear the knockout.")
@@ -339,7 +393,7 @@ func test_visual_danger_requires_facing_and_same_room_line_of_sight() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	# The seated pair faces the bar counter at the origin; an event there is in
 	# front of them, in the same room, and within range.
@@ -369,7 +423,7 @@ func test_unattended_body_pressure_after_grace_stacks_globally_and_pauses_when_s
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	session.add_unattended_body(&"body_a", &"hallway", Vector2(14.0, 6.0))
 	session.add_unattended_body(&"body_b", &"main_hall", Vector2(0.0, 8.0))
@@ -400,7 +454,7 @@ func test_companion_influence_drifts_up_toward_highest_nearby_group_member() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 	assert_true(session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0))
 	assert_true(session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0))
 
@@ -435,7 +489,7 @@ func test_debug_view_identifies_perception_source_recipient_cause_and_timing() -
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
 	var state: Dictionary = session.snapshot()
@@ -454,14 +508,17 @@ func test_debug_view_identifies_perception_source_recipient_cause_and_timing() -
 	assert_eq(latest["recipient"], &"patron_june", "The trace names the recipient.")
 	assert_eq(latest["stimulus"], &"knockout_heard")
 	assert_eq(latest["cause"], &"general_danger", "The trace names the resulting cause.")
-	assert_almost_eq(float(latest["at"]), 100.0, 0.001, "The trace records recent timing.")
+	assert_almost_eq(
+		float(latest["at"]), float(state["simulated_seconds"]), 0.001,
+		"The trace records recent timing."
+	)
 
 
 func test_full_night_trapdoor_capture_creates_witness_and_companion_consequences() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(100.0)
+	_advance_with_admissions(session, 10.0)
 
 	# A standing occupant is captured by the Trapdoor pulse in the live Night.
 	assert_true(
@@ -485,7 +542,7 @@ func test_full_night_trapdoor_capture_creates_witness_and_companion_consequences
 	# A seated occupant is not captured; the pulse leaves Hard Evidence and the witness stays.
 	var witness_session = game_session_script.new()
 	witness_session.start_night(707)
-	witness_session.advance(100.0)
+	_advance_with_admissions(witness_session, 10.0)
 	assert_true(witness_session.debug_force_bathroom(&"patron_mara"))
 	# Reach the seated toilet phase: Mirror Check and the walk to the toilet precede it.
 	witness_session.advance(9.1)
@@ -506,7 +563,7 @@ func test_missing_companion_max_drives_investigation_while_proof_drives_escape()
 	# and a missing-Companion Maximum drives Investigation.
 	var missing_session = game_session_script.new()
 	missing_session.start_night(707)
-	missing_session.advance(100.0)
+	_advance_with_admissions(missing_session, 10.0)
 	assert_true(missing_session.debug_force_bathroom(&"patron_june"))
 	assert_true(missing_session.activate_trapdoor())
 	missing_session.advance(40.0)
@@ -520,7 +577,7 @@ func test_missing_companion_max_drives_investigation_while_proof_drives_escape()
 	# drives Escape rather than Investigation.
 	var proof_session = game_session_script.new()
 	proof_session.start_night(707)
-	proof_session.advance(200.0)
+	_advance_with_admissions(proof_session, 100.0)
 	assert_true(proof_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
 	proof_session.advance(0.2)
 	var elias: Dictionary = proof_session.snapshot()["debug_patron_views"][&"patron_elias"]
@@ -533,7 +590,7 @@ func test_escape_forces_single_speed_and_permits_one_five_second_intercept() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# Run at 4x, then trigger an Escape; Escape forces the Night back to 1x.
 	assert_true(session.set_time_scale(4.0))
@@ -566,8 +623,7 @@ func test_only_max_suspicion_front_exit_crossing_causes_immediate_defeat() -> vo
 	# Normal Departures. Crossing the exit at calm Suspicion never causes defeat.
 	var clean_session = game_session_script.new()
 	clean_session.start_night(707)
-	clean_session.set_time_scale(4.0)
-	clean_session.advance(300.0)
+	_complete_safe_night(clean_session)
 	var clean: Dictionary = clean_session.snapshot()
 	assert_eq(clean["phase"], &"results", "The clean Night reaches its results phase.")
 	assert_false(clean["defeat"], "Normal Departures across the front exit never cause defeat.")
@@ -577,7 +633,7 @@ func test_only_max_suspicion_front_exit_crossing_causes_immediate_defeat() -> vo
 	# A maximum-Suspicion escaper crossing the same exit causes immediate defeat.
 	var loss_session = game_session_script.new()
 	loss_session.start_night(707)
-	loss_session.advance(200.0)
+	_advance_with_admissions(loss_session, 100.0)
 	assert_true(loss_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
 	loss_session.advance(0.2)
 	assert_eq(loss_session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"escaping")
@@ -594,7 +650,7 @@ func test_physical_escape_does_not_resolve_before_the_front_exit_threshold() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 	session.set_physical_patron_navigation_enabled(true)
 	assert_true(session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
 	session.advance(2.1)
@@ -613,7 +669,7 @@ func test_night_starts_with_two_doses_and_drugged_drink_runs_consumer_countdown(
 	assert_eq(session.snapshot()["doses_remaining"], 2, "The Night begins with two doses.")
 
 	# Prepare a dose for Mara while her Order is open; the 8-second Action consumes a dose.
-	session.advance(95.0)
+	_advance_with_admissions(session, 10.0)
 	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"),
 		"A dose can be prepared against a Patron with an open Order.")
 	assert_eq(session.snapshot()["doses_remaining"], 2, "The dose is only spent when preparation completes.")
@@ -642,7 +698,7 @@ func test_collapse_assigns_least_intoxicated_conscious_companion_as_helper() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(95.0)
+	_advance_with_admissions(session, 10.0)
 	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"))
 	session.advance(8.1)
 	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
@@ -668,7 +724,7 @@ func _carry_session(game_session_script, helper_suspicion_stimulus: StringName, 
 	# Suspicion first (while still conscious) so the Rescue chance can be exercised.
 	var session = game_session_script.new()
 	session.start_night(night_seed)
-	session.advance(95.0)
+	_advance_with_admissions(session, 10.0)
 	if not helper_suspicion_stimulus.is_empty():
 		session.report_patron_stimulus(&"patron_june", helper_suspicion_stimulus)
 	session.prepare_drugged_drink(&"patron_mara", &"cultist_01")
@@ -738,7 +794,7 @@ func test_knockout_windup_is_interruptible_and_impact_is_the_commitment_point() 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)  # June, Mara, and solo Elias are seated and active.
+	_advance_with_admissions(session, 100.0)  # June, Mara, and solo Elias are seated and active.
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"], &"active")
 
 	# The wind-up is a committed Action in progress but not yet the Commitment Point.
@@ -763,16 +819,38 @@ func test_knockout_windup_is_interruptible_and_impact_is_the_commitment_point() 
 		"After impact there is no wind-up left to cancel; the knockout is committed.")
 
 
+func test_knockout_chance_tracks_intoxication_and_failure_harms_only_the_cultist() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var chance_session = game_session_script.new()
+	chance_session.start_night(707)
+	_advance_with_admissions(chance_session, 10.0)
+	for level in range(4):
+		chance_session.debug_set_patron_drink_state(&"patron_june", level, 5)
+		assert_eq(chance_session.knockout_chance(&"patron_june"), [40.0, 60.0, 80.0, 95.0][level])
+
+	var failed = null
+	for seed in range(1, 101):
+		var candidate = game_session_script.new()
+		candidate.start_night(seed)
+		_advance_with_admissions(candidate, 10.0)
+		candidate.debug_set_patron_drink_state(&"patron_june", 0, 5)
+		candidate.begin_knockout(&"cultist_01", &"patron_june")
+		candidate.advance(2.1)
+		if candidate.cultist_is_incapacitated(&"cultist_01"):
+			failed = candidate
+			break
+	assert_not_null(failed)
+	var state: Dictionary = failed.snapshot()
+	assert_eq(state["debug_patron_views"][&"patron_june"]["lifecycle"], &"escaping")
+	assert_eq(float(state["debug_patron_views"][&"patron_june"]["suspicion"]), 100.0)
+	assert_almost_eq(float(state["incapacitated_cultists"][&"cultist_01"]), 59.9, 0.11)
+
+
 func test_knockout_visual_witnesses_get_hard_evidence_and_hearing_only_get_soft() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	for checkpoint in [100.0, 220.0, 340.0, 460.0]:
-		session.advance(checkpoint - float(session.snapshot()["simulated_seconds"]))
-		for patron_id: StringName in session.snapshot()["debug_patron_views"]:
-			if session.snapshot()["debug_patron_views"][patron_id]["lifecycle"] == &"active":
-				session.debug_set_patron_drink_state(patron_id, 0, 5, 0, 0)
-	session.advance(10.0)  # The full cast is seated in the main hall, all facing the bar.
+	_advance_with_admissions(session, 10.0)
 
 	# Knock out Mara: her neighbour June has her in line of sight, while the far-side
 	# Patrons are in the same room but beyond view range, so they only hear it.
@@ -785,17 +863,46 @@ func test_knockout_visual_witnesses_get_hard_evidence_and_hearing_only_get_soft(
 	assert_eq(seer["suspicion_cause"], &"hard_evidence")
 	assert_false(seer["suspicion_recoverable"], "Hard Evidence is permanent maximum Suspicion.")
 
-	var hearer: Dictionary = views[&"patron_clara"]
+	var hearing_session = game_session_script.new()
+	hearing_session.start_night(707)
+	_advance_with_admissions(hearing_session, 10.0)
+	hearing_session.report_danger_event(
+		&"knockout_heard", &"auditory", &"hallway", &"cultist_01"
+	)
+	var hearer: Dictionary = hearing_session.snapshot()["debug_patron_views"][&"patron_june"]
 	assert_eq(float(hearer["suspicion"]), 25.0, "A hearing-only witness receives the +25 soft increase.")
 	assert_eq(hearer["suspicion_cause"], &"general_danger")
 	assert_true(hearer["suspicion_recoverable"], "The soft hearing increase is recoverable.")
+
+
+func test_hearing_only_patrons_make_independent_seeded_notice_checks() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var noticed_values: Dictionary = {}
+	var outcomes: Dictionary = {}
+	for seed in range(1, 31):
+		var session = game_session_script.new()
+		session.start_night(seed)
+		_advance_with_admissions(session, 220.0)
+		assert_true(session.begin_knockout(&"cultist_01", &"patron_ruth"))
+		session.advance(2.1)
+		for event: Dictionary in session.snapshot()["visit_events"]:
+			if event["event"] == &"knockout_hearing_check":
+				noticed_values[bool(event["details"]["noticed"])] = true
+			elif event["event"] in [&"knockout", &"knockout_failed"]:
+				outcomes[event["event"]] = true
+		if noticed_values.size() == 2 and outcomes.size() == 2:
+			break
+	assert_true(noticed_values.has(true), "At least one hearing-only Patron notices an attempt.")
+	assert_true(noticed_values.has(false), "At least one hearing-only Patron misses an attempt.")
+	assert_true(outcomes.has(&"knockout"), "The hearing checks also run for a successful attempt.")
+	assert_true(outcomes.has(&"knockout_failed"), "The hearing checks also run for a failed attempt.")
 
 
 func test_dragging_occupies_the_cultist_and_can_always_be_interrupted_by_dropping() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# Knock out solo Elias, then pick up and begin dragging his unconscious body.
 	assert_true(session.begin_knockout(&"cultist_01", &"patron_elias"))
@@ -828,7 +935,7 @@ func test_dropping_restarts_unattended_pressure_and_intake_crossing_captures_onc
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# Isolate solo Elias in the bathroom and knock him out there: the main hall neither
 	# sees nor hears it, so main-hall June is a clean pressure gauge that starts at zero.
@@ -872,15 +979,14 @@ func test_overdrink_drag_uses_half_suspicion_and_exit_crossing_adds_twenty_five(
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(1.1)
+	_advance_with_admissions(session, 10.0)
 	session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
 	session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
-	session.advance(180.0)
-	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 3, 1, 0, 3))
-	assert_true(session.debug_force_finish_drink(&"patron_elias"))
+	assert_true(session.debug_set_patron_drink_state(&"patron_mara", 3, 1, 0, 3))
+	assert_true(session.debug_force_finish_drink(&"patron_mara"))
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 0.0)
 
-	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_mara"))
 	session.advance(1.1)
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 25.0,
 		"The first seen Overdrink drag increase is half the normal +50.")
@@ -897,24 +1003,36 @@ func test_overdrink_drag_uses_half_suspicion_and_exit_crossing_adds_twenty_five(
 		"A seen crossing of the door labelled Exit adds +25 Suspicion."
 	)
 	assert_eq(after_exit["capture_log"][-1]["cause"], &"overdrink")
+	var witness: Dictionary = after_exit["debug_patron_views"][&"patron_june"]
+	assert_eq(witness["latest_suspicion_stimulus"], &"body_intake_seen")
+	assert_eq(witness["suspicion_cause"], &"general_danger",
+		"Seeing the body cross the Exit is soft evidence, not Hard Evidence.")
+	var perception_count: int = witness["recent_perceptions"].size()
+	var suspicion_after_capture := float(witness["suspicion"])
+	session.advance(10.0)
+	var later: Dictionary = session.snapshot()["debug_patron_views"][&"patron_june"]
+	assert_eq(later["recent_perceptions"].size(), perception_count,
+		"A captured body creates no later perception event.")
+	assert_eq(float(later["suspicion"]), suspicion_after_capture)
+	assert_eq(int(after_exit["results"]["capture_methods"].get(&"overdrink", 0)), 1,
+		"The causal Overdrink method reaches the result projection.")
 
 
 func test_dropped_overdrink_body_keeps_mood_record_without_body_suspicion() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(1.1)
+	_advance_with_admissions(session, 10.0)
 	session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
 	session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
-	session.advance(180.0)
-	assert_true(session.debug_set_patron_drink_state(&"patron_elias", 3, 1, 0, 3))
-	assert_true(session.debug_force_finish_drink(&"patron_elias"))
+	assert_true(session.debug_set_patron_drink_state(&"patron_mara", 3, 1, 0, 3))
+	assert_true(session.debug_force_finish_drink(&"patron_mara"))
 
-	assert_true(session.pick_up_body(&"cultist_01", &"patron_elias"))
-	assert_eq(session.snapshot()["collapses"][&"patron_elias"]["phase"], &"cultist_dragged")
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_mara"))
+	assert_eq(session.snapshot()["collapses"][&"patron_mara"]["phase"], &"cultist_dragged")
 	assert_true(session.drop_body(&"cultist_01"))
 	var dropped: Dictionary = session.snapshot()
-	assert_eq(dropped["collapses"][&"patron_elias"]["phase"], &"unattended")
+	assert_eq(dropped["collapses"][&"patron_mara"]["phase"], &"unattended")
 	session.advance(10.0)
 	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"], 0.0,
 		"An overdrink body never becomes normal Unattended Body pressure after a drop.")
@@ -924,7 +1042,7 @@ func test_friendship_is_stored_per_cultist_banded_and_does_not_decay() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	assert_almost_eq(session.friendship_value(&"patron_elias", &"cultist_01"), 0.0, 0.001)
 	assert_eq(session.friendship_band(&"patron_elias", &"cultist_01"), "Stranger")
@@ -954,7 +1072,7 @@ func test_sad_patron_follows_deterministically_only_at_trusted() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# Below Trusted the receptive Patron does not follow.
 	assert_false(session.begin_friendship_capture(&"cultist_01", &"patron_elias"),
@@ -988,7 +1106,7 @@ func test_departure_anchor_leaves_and_others_roll_stay_independently_once() -> v
 	# The anchor always leaves; the other member rolls once. Seed 707 rolls a leave for Mara.
 	var leave_session = game_session_script.new()
 	leave_session.start_night(707)
-	leave_session.advance(1.1)
+	_advance_with_admissions(leave_session, 10.0)
 	leave_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
 	leave_session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
 	leave_session.advance(698.9)  # past June & Mara's pre-closing departure
@@ -1001,7 +1119,7 @@ func test_departure_anchor_leaves_and_others_roll_stay_independently_once() -> v
 	# Seed 13 with a boosted stay chance rolls a stay: Mara becomes a solo Patron.
 	var stay_session = game_session_script.new()
 	stay_session.start_night(13)
-	stay_session.advance(1.1)
+	_advance_with_admissions(stay_session, 10.0)
 	stay_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
 	stay_session.debug_set_patron_drink_state(&"patron_mara", 0, 5, 0, 0)
 	for _i in range(10):
@@ -1024,7 +1142,7 @@ func test_stay_chance_uses_bartender_friendship_intoxication_and_suspicion() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(181.1)
+	_advance_with_admissions(session, 100.0)
 	assert_true(session.serve_patron_order(&"patron_elias", &"cultist_01"))
 	session.advance(30.1)
 	var current_intoxication: int = session.snapshot()["debug_patron_views"][&"patron_elias"]["intoxication_level"]
@@ -1061,7 +1179,7 @@ func test_stay_chance_uses_bartender_friendship_intoxication_and_suspicion() -> 
 func _drive_all_four_routes(session) -> void:
 	session.start_night(707)
 	# Trapdoor June, then knock out and drag Mara — pair_01 fully removed.
-	session.advance(110.0)
+	_advance_with_admissions(session, 10.0)
 	session.debug_force_bathroom(&"patron_june")
 	session.activate_trapdoor()
 	session.debug_force_bathroom(&"patron_mara")
@@ -1071,13 +1189,13 @@ func _drive_all_four_routes(session) -> void:
 	session.pick_up_body(&"cultist_01", &"patron_mara")
 	session.advance(15.2)
 	# Friendship-Capture solo Elias.
-	session.advance(200.0 - float(session.snapshot()["simulated_seconds"]))
+	_advance_with_admissions(session, 100.0)
 	for _i in range(8):
 		session.offer_cigarette(&"cultist_01", &"patron_elias")
 	session.begin_friendship_capture(&"cultist_01", &"patron_elias")
 	session.advance(14.2)
 	# Drugged Drink into a near-certain Helper Rescue — pair_02 fully removed.
-	session.advance(421.0 - float(session.snapshot()["simulated_seconds"]))
+	_advance_with_admissions(session, 340.0)
 	for _j in range(20):
 		session.offer_cigarette(&"cultist_02", &"patron_clara")
 	session.prepare_drugged_drink(&"patron_vincent", &"cultist_02")
@@ -1102,6 +1220,12 @@ func test_all_four_capture_routes_complete_in_one_night_without_autonomy() -> vo
 	assert_true(causes.has(&"knockout"), "The manual knockout route completed.")
 	assert_true(causes.has(&"friendship_capture"), "The Friendship route completed.")
 	assert_true(causes.has(&"rescue_persuasion"), "The Drugged Drink / Helper route completed.")
+	var methods: Dictionary = state["results"]["capture_methods"]
+	assert_eq(int(methods.get(&"trapdoor", 0)), 1)
+	assert_eq(int(methods.get(&"knockout", 0)), 1)
+	assert_eq(int(methods.get(&"friendship_capture", 0)), 1)
+	assert_eq(int(methods.get(&"rescue_persuasion", 0)), 2,
+		"Rescue Persuasion records both captured Patrons by their causal method.")
 	assert_eq(state["safe_autonomy"]["capture_actions_started"], 0,
 		"Safe autonomy never starts a Capture Action.")
 	assert_gte(state["captures"], 4, "Every route contributed at least one Capture.")
@@ -1118,26 +1242,28 @@ func test_outcomes_success_failed_operation_and_immediate_defeat() -> void:
 	assert_eq(won["phase"], &"results")
 	assert_gte(won["captures"], 3)
 	assert_eq(won["outcome"], &"success", "Quota met plus a safe Closing yields success.")
+	assert_eq(won["results"]["outcome_cause"], &"quota_met")
 
 	# A clean Night short of the quota is a failed operation.
 	var clean = game_session_script.new()
 	clean.start_night(707)
-	clean.set_time_scale(4.0)
-	clean.advance(300.0)
+	_complete_safe_night(clean)
 	var clean_state: Dictionary = clean.snapshot()
 	assert_eq(clean_state["phase"], &"results")
 	assert_lt(clean_state["captures"], 3)
 	assert_eq(clean_state["outcome"], &"failed_operation", "Fewer than three Captures is a failed operation.")
+	assert_eq(clean_state["results"]["outcome_cause"], &"quota_shortfall")
 
 	# A maximum-Suspicion Patron crossing the front exit is an immediate defeat.
 	var loss = game_session_script.new()
 	loss.start_night(707)
-	loss.advance(200.0)
+	_advance_with_admissions(loss, 100.0)
 	loss.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
 	loss.advance(0.2)
 	loss.advance(10.0)
 	var loss_state: Dictionary = loss.snapshot()
 	assert_eq(loss_state["outcome"], &"defeat", "A maximum-Suspicion exit is immediate defeat.")
+	assert_eq(loss_state["results"]["outcome_cause"], &"maximum_suspicion_escape")
 	assert_eq(loss_state["phase"], &"results")
 
 
@@ -1145,7 +1271,7 @@ func test_results_report_all_required_metrics() -> void:
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# A knockout with the body left unattended for a while, then dragged to Capture.
 	session.debug_force_bathroom(&"patron_elias")
@@ -1177,7 +1303,7 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	var game_session_script := load(GAME_SESSION_PATH)
 	var session = game_session_script.new()
 	session.start_night(707)
-	session.advance(200.0)
+	_advance_with_admissions(session, 100.0)
 
 	# Normal views carry the observable urgent intention but never hidden normal-play data.
 	var view: Dictionary = session.snapshot()["normal_patron_views"][&"patron_june"]
@@ -1204,7 +1330,7 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	assert_almost_eq(float(alerted["rescue_odds"]), -1.0, 0.001, "No carry means no Rescue odds.")
 	var carry = game_session_script.new()
 	carry.start_night(707)
-	carry.advance(95.0)
+	_advance_with_admissions(carry, 10.0)
 	carry.prepare_drugged_drink(&"patron_mara", &"cultist_01")
 	carry.advance(8.1)
 	carry.serve_patron_order(&"patron_mara", &"cultist_02")
@@ -1217,3 +1343,120 @@ func test_readable_info_is_exposed_without_leaking_hidden_normal_play_data() -> 
 	# The selected-Cultist Action Queue lives in the command seam, not the session.
 	assert_false(session.snapshot().has("cultist_queues"),
 		"GameSession no longer holds a second Action Queue authority.")
+
+
+# --- Live-review remediation: results data contract ---------------------------
+
+func test_a_dragged_drugged_drink_body_keeps_its_method_at_the_tunnel_intake() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	_advance_with_admissions(session, 10.0)
+
+	# Dose Mara, serve it, and let the 20-second countdown collapse her.
+	assert_true(session.prepare_drugged_drink(&"patron_mara", &"cultist_01"))
+	session.advance(8.1)
+	assert_true(session.serve_patron_order(&"patron_mara", &"cultist_02"))
+	# Step to the collapse and pick her up at once, before a Companion reacts.
+	var collapsed := false
+	for _i in range(120):
+		if session.snapshot()["debug_patron_views"][&"patron_mara"]["lifecycle"] == &"unconscious":
+			collapsed = true
+			break
+		session.advance(0.25)
+	assert_true(collapsed, "The drugged Patron collapses within the countdown.")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_mara"]["collapse_cause"], &"drugged_drink")
+
+	# Drag the drugged body to the Tunnel Intake before a Companion can react.
+	assert_true(session.pick_up_body(&"cultist_01", &"patron_mara"))
+	session.advance(1.05 + 14.0 + 0.1)  # pickup plus the full drag to the intake
+	var captured: Dictionary = session.snapshot()
+	assert_eq(captured["debug_patron_views"][&"patron_mara"]["lifecycle"], &"captured")
+	assert_eq(captured["capture_log"][-1]["cause"], &"drugged_drink",
+		"A dragged Drugged Drink body is a Drugged Drink capture, not a Knockout.")
+	assert_eq(int(captured["results"]["capture_methods"].get(&"drugged_drink", 0)), 1)
+	assert_false(captured["results"]["capture_methods"].has(&"knockout"),
+		"No Knockout method is recorded for a drugged capture.")
+
+
+func test_order_totals_are_exclusive_with_missed_meaning_failed_service() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	_advance_with_admissions(session, 10.0)
+
+	# Collect the seated Patrons who are waiting on an Order.
+	var awaiting: Array[StringName] = []
+	var views: Dictionary = session.snapshot()["debug_patron_views"]
+	for patron_id: StringName in views:
+		if views[patron_id]["activity"] == &"awaiting_drink":
+			awaiting.append(patron_id)
+	assert_gte(awaiting.size(), 2, "Seated Patrons are waiting on Orders at the door.")
+
+	# A knockout cancels its victim's open Order with a non-failure reason.
+	assert_true(session.begin_knockout(&"cultist_01", awaiting[0]))
+	assert_true(session.serve_patron_order(awaiting[1], &"cultist_02"),
+		"A second Cultist serves the companion's open Order during the wind-up.")
+	session.advance(2.05)
+	assert_eq(session.snapshot()["debug_patron_views"][awaiting[0]]["lifecycle"], &"unconscious")
+
+	# Admit the remaining groups and leave their Orders open so at least one misses.
+	# This gives the report one result in each terminal Order category.
+	_advance_with_admissions(session, 400.0)
+	session.advance(1000.0 - float(session.snapshot()["simulated_seconds"]))
+
+	var orders: Dictionary = session.snapshot()["orders"]
+	var served := 0
+	var missed := 0
+	var cancelled := 0
+	var terminal := 0
+	for order_id: StringName in orders["all"]:
+		var order: Dictionary = orders["all"][order_id]
+		if order["state"] != &"open":
+			terminal += 1
+		match order["state"]:
+			&"served":
+				served += 1
+			&"cancelled":
+				if order["terminal_reason"] == &"failed_service":
+					missed += 1
+				else:
+					cancelled += 1
+	assert_eq(orders["served_count"], served)
+	assert_eq(orders["missed_count"], missed)
+	assert_eq(orders["cancelled_count"], cancelled)
+	assert_gt(served, 0, "At least one Order was served.")
+	assert_gt(missed, 0, "At least one Order failed its service window.")
+	assert_gt(cancelled, 0, "The knockout produced a non-failure cancellation.")
+	assert_eq(served + missed + cancelled, terminal,
+		"Every terminal Order counts once toward served, missed, or cancelled.")
+
+	var results: Dictionary = session.snapshot()["results"]
+	assert_eq(results["orders_served"], served)
+	assert_eq(results["orders_missed"], missed)
+	assert_eq(results["orders_cancelled"], cancelled)
+
+
+func test_results_project_the_capture_method_and_public_suspicion_band() -> void:
+	var game_session_script := load(GAME_SESSION_PATH)
+	var session = game_session_script.new()
+	session.start_night(707)
+	_advance_with_admissions(session, 100.0)
+
+	# One Friendship Capture becomes a nonzero causal method total.
+	for _i in range(8):
+		session.offer_cigarette(&"cultist_01", &"patron_elias")
+	assert_true(session.begin_friendship_capture(&"cultist_01", &"patron_elias"))
+	session.advance(14.1)
+
+	# A single Body Drag sighting lifts one Patron to a known Suspicion score.
+	session.report_patron_stimulus(&"patron_june", &"body_drag_seen_first")
+	session.advance(0.2)
+
+	var results: Dictionary = session.snapshot()["results"]
+	assert_eq(int(results["capture_methods"].get(&"friendship_capture", 0)), 1)
+	assert_almost_eq(float(results["peak_suspicion"]), 50.0, 0.001,
+		"The exact peak Suspicion stays available for debug and evaluation.")
+	assert_eq(results["peak_suspicion_band"], PatronSuspicion.band_for_score(50.0))
+	assert_eq(results["peak_suspicion_band"], "Suspicious",
+		"The public band summarizes the peak without exposing the exact value.")

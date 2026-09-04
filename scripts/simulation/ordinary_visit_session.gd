@@ -679,7 +679,13 @@ func normal_patron_view(
 		"interactive": not bool(patron.get("missed_admission", false)),
 		"name": patron["name"] if patron["identified"] else "???",
 		"visible_activity": _visible_activity(_activity(patron)),
-		"mood": _satisfaction[patron_id].band(),
+		# Mood is the derived word; the two bands beneath it are its inputs. The
+		# prototype shows all three so the derivation can be judged against what
+		# fed it. The settled design shows Mood alone.
+		"mood": PatronMood.label(
+			_satisfaction[patron_id].value(), float(suspicion.snapshot()["score"])
+		),
+		"satisfaction_band": _satisfaction[patron_id].band(),
 		"suspicion_band": suspicion.normal_band(),
 		"suspicion_cue": suspicion.normal_cue(),
 		"intoxication": _intoxication_label(patron["intoxication"]),
@@ -730,7 +736,9 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 		"events": _patron_public_emote_events(patron_id),
 		"public": {
 			"activity": view["visible_activity"],
-			"mood": view["mood"],
+			# Service reactions step through the Satisfaction bands. The derived
+			# Mood word is not a ladder, so it cannot drive a step comparison.
+			"satisfaction": view["satisfaction_band"],
 			"danger": view["suspicion_band"],
 			"rapport": view["friendship"],
 			"order": String(view["order_state"]),
