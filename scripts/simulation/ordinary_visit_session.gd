@@ -193,41 +193,49 @@ const FULL_NIGHT_GROUP_DEFINITIONS: Array[Dictionary] = [
 const FULL_NIGHT_PATRON_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": &"patron_june", "name": "June", "group_id": &"arrival_group_pair_01",
+		"seed_key": &"patron_june",
 		"companions": [&"patron_mara"], "bladder_gain": 75.0, "service_delay": 9.0,
 		"victim_value": "Ordinary", "victim_risk": "Low",
 	},
 	{
 		"id": &"patron_mara", "name": "Mara", "group_id": &"arrival_group_pair_01",
+		"seed_key": &"patron_mara",
 		"companions": [&"patron_june"], "bladder_gain": 45.0, "service_delay": 13.0,
 		"victim_value": "Ordinary", "victim_risk": "Low",
 	},
 	{
 		"id": &"patron_elias", "name": "Elias", "group_id": &"arrival_group_solo_01",
+		"seed_key": &"patron_elias",
 		"companions": [], "bladder_gain": 60.0, "service_delay": 10.0,
 		"victim_value": "Promising", "victim_risk": "Low", "friendship_capturable": true,
 	},
 	{
 		"id": &"patron_ruth", "name": "Ruth", "group_id": &"arrival_group_trio_01",
+		"seed_key": &"patron_ruth",
 		"companions": [&"patron_walter", &"patron_nell"], "bladder_gain": 55.0,
 		"service_delay": 9.0, "victim_value": "Ordinary", "victim_risk": "Medium",
 	},
 	{
 		"id": &"patron_walter", "name": "Walter", "group_id": &"arrival_group_trio_01",
+		"seed_key": &"patron_walter",
 		"companions": [&"patron_ruth", &"patron_nell"], "bladder_gain": 70.0,
 		"service_delay": 12.0, "victim_value": "Ordinary", "victim_risk": "Medium",
 	},
 	{
 		"id": &"patron_nell", "name": "Nell", "group_id": &"arrival_group_trio_01",
+		"seed_key": &"patron_nell",
 		"companions": [&"patron_ruth", &"patron_walter"], "bladder_gain": 40.0,
 		"service_delay": 15.0, "victim_value": "Ordinary", "victim_risk": "Medium",
 	},
 	{
 		"id": &"patron_vincent", "name": "Vincent", "group_id": &"arrival_group_pair_02",
+		"seed_key": &"patron_vincent",
 		"companions": [&"patron_clara"], "bladder_gain": 65.0, "service_delay": 11.0,
 		"victim_value": "Ordinary", "victim_risk": "Low",
 	},
 	{
 		"id": &"patron_clara", "name": "Clara", "group_id": &"arrival_group_pair_02",
+		"seed_key": &"patron_clara",
 		"companions": [&"patron_vincent"], "bladder_gain": 50.0, "service_delay": 14.0,
 		"victim_value": "Ordinary", "victim_risk": "Low",
 	},
@@ -1046,10 +1054,12 @@ static func bathroom_probability(bladder: float) -> float:
 func _initialize_legacy_pair() -> void:
 	_patrons = {
 		&"patron_june": _new_patron(
-			&"patron_june", "June", GROUP_ID, [&"patron_mara"], 75.0, 9.0, &"active"
+			&"patron_june", "June", GROUP_ID, [&"patron_mara"], 75.0, 9.0, &"active",
+			"Ordinary", "Low", false, &"patron_june"
 		),
 		&"patron_mara": _new_patron(
-			&"patron_mara", "Mara", GROUP_ID, [&"patron_june"], 45.0, 13.0, &"active"
+			&"patron_mara", "Mara", GROUP_ID, [&"patron_june"], 45.0, 13.0, &"active",
+			"Ordinary", "Low", false, &"patron_mara"
 		),
 	}
 	_groups[GROUP_ID] = {
@@ -1083,7 +1093,8 @@ func _initialize_full_night_cast() -> void:
 			&"not_arrived",
 			definition["victim_value"],
 			definition["victim_risk"],
-			definition.get("friendship_capturable", false)
+			definition.get("friendship_capturable", false),
+			definition.get("seed_key", patron_id)
 		)
 	for definition in FULL_NIGHT_GROUP_DEFINITIONS:
 		var group_id: StringName = definition["id"]
@@ -1113,10 +1124,16 @@ func _new_patron(
 		lifecycle: StringName,
 		victim_value: String = "Ordinary",
 		victim_risk: String = "Low",
-		friendship_capturable: bool = false
+		friendship_capturable: bool = false,
+		seed_key: StringName = &""
 ) -> Dictionary:
 	var patron_rng := RandomNumberGenerator.new()
-	patron_rng.seed = hash("%d:%s:patron" % [_seed, id])
+	# Seeded rolls hang off an authored content key, never off identity, so that
+	# renaming or renumbering a Patron cannot silently reroll their Night. A
+	# roster entry without one falls back to its id.
+	patron_rng.seed = hash(
+		"%d:%s:patron" % [_seed, seed_key if not seed_key.is_empty() else id]
+	)
 	_patron_rngs[id] = patron_rng
 	var ideal_intoxication := clampi(int(round(patron_rng.randfn(2.0, 0.6))), 0, 3)
 	return {
