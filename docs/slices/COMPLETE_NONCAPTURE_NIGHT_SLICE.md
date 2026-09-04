@@ -11,7 +11,7 @@ Ticket #8 expands the ordinary Patron visit into one complete, restartable Night
 - Preparation, Active operation, Closing, and failed-operation results for a zero-Capture Night
 - a clean second Night with a fresh seed and no retained actors, drinks, Actions, reservations, internal timers, events, or results
 
-The remaining Patron names introduced for the fixed cast are Elias, Ruth, Walter, Nell, Vincent, and Clara. Elias is the authored sad solo Patron reserved for the later Friendship Capture ticket.
+The remaining Patron names introduced for the fixed cast are Elias, Ruth, Walter, Nell, Vincent, and Clara. Elias is the authored solo Patron whose Desire counts as satisfied, reserved for the later Friendship Capture ticket.
 
 ## Deliberately excluded
 

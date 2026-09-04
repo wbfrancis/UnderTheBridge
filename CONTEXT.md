@@ -8,6 +8,10 @@ This glossary defines the gameplay language for the prototype. It keeps design, 
 A player-commanded worker who can serve patrons and perform capture actions.
 _Avoid_: Employee, unit, character
 
+**Incapacitated Cultist**:
+A Cultist temporarily unable to act after a failed Knock Out Action. The Action Queue shows this state as `Knocked Out`.
+_Avoid_: Unconscious Patron, disabled Cultist
+
 **Patron**:
 A non-player guest who drinks, socializes, develops suspicion, and may become a victim.
 _Avoid_: Customer, civilian, NPC
@@ -43,7 +47,7 @@ The limited set of personal facts shown for an Identified Patron. Before identif
 _Avoid_: Character sheet, NPC data
 
 **Observable Status**:
-The visible current condition of a Patron, including activity, mood, Suspicion band, Intoxication, Order state, and player-created drug state.
+The visible current condition of a Patron, including activity, Mood, Intoxication, Order state, and player-created drug state. Mood is the only word shown for state of mind; the Suspicion band is not displayed beside it during play.
 _Avoid_: Patron Profile, hidden state
 
 **Emote Bubble**:
@@ -62,6 +66,14 @@ _Avoid_: Tooltip, summary menu
 The persistent detailed view of an Inspected Patron. It stays open until the player closes or replaces it, or the Patron leaves play.
 _Avoid_: Full info menu, character sheet
 
+**Modifier Tooltip**:
+The hover breakdown of a shown percentage, such as a fleeing Patron's Knock Out chance. It lists a neutral Base, then each named modifier with a green plus for an increase or a red minus for a decrease, then the Total.
+_Avoid_: Formula popup, stat tooltip
+
+**Unknown Modifier**:
+A Modifier Tooltip line whose cause is a Trait the Cultists have not yet learned. It shows a neutral grey `???` in place of the name and value, so the player cannot tell whether it helps or hurts, and forces the Total to show `???` as well, until that Trait becomes known.
+_Avoid_: Hidden modifier, question marks
+
 **Selected Cultist**:
 The Cultist who receives player commands and supplies Cultist-specific relationship context. Inspecting a Patron does not change the Selected Cultist.
 _Avoid_: Active Cultist, focused unit
@@ -73,23 +85,35 @@ _Avoid_: Selected Patron, targeted Patron
 ## Service and needs
 
 **Order**:
-A patron's request for one generic drink, represented from request through delivery or cancellation.
+A Patron's request for Wine, Beer, or Liquor, represented from request through delivery or cancellation.
 _Avoid_: Ticket when referring to the whole gameplay concept
 
 **Mood**:
-A Patron's 0-100 measure of satisfaction during the Night, shown as Miserable, Unhappy, Content, or Happy. Mood changes tips, and a Patron at zero makes a Normal Departure.
-_Avoid_: Happiness, morale, patience
+A Patron's state of mind as one word, derived on demand and never stored. Mood reports the Satisfaction band — Miserable, Unhappy, Content, or Happy — until Suspicion reaches the Suspicious band, and then reports Wary, Afraid, or Panicked for the Suspicious, Alarmed, and Maximum Suspicion bands. Mood is a read-out that owns no value of its own and never decides behavior: Escape, Investigation, tips, and Normal Departure all read the meter beneath it.
+_Avoid_: Happiness, morale, patience, Mood meter, Mood value
+
+**Satisfaction**:
+A Patron's hidden 0-100 measure of how well the Night is treating them, starting at 75 before Traits shift it. Prompt service, a correct drink, a clean room, conversation, and a cigarette raise it; a failed Order, a wrong drink, Sighted Grime, and a witnessed collapse lower it. Satisfaction decays slowly while nothing sustains it, stopping at the Unhappy band; only a service failure carries it below that floor. Satisfaction sets the tip multiplier, and a Patron at zero makes a Normal Departure.
+_Avoid_: Mood, Fun, happiness, morale
+
+**Satisfaction Modifier**:
+One named, duration-bearing contribution to a Patron's Satisfaction, such as the Smoking bump or the pressure of Sighted Grime. A modifier applies continuously while it lasts, and Satisfaction does not decay while a positive one is active. A repeat from the same source refreshes its duration instead of adding a second copy, except where a source is defined to scale a single modifier by magnitude, as a Grime cluster does.
+_Avoid_: Moodlet, buff, status effect
 
 **Prepared Drink**:
-A physical drink waiting at the bar or being carried to a patron.
+A Wine, Beer, or Liquor drink that waits in one of three bar spaces or travels with its assigned Cultist.
 _Avoid_: Inventory item
 
 **Drugged Drink**:
-A specially prepared drink that makes its consumer drowsy and then unconscious on a predictable countdown.
+A Prepared Drink with a drug dose that makes its consumer drowsy and then unconscious on a predictable countdown.
 _Avoid_: Poison
 
+**Drink Service**:
+The player-selected delivery of one Prepared Drink to one Patron, with or without a matching Order.
+_Avoid_: Serve Order, automatic service
+
 **Bladder**:
-A patron need increased by drinking that creates a rising chance of choosing a bathroom trip once at least half full.
+A patron need increased by drinking that creates a rising chance of choosing a bathroom trip once at least half full. A Patron whose Bladder stays full for sixty seconds soils itself where it stands, dropping a Grime patch and resetting the Bladder to zero.
 _Avoid_: Bathroom meter
 
 **Bathroom Line**:
@@ -129,8 +153,51 @@ A hidden per-Patron threshold of one through five Excess Drinks. Reaching it cau
 _Avoid_: Alcohol tolerance, knockout roll
 
 **Overdrink Collapse**:
-The unconscious state caused when a Patron reaches their Overdrink Limit. Patrons in the same room lose Mood instead of gaining Suspicion from the collapse or unattended body.
+The unconscious state caused when a Patron reaches their Overdrink Limit. Patrons in the same room lose Satisfaction instead of gaining Suspicion from the collapse or unattended body.
 _Avoid_: Drugged collapse, passing out roll
+
+## Cleanliness
+
+**Grime**:
+A patch of dirt on any Cultist-reachable surface — floor, table, or bar — left by Patron use. Each patch has a size that grows with use and sets its clean time, from a two-second minimum to a thirty-second maximum. Patches near one another in a room read as a cluster that scales one Satisfaction Modifier rather than applying several. Players judge size through modest footprint growth and denser, darker residue; clean-time numbers are not shown. The Trapdoor neither makes nor clears Grime.
+_Avoid_: Dirt, mess, stain
+
+**Grime Inspection**:
+A view associated with an Inspected Patron that marks every patch of Sighted Grime with slightly pulsing brass outlines, regardless of its Satisfaction effect or the Patron's Traits. It has no separate panel, severity bar, threshold labels, or clean-time numbers.
+_Avoid_: Global cleanliness meter, room dirt score
+
+**Sighted Grime**:
+Grime whose patch center is in the Patron's room, within five horizontal meters, and inside the Patron's facing cone, including the boundaries. Sight counts the whole patch or none of it; floor and tabletop patches follow the same rule without looking down or furniture blocking sight.
+_Avoid_: Nearby Grime, room-wide Grime
+
+**Ruined Bathroom**:
+The state a Max Drunk Patron can cause during Seated Bathroom Use: one large Grime patch that blocks new Bathroom Visits until a Cultist cleans it.
+_Avoid_: Broken bathroom, clogged toilet
+
+## Traits
+
+**Trait**:
+A named, per-Night characteristic of a Patron that shifts a gameplay value or behavior. A Patron holds one Drink Preference plus one or two other Traits, with no contradictory pair. Traits are Patron Profile facts, hidden until the Patron is Identified, but their effects stay active while hidden. A single Trait can also become known before full identification when the Patron reveals it through behavior, such as refusing a Cigarette.
+_Avoid_: Perk, tag, personality
+
+**Drink Preference**:
+The single Trait naming a Patron's preferred Order type — Wine, Beer, or Liquor. Serving the other type still pays base price but halves the Satisfaction-based tip.
+_Avoid_: Favorite drink, taste
+
+Catalog (values settled separately):
+- **Weak** / **Strong**: easier / harder Knock Out (mutually exclusive).
+- **Hollow Leg**: high Overdrink Limit, slow Intoxication.
+- **Lush** / **Lightweight**: high vs low Ideal Intoxication and drink capacity (mutually exclusive).
+- **Nurser**: finishes drinks slowly.
+- **Wine Drinker** / **Beer Drinker** / **Whiskey Drinker**: the three Drink Preferences.
+- **Paranoid** / **Trusting**: faster vs slower Suspicion, and harder vs easier Friendship Capture (mutually exclusive).
+- **Nosy**: more likely to Investigate; notices Knock Out attempts more.
+- **Oblivious**: notices less; reacts slowly to Hard Evidence.
+- **Germaphobe**: extra Grime Satisfaction penalty; reacts to small patches.
+- **Slob**: makes more Grime; immune to Grime Satisfaction penalty.
+- **Big Tipper** / **Tightwad**: higher vs lower tips (mutually exclusive).
+- **Sociable** / **Grouch**: higher vs lower starting Satisfaction; a Grouch gains no Satisfaction from Talk unless already Happy (mutually exclusive).
+- **Non-Smoker**: refuses a Cigarette and takes a minor Satisfaction penalty when offered one; the refusal reveals this Trait.
 
 ## Danger and capture
 
@@ -178,18 +245,22 @@ _Avoid_: Trapdoor
 A chance-based attempt to convince a Helper to carry their collapsed companion through the Tunnel Intake.
 _Avoid_: Friendship capture
 
+**Desire**:
+The single thing a Patron wants from the Night — work, company, or a particular indulgence — hidden until a Cultist draws it out in conversation and then satisfied by an offer that matches it. Satisfying a Desire is what opens the Friendship Capture route. The term is settled here for shared vocabulary; the conversation that discovers a Desire is deferred.
+_Avoid_: Want, need, goal, motivation
+
 **Friendship Capture**:
-The deterministic route in which a sad, trusted patron voluntarily follows a Cultist to the Tunnel Intake.
+The deterministic route in which a trusted Patron whose Desire a Cultist has satisfied voluntarily follows that Cultist to the Tunnel Intake.
 _Avoid_: Rescue Persuasion
 
 ## Commands and time
 
 **Action**:
-A validated Cultist command with a target, duration, interruptibility, and commitment point.
+A character's unit of work with a target, duration, and interruption rules, produced by a Cultist command or a Patron intent.
 _Avoid_: Task, job
 
 **Action Queue**:
-One active Action followed by any number of pending Actions belonging to one Cultist. A normal command cancels unfinished work and replaces pending work, while a committed Action finishes before the replacement; Shift+command appends without a queue-size limit.
+One active Action followed by any number of pending Actions belonging to one character, with interrupted work held for resumption. Cultist queues are visible to players; Patron queues are visible only in debug mode.
 _Avoid_: Behavior tree
 
 **Action Chain**:
@@ -197,7 +268,7 @@ A sequence of Actions linked by dependency inside one Action Queue. Cancellation
 _Avoid_: Task Chain, combo
 
 **Action Tile**:
-The square HUD item for one active or pending Action in the Selected Cultist's Action Queue. The Action Tiles stay visible above the Bottom HUD while a Cultist is selected.
+The square HUD item for one active or pending Action in the Selected Cultist's Action Queue, including a cancellable Step Aside when an idle Cultist moves out of another character's path.
 _Avoid_: Queue item, action row
 
 **Context Menu**:
@@ -212,6 +283,10 @@ _Avoid_: Top bar, control strip
 The blocking in-Night menu opened with Escape. Closing it with Escape restores the prior playback state, while Resume starts the Night at its selected Simulation Speed.
 _Avoid_: Main Menu, title screen
 
+**Controls Card**:
+The blocking help modal shown before a player's first Night. It holds live Night progression until dismissed and can be reopened from the Pause Menu.
+_Avoid_: Tutorial, onboarding popup, Controls Guide
+
 **Plain Pause**:
 The non-blocking pause toggled with Space or the Bottom HUD. It stops the Night while camera control, inspection, and command entry remain available.
 _Avoid_: Pause Menu, planning mode
@@ -221,8 +296,8 @@ A screen-edge marker for an urgent actor who is outside the camera view. Pressin
 _Avoid_: Minimap marker, notification badge
 
 **Outcome Modal**:
-The blocking end-of-Night popup that reports Success, Operation Failed, or Exposed with its cause and Capture quota progress. It offers Restart and Quit before a future detailed results view.
-_Avoid_: Victory screen, game-over screen
+The blocking end-of-Night popup that owns the full results report. It states the outcome (Success, Operation Failed, or Exposed) and its cause, then reports Capture quota progress, Captures grouped by nonzero causal method, drink revenue and tips, Orders served, cancelled, and missed, the highest Suspicion band, escaping Patrons intercepted, and total Unattended Body time. It offers Restart and Quit. There is no second results screen.
+_Avoid_: Victory screen, game-over screen, a separate detailed results view
 
 **Smart Object**:
 An authored world target that offers its own commands, such as the bar work position, the Trapdoor control, or the Tunnel Intake.
@@ -245,12 +320,28 @@ A proximity-dependent Action that lets the Selected Cultist speak with an Inspec
 _Avoid_: Chat, interview
 
 **Offer Cigarette Action**:
-A proximity-dependent Action that lets the Selected Cultist offer a cigarette to an Inspected Patron.
+A proximity-dependent Action in which the Selected Cultist offers a cigarette to an Inspected Patron. A Patron who accepts starts Smoking; a Non-Smoker refuses and loses a little Satisfaction.
 _Avoid_: Smoke Action, cigarette command
 
-**Offer Drink Action**:
-A player-commanded Action that offers a carried Prepared Drink to an Inspected Patron without an Order.
-_Avoid_: Free Order, forced drink
+**Smoking**:
+An idle Action any character can take. For a Patron it applies a Satisfaction Modifier that fades in, holds, then fades out over about sixty seconds. The Offer Cigarette Action triggers it.
+_Avoid_: Cigarette break, smoke animation
+
+**Serve Drink Action**:
+An Action Chain that reserves one Prepared Drink, sends an assigned Cultist to collect it, and offers it to the chosen Patron.
+_Avoid_: Serve Order, Offer Drink Action
+
+**Admit Group Action**:
+The three-second entrance Action in which a Cultist opens and holds the front door for one waiting Arrival Group.
+_Avoid_: Automatic entry, Open Door Action
+
+**Ask to Leave Action**:
+The ten-second social Action in which a Cultist asks a conscious Arrival Group to make a Normal Departure.
+_Avoid_: Eject, force out
+
+**Stir Action**:
+A proximity Action in which one active Cultist restores an Incapacitated Cultist before natural recovery.
+_Avoid_: Revive, rescue
 
 **Commitment Point**:
 The moment after which cancelling an Action cannot undo its gameplay consequence.
