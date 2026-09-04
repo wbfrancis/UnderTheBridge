@@ -54,6 +54,38 @@ ids to colours and scales (`:135`, `:141`) and holds `PATRON_IDS` arrays. These
 are dictionary literals that a signature change will not catch, because they are
 data, not calls.
 
+## Revision after Stage 1: three more hazards
+
+Found while starting Stage 2. The original survey missed these, and together
+they make the change materially larger than estimated above.
+
+**4. An empty StringName means "no entity" in 77 places.** `patron_id.is_empty()`,
+`not cultist_id.is_empty()` and friends are a null-object idiom across
+`order_system.gd`, `character_action_system.gd`, and `cultist_command_system.gd`.
+Integers have no `is_empty()`. Every one needs a sentinel, and choosing it is a
+domain decision: what *is* "no Patron"? Proposed: `0`, never a valid entity id,
+with a named constant `NO_ACTOR` so the intent survives at each call site.
+
+**5. Patron and Cultist ids share one namespace.** The emote view is keyed by
+`actor_id` and carries both kinds (`ordinary_visit_session.gd:740` builds patron
+rows, `game_session.gd:438` cultist rows, and `emote_director.gd` holds them in
+one `_actors` dictionary). Sequential per-kind ids would collide. Proposed:
+disjoint blocks, Cultists `1-3` and Patrons `101-108`, so an actor id says what
+kind it is on sight and the blocks have room to grow.
+
+**6. There are three lexicographic id sorts, not one.** Besides the order queue
+at `ordinary_visit_session.gd:1833`, the emote director orders bubbles with
+`String(left["actor_id"]) < String(right["actor_id"])` (`emote_director.gd:120`),
+and there is a third deferred sort. All invert once ids are numbers.
+
+**Staging correction.** Changing the id type is atomic across callers: the moment
+a session signature takes an `int`, every slice and prototype calling it with a
+StringName breaks. Stage 4 cannot trail Stage 2. Revised approach: the session
+keeps a resolution shim at its public boundary that accepts either form and
+resolves a StringName through `seed_key`. Internals move to `int` behind it,
+tests and slices migrate at their own pace, and the shim is deleted in Stage 5
+when the signatures tighten to `int`. Each stage stays green.
+
 ## Surface
 
 24 scripts and 21 test files. 514 typed id parameters. About 930 named-id
