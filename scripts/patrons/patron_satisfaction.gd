@@ -1,4 +1,4 @@
-class_name PatronMood
+class_name PatronSatisfaction
 extends RefCounted
 
 const STARTING_VALUE := 75.0

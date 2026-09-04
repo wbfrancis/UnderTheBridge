@@ -60,6 +60,24 @@ func test_normal_view_excludes_hidden_values_and_debug_view_exposes_them() -> vo
 	assert_true(normal.has("order_state"))
 
 
+func test_debug_behavior_fields_are_one_machine_projection() -> void:
+	var session = SESSION_SCRIPT.new()
+	session.start(707)
+	session.advance(1.1)
+	assert_true(session.debug_force_bathroom(&"patron_june"))
+	for _transition in range(3):
+		var view: Dictionary = session.debug_patron_view(&"patron_june")
+		assert_eq(view["activity"], view["behavior"]["state"])
+		assert_eq(view["navigation_destination"], view["behavior"]["destination"])
+		assert_eq(view["reservation"], view["behavior"]["reservation"])
+		session.patron_destination_reached(&"patron_june")
+		session.advance(5.1)
+	session.restart(707)
+	var restarted: Dictionary = session.debug_patron_view(&"patron_june")
+	assert_eq(restarted["activity"], restarted["behavior"]["state"])
+	assert_eq(restarted["navigation_destination"], restarted["behavior"]["destination"])
+
+
 func test_completed_talk_identifies_patron_profile_for_the_whole_crew() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)
@@ -192,33 +210,33 @@ func test_failed_orders_change_mood_and_suspicion_then_second_failure_leaves() -
 	assert_eq(session.normal_patron_view(&"patron_june")["order_state"], &"open")
 	session.advance(60.1)
 	var first: Dictionary = session.debug_patron_view(&"patron_june")
-	assert_eq(first["mood_value"], 55.0)
+	assert_eq(first["satisfaction_value"], 55.0)
 	assert_eq(first["suspicion"], 5.0)
 	session.advance(40.1)
 	session.advance(60.1)
 	assert_eq(session.debug_patron_view(&"patron_june")["lifecycle"], &"exited")
 
 
-func test_refused_offered_drink_starts_a_sixty_second_cooldown() -> void:
+func test_refused_free_drink_is_discarded() -> void:
 	var refused_session = null
 	for seed in range(100, 200):
 		var candidate = SESSION_SCRIPT.new()
 		candidate.start(seed)
 		candidate.advance(1.1)
+		assert_true(candidate.prepare_drink(&"cultist_01"))
 		candidate.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 0)
-		if candidate.offer_drink(&"patron_june", &"cultist_01")["reason"] == &"refused":
+		var drink_id: StringName = candidate.snapshot()["prepared_drinks"]["drinks"][0]["id"]
+		assert_true(candidate.reserve_prepared_drink(drink_id, &"cultist_01"))
+		assert_true(candidate.pick_up_prepared_drink(drink_id, &"cultist_01"))
+		if candidate.serve_prepared_drink(&"patron_june", &"cultist_01", drink_id)["reason"] == &"refused":
 			refused_session = candidate
 			break
 	assert_not_null(refused_session, "The seeded 20% refusal path must be reachable.")
 	if refused_session == null:
 		return
-	var blocked: Dictionary = refused_session.offer_drink(&"patron_june", &"cultist_01")
-	assert_eq(blocked["reason"], &"refusal_cooldown")
-	refused_session.advance(60.1)
-	assert_ne(
-		refused_session.offer_drink(&"patron_june", &"cultist_01")["reason"],
-		&"refusal_cooldown"
-	)
+	assert_false(refused_session.carries_prepared_drink(&"cultist_01"),
+		"A refused free drink is discarded after the Patron sees it.")
+	assert_true(refused_session.snapshot()["prepared_drinks"]["drinks"].is_empty())
 
 
 func test_overdrink_collapse_uses_excess_limit_and_mood_instead_of_body_suspicion() -> void:
@@ -241,7 +259,7 @@ func test_overdrink_collapse_uses_excess_limit_and_mood_instead_of_body_suspicio
 	assert_eq(june["lifecycle"], &"unconscious")
 	assert_eq(june["collapse_cause"], &"overdrink")
 	assert_eq(june["excess_drinks"], 1)
-	assert_lte(float(mara["mood_value"]), 60.0)
+	assert_lte(float(mara["satisfaction_value"]), 60.0)
 	assert_eq(mara["suspicion"], 0.0)
 	assert_false(session.normal_patron_view(&"patron_june").has("overdrink_limit"))
 
@@ -250,7 +268,7 @@ func test_miserable_companion_does_not_become_collapse_helper() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)
 	session.advance(1.1)
-	assert_true(session.debug_change_patron_mood(&"patron_mara", -60.0))
+	assert_true(session.debug_change_patron_satisfaction(&"patron_mara", -60.0))
 	assert_true(session.debug_set_patron_drink_state(&"patron_june", 3, 1, 0, 3))
 	for _attempt in range(10):
 		if session.offer_drink(&"patron_june", &"cultist_01")["accepted"]:
@@ -258,7 +276,7 @@ func test_miserable_companion_does_not_become_collapse_helper() -> void:
 		session.advance(60.1)
 	assert_true(session.debug_force_finish_drink(&"patron_june"))
 	session.advance(2.1)
-	assert_eq(session.debug_patron_view(&"patron_mara")["mood_band"], "Miserable")
+	assert_eq(session.debug_patron_view(&"patron_mara")["satisfaction_band"], "Miserable")
 	assert_eq(session.snapshot()["collapses"][&"patron_june"]["phase"], &"unattended")
 
 

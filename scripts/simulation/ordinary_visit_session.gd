@@ -5,13 +5,17 @@ signal snapshot_changed(snapshot: Dictionary)
 
 const INTERACTION_REGISTRY_SCRIPT := preload("res://scripts/interactions/interaction_registry.gd")
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
+const PREPARED_DRINK_SYSTEM_SCRIPT := preload("res://scripts/drinks/prepared_drink_system.gd")
 const PATRON_SUSPICION_SCRIPT := preload("res://scripts/patrons/patron_suspicion.gd")
 const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_perception.gd")
-const PATRON_BEHAVIOR_MACHINE_SCRIPT := preload("res://scripts/patrons/patron_behavior_machine.gd")
-const PATRON_MOOD_SCRIPT := preload("res://scripts/patrons/patron_mood.gd")
+const PATRON_INTENT_PLANNER_SCRIPT := preload("res://scripts/patrons/patron_intent_planner.gd")
+const PATRON_ACTION_COORDINATOR_SCRIPT := preload("res://scripts/patrons/patron_action_coordinator.gd")
+const CHARACTER_ACTION_SYSTEM_SCRIPT := preload("res://scripts/actions/character_action_system.gd")
+const PATRON_SATISFACTION_SCRIPT := preload("res://scripts/patrons/patron_satisfaction.gd")
 # Which room each activity places a Patron in, for line of sight and room hearing.
 const ACTIVITY_ROOMS := {
 	&"not_arrived": &"front",
+	&"waiting_at_entrance": &"front",
 	&"entering": &"front",
 	&"normal_departure": &"front",
 	&"awaiting_drink": &"main_hall",
@@ -58,6 +62,14 @@ const PHYSICAL_DEPARTURE_TIMEOUT_SECONDS := 60.0
 const DRINK_SECONDS := 30.0
 const ORDER_IMPATIENT_SECONDS := 30.0
 const ORDER_FAILURE_SECONDS := 60.0
+const GROUP_WAIT_SECONDS := 30.0
+const MISSED_ADMISSION_DEPARTURE_SECONDS := 15.0
+const ADMIT_GROUP_SECONDS := 3.0
+const ASK_TO_LEAVE_SECONDS := 10.0
+const ASK_TO_LEAVE_SUSPICION := 5.0
+const ASK_TO_LEAVE_MAX_SUSPICION := 75.0
+const WRONG_DRINK_SATISFACTION := -10.0
+const WRONG_DRINK_ACCEPTANCE_PERCENT := 50.0
 const SOCIAL_MIN_SECONDS := 20.0
 const SOCIAL_MAX_SECONDS := 40.0
 const OFFER_ACCEPTANCE_PERCENT := 80.0
@@ -97,6 +109,10 @@ const RESCUE_PERSUASION_SECONDS := 6.0
 const RESCUE_FAILURE_SUSPICION := 25.0
 # Manual knockout and dragging, from the GDD §10.3 and TECHNICAL_DESIGN §6.3.
 const KNOCKOUT_WINDUP_SECONDS := 2.0
+const KNOCKOUT_CHANCES: Array[float] = [40.0, 60.0, 80.0, 95.0]
+const KNOCKOUT_HEARING_NOTICE_PERCENT := 50.0
+const CULTIST_INCAPACITATED_SECONDS := 60.0
+const STIR_SECONDS := 3.0
 const BODY_PICKUP_SECONDS := 1.0
 # 50%-speed drag to the Tunnel Intake; the same abstract front path as the Helper carry.
 const DRAG_TO_INTAKE_SECONDS := 14.0
@@ -152,25 +168,25 @@ const FULL_NIGHT_GROUP_DEFINITIONS: Array[Dictionary] = [
 	{
 		"id": &"arrival_group_pair_01",
 		"label": "June + Mara",
-		"arrival_at": 90.0,
+		"arrival_at": 3.0,
 		"patrons": [&"patron_june", &"patron_mara"],
 	},
 	{
 		"id": &"arrival_group_solo_01",
 		"label": "Elias",
-		"arrival_at": 180.0,
+		"arrival_at": 93.0,
 		"patrons": [&"patron_elias"],
 	},
 	{
 		"id": &"arrival_group_trio_01",
 		"label": "Ruth + Walter + Nell",
-		"arrival_at": 300.0,
+		"arrival_at": 213.0,
 		"patrons": [&"patron_ruth", &"patron_walter", &"patron_nell"],
 	},
 	{
 		"id": &"arrival_group_pair_02",
 		"label": "Vincent + Clara",
-		"arrival_at": 420.0,
+		"arrival_at": 333.0,
 		"patrons": [&"patron_vincent", &"patron_clara"],
 	},
 ]
@@ -224,13 +240,15 @@ var _seated_at: float = -1.0
 var _full_night: bool = false
 var _closing: bool = false
 var _patrons: Dictionary = {}
-var _behavior_machines: Dictionary = {}
-var _moods: Dictionary = {}
+var _patron_actions: Dictionary = {}
+var _character_actions = CHARACTER_ACTION_SYSTEM_SCRIPT.new()
+var _satisfaction: Dictionary = {}
 var _patron_rngs: Dictionary = {}
 var _groups: Dictionary = {}
 var _seat_owners: Dictionary = {}
 var _interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 var _order_system = ORDER_SYSTEM_SCRIPT.new()
+var _prepared_drinks = PREPARED_DRINK_SYSTEM_SCRIPT.new()
 var _events: Array[Dictionary] = []
 var _autonomy_events: Array[Dictionary] = []
 var _suspicion_states: Dictionary = {}
@@ -246,8 +264,14 @@ var _active_intercept: Dictionary = {}
 var _defeat: bool = false
 var _doses_remaining: int = DRUG_DOSES_AT_START
 var _drug_prep: Dictionary = {}
+var _admission: Dictionary = {}
+var _ask_to_leave: Dictionary = {}
+var _groups_missed_at_door := 0
 var _collapses: Dictionary = {}
 var _windup: Dictionary = {}
+var _incapacitated_cultists: Dictionary = {}
+var _stirs: Dictionary = {}
+var _knockout_outcomes: Dictionary = {}
 var _drags: Dictionary = {}
 var _conversations: Dictionary = {}
 var _follows: Dictionary = {}
@@ -279,6 +303,7 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_interaction_registry.register_slot(BATHROOM_LINE_SLOT, &"bathroom_line")
 	_interaction_registry.register_slot(INTERCEPT_SLOT, &"intercept")
 	_order_system = ORDER_SYSTEM_SCRIPT.new()
+	_prepared_drinks = PREPARED_DRINK_SYSTEM_SCRIPT.new()
 	_patrons.clear()
 	_patron_rngs.clear()
 	_groups.clear()
@@ -286,13 +311,23 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_initialize_full_night_cast()
 	else:
 		_initialize_legacy_pair()
-	_behavior_machines.clear()
-	_moods.clear()
+	_patron_actions.clear()
+	_character_actions = CHARACTER_ACTION_SYSTEM_SCRIPT.new()
+	for cultist_id: StringName in [&"cultist_01", &"cultist_02", &"cultist_03"]:
+		_character_actions.register_actor(cultist_id, &"cultist")
+	_satisfaction.clear()
 	for patron_id: StringName in _patrons:
-		_behavior_machines[patron_id] = PATRON_BEHAVIOR_MACHINE_SCRIPT.new(
-			_patrons[patron_id]["activity"]
+		var initial_activity: StringName = _patrons[patron_id]["activity"]
+		var initial_destination: StringName = _patrons[patron_id]["navigation_destination"]
+		_patrons[patron_id].erase("activity")
+		_patrons[patron_id].erase("activity_elapsed")
+		_patrons[patron_id].erase("navigation_destination")
+		_patrons[patron_id].erase("navigation_arrived")
+		_patron_actions[patron_id] = PATRON_ACTION_COORDINATOR_SCRIPT.new(
+			patron_id, _interaction_registry, _character_actions, initial_activity
 		)
-		_moods[patron_id] = PATRON_MOOD_SCRIPT.new()
+		_patron_actions[patron_id].submit(initial_activity, initial_destination)
+		_satisfaction[patron_id] = PATRON_SATISFACTION_SCRIPT.new()
 	_suspicion_states.clear()
 	for patron_id: StringName in _patrons:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
@@ -308,8 +343,14 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_defeat = false
 	_doses_remaining = DRUG_DOSES_AT_START
 	_drug_prep.clear()
+	_admission.clear()
+	_ask_to_leave.clear()
+	_groups_missed_at_door = 0
 	_collapses.clear()
 	_windup.clear()
+	_incapacitated_cultists.clear()
+	_stirs.clear()
+	_knockout_outcomes.clear()
 	_drags.clear()
 	_conversations.clear()
 	_follows.clear()
@@ -327,6 +368,9 @@ func advance(simulated_seconds: float) -> void:
 		var step := minf(STEP_SECONDS, remaining)
 		_simulated_seconds += step
 		_activate_due_groups()
+		_advance_waiting_groups(step)
+		_advance_admission(step)
+		_advance_ask_to_leave(step)
 		for patron_id: StringName in _patrons:
 			_advance_patron(patron_id, step)
 		_advance_trapdoor(step)
@@ -337,6 +381,8 @@ func advance(simulated_seconds: float) -> void:
 		_advance_drug(step)
 		_advance_collapses(step)
 		_advance_windup(step)
+		_advance_incapacitated_cultists(step)
+		_advance_stirs(step)
 		_advance_drags(step)
 		_advance_conversations(step)
 		_advance_follows(step)
@@ -371,7 +417,7 @@ func finish_night() -> void:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] == &"leaving":
 			patron["lifecycle"] = &"exited"
-			_behavior_machines[patron_id].submit(&"exited")
+			_patron_actions[patron_id].submit(&"exited")
 			_patrons[patron_id] = patron
 			continue
 		if patron["lifecycle"] != &"active":
@@ -390,22 +436,33 @@ func restart(seed: int = _seed, full_night: bool = _full_night) -> void:
 
 func set_physical_navigation_enabled(enabled: bool) -> void:
 	_physical_navigation_enabled = enabled
-	for patron_id: StringName in _patrons:
-		_patrons[patron_id]["navigation_arrived"] = true
+	if not enabled:
+		for patron_id: StringName in _patron_actions:
+			_patron_actions[patron_id].report_navigation_arrival()
 
 
-func patron_destination_reached(patron_id: StringName) -> bool:
+func patron_destination_reached(patron_id: StringName, action_id: int = -1) -> bool:
 	if not _patrons.has(patron_id):
 		return false
-	_patrons[patron_id]["navigation_arrived"] = true
+	if action_id >= 0 and int(_character_actions.active_request(patron_id).get("id", -1)) != action_id:
+		return false
+	_patron_actions[patron_id].report_navigation_arrival()
 	if (
 		_patrons[patron_id]["lifecycle"] == &"leaving"
-		and _patrons[patron_id]["activity"] == &"normal_departure"
+		and _activity(_patrons[patron_id]) == &"normal_departure"
 	):
 		_patrons[patron_id]["lifecycle"] = &"exited"
-		_behavior_machines[patron_id].submit(&"exited")
+		_patron_actions[patron_id].submit(&"exited")
 		_record(&"front_exit_crossed", patron_id)
 	return true
+
+
+func request_patron_step_aside(
+	patron_id: StringName, position: Vector3, incident_id: StringName
+) -> bool:
+	if not _patron_actions.has(patron_id):
+		return false
+	return _patron_actions[patron_id].request_step_aside(position, incident_id)
 
 
 func apply_suspicion_stimulus(
@@ -583,7 +640,7 @@ func _active_perceivers() -> Array:
 
 
 func _patron_room(patron: Dictionary) -> StringName:
-	return ACTIVITY_ROOMS.get(patron["activity"], &"main_hall")
+	return ACTIVITY_ROOMS.get(_activity(patron), &"main_hall")
 
 
 # Deterministic 2-D layout in metres. Seated Patrons sit at fixed table seats and
@@ -619,9 +676,10 @@ func normal_patron_view(
 	return {
 		"id": patron_id,
 		"identified": patron["identified"],
+		"interactive": not bool(patron.get("missed_admission", false)),
 		"name": patron["name"] if patron["identified"] else "???",
-		"visible_activity": _visible_activity(patron["activity"]),
-		"mood": _moods[patron_id].band(),
+		"visible_activity": _visible_activity(_activity(patron)),
+		"mood": _satisfaction[patron_id].band(),
 		"suspicion_band": suspicion.normal_band(),
 		"suspicion_cue": suspicion.normal_cue(),
 		"intoxication": _intoxication_label(patron["intoxication"]),
@@ -630,6 +688,7 @@ func normal_patron_view(
 		"companions": patron["companions"].duplicate() if patron["identified"] else "???",
 		"friendship": _friendship_band(patron["friendship"].get(selected_cultist_id, 0)) if patron["identified"] else "???",
 		"order_state": _patron_order_state(patron),
+		"ordered_drink": _patron_order_type(patron),
 		"known_drugged_drink": "None",
 		"victim_value": patron["victim_value"] if patron["identified"] else "???",
 		"victim_risk": patron["victim_risk"] if patron["identified"] else "???",
@@ -640,7 +699,7 @@ func normal_patron_view(
 # The single observable overhead intention, if any: ordering, choosing/queueing for the
 # bathroom, Investigation, or Escape. Everything else reads as no urgent intention.
 func _urgent_intention(patron: Dictionary) -> StringName:
-	match patron["activity"]:
+	match _activity(patron):
 		&"awaiting_drink":
 			return &"ordering"
 		&"bathroom_queued", &"entering_bathroom", &"mirror_check", &"moving_to_toilet", &"seated_bathroom_use", &"moving_to_sink", &"handwashing", &"waiting_investigation":
@@ -668,12 +727,14 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 		"present": lifecycle not in [&"not_arrived", &"capturing", &"captured", &"exited"],
 		"state": state,
 		"changes": [],
+		"events": _patron_public_emote_events(patron_id),
 		"public": {
 			"activity": view["visible_activity"],
 			"mood": view["mood"],
 			"danger": view["suspicion_band"],
 			"rapport": view["friendship"],
 			"order": String(view["order_state"]),
+			"ordered_drink": String(view["ordered_drink"]),
 			"drug_cue": String(view["known_drugged_drink"]),
 		},
 	}
@@ -685,12 +746,27 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 	return row
 
 
+func _patron_public_emote_events(patron_id: StringName) -> Array[Dictionary]:
+	for index in range(_events.size() - 1, -1, -1):
+		var event: Dictionary = _events[index]
+		if event["actor_id"] != patron_id:
+			continue
+		if event["event"] == &"drink_service_result":
+			return [{
+				"id": index + 1,
+				"kind": &"service_smile" if event["details"].get("expression", &"frown") == &"smile" else &"service_frown",
+			}]
+		if event["event"] == &"ask_to_leave_result":
+			return [{"id": index + 1, "kind": &"service_frown"}]
+	return []
+
+
 # The three consecutive vertical fills of the Bathroom Visit. Walking between
 # stations invents no progress; only the timed phases carry a ratio. The UI owns
 # no timer: it receives one normalized ratio and the phase identity.
 func _bathroom_emote_progress(patron: Dictionary) -> Dictionary:
-	var elapsed := float(patron["activity_elapsed"])
-	match patron["activity"]:
+	var elapsed := _behavior_elapsed(patron)
+	match _activity(patron):
 		&"mirror_check":
 			return _phase_progress(&"mirror", 0, elapsed, BATHROOM_MIRROR_SECONDS)
 		&"seated_bathroom_use":
@@ -720,9 +796,9 @@ func _public_emote_state(patron: Dictionary, view: Dictionary) -> StringName:
 			return &"bathroom"
 		&"ordering":
 			return &"ordering"
-	if patron["lifecycle"] == &"unconscious" or patron["activity"] == &"being_dragged":
+	if patron["lifecycle"] == &"unconscious" or _activity(patron) == &"being_dragged":
 		return &"unconscious"
-	if patron["activity"] == &"conversing":
+	if _activity(patron) == &"conversing":
 		return &"conversation"
 	return &"none"
 
@@ -764,6 +840,69 @@ func current_rescue_odds() -> float:
 	return rescue_persuasion_chance(_collapses[victim_id]["acting_cultist"] if not StringName(_collapses[victim_id]["acting_cultist"]).is_empty() else &"cultist_01")
 
 
+func character_actions():
+	return _character_actions
+
+
+func debug_cancel_patron_action(patron_id: StringName, action_id: int, current_position: Variant = null) -> bool:
+	if not _patron_actions.has(patron_id):
+		return false
+	var active: Dictionary = _character_actions.active_request(patron_id)
+	var fallback := &"socializing" if _patrons[patron_id]["lifecycle"] == &"active" else _activity(_patrons[patron_id])
+	var cancelled: bool = _patron_actions[patron_id].cancel(action_id, fallback, false, current_position)
+	if cancelled and int(active.get("id", -1)) == action_id and active.get("name", &"") != &"step_aside":
+		_cleanup_debug_patron_action(patron_id)
+	return cancelled
+
+
+func debug_force_complete_patron_action(patron_id: StringName) -> bool:
+	if not _patron_actions.has(patron_id) or not _patron_actions[patron_id].force_ready():
+		return false
+	var activity := _activity(_patrons[patron_id])
+	if activity in [&"shock", &"escaping"]:
+		_patrons[patron_id]["escape_remaining"] = 0.0
+	for victim_id: StringName in _collapses:
+		if _collapses[victim_id].get("helper_id", &"") == patron_id:
+			_collapses[victim_id]["remaining"] = 0.0
+	_advance_patron(patron_id, 0.0)
+	_advance_investigations(0.0)
+	_advance_escape(0.0)
+	_advance_collapses(0.0)
+	return true
+
+
+func debug_clear_patron_queue(patron_id: StringName) -> bool:
+	if not _patron_actions.has(patron_id):
+		return false
+	var active: Dictionary = _character_actions.active_request(patron_id)
+	if active.is_empty():
+		return true
+	var fallback := &"socializing" if _patrons[patron_id]["lifecycle"] == &"active" else _activity(_patrons[patron_id])
+	var cleared: bool = _patron_actions[patron_id].cancel(int(active["id"]), fallback, true)
+	if cleared:
+		_cleanup_debug_patron_action(patron_id)
+	return cleared
+
+
+func _cleanup_debug_patron_action(patron_id: StringName) -> void:
+	var patron: Dictionary = _patrons[patron_id]
+	var order_id := StringName(patron["order_id"])
+	if _order_system.is_open(order_id):
+		_order_system.cancel_order(order_id, _simulated_seconds, &"debug_cancelled")
+	for cultist_id: StringName in _conversations.keys():
+		if _conversations[cultist_id] == patron_id:
+			_conversations.erase(cultist_id)
+	if not _ask_to_leave.is_empty() and _ask_to_leave["patron_id"] == patron_id:
+		_ask_to_leave["state"] = &"failed"
+
+
+func debug_set_patron_planner_paused(patron_id: StringName, paused: bool) -> bool:
+	if not _patron_actions.has(patron_id):
+		return false
+	_patron_actions[patron_id].set_planner_paused(paused)
+	return true
+
+
 func debug_patron_view(patron_id: StringName) -> Dictionary:
 	if not _patrons.has(patron_id):
 		return {}
@@ -784,8 +923,8 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"excess_drinks": patron["excess_drinks"],
 		"collapse_cause": patron["collapse_cause"],
 		"intoxication_decay_in": patron["intoxication_decay_in"],
-		"mood_value": _moods[patron_id].value(),
-		"mood_band": _moods[patron_id].band(),
+		"satisfaction_value": _satisfaction[patron_id].value(),
+		"satisfaction_band": _satisfaction[patron_id].band(),
 		"suspicion": suspicion["score"],
 		"suspicion_cause": suspicion["cause"],
 		"latest_suspicion_stimulus": suspicion["latest_stimulus"],
@@ -796,11 +935,12 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 		"hard_evidence_downgrade_count": suspicion["hard_evidence_downgrade_count"],
 		"friendship": patron["friendship"].duplicate(true),
 		"lifecycle": patron["lifecycle"],
-		"activity": patron["activity"],
-		"behavior": _behavior_machines[patron_id].snapshot(),
+		"missed_admission": bool(patron.get("missed_admission", false)),
+		"activity": _activity(patron),
+		"behavior": _patron_actions[patron_id].snapshot(),
 		"seat": patron["seat"],
 		"reservation": _interaction_registry.actor_slot(patron_id),
-		"navigation_destination": patron["navigation_destination"],
+		"navigation_destination": _behavior_snapshot(patron)["destination"],
 		"room": _patron_room(patron),
 		"position": _patron_position(patron),
 		"facing": _patron_facing(patron),
@@ -862,8 +1002,14 @@ func snapshot() -> Dictionary:
 		"escaping_patrons": _escaping_patron_ids(),
 		"doses_remaining": _doses_remaining,
 		"drug_prep": _drug_prep.duplicate(true),
+		"prepared_drinks": _prepared_drinks.snapshot(),
+		"admission": _admission.duplicate(true),
+		"ask_to_leave": _ask_to_leave.duplicate(true),
+		"groups_missed_at_door": _groups_missed_at_door,
 		"collapses": _collapses.duplicate(true),
 		"windup": _windup.duplicate(true),
+		"incapacitated_cultists": _incapacitated_cultists.duplicate(true),
+		"stirs": _stirs.duplicate(true),
 		"drags": _drags.duplicate(true),
 		"conversations": _conversations.duplicate(true),
 		"follows": _follows.duplicate(true),
@@ -904,6 +1050,11 @@ func _initialize_legacy_pair() -> void:
 		"arrival_at": 0.0,
 		"patrons": [&"patron_june", &"patron_mara"],
 		"arrived": true,
+		"waiting": false,
+		"wait_remaining": 0.0,
+		"admitted": true,
+		"missed": false,
+		"asked_to_leave": false,
 		"seated_at": -1.0,
 		"departed": false,
 	}
@@ -934,6 +1085,11 @@ func _initialize_full_night_cast() -> void:
 			"arrival_at": definition["arrival_at"],
 			"patrons": definition["patrons"].duplicate(),
 			"arrived": false,
+			"waiting": false,
+			"wait_remaining": GROUP_WAIT_SECONDS,
+			"admitted": false,
+			"missed": false,
+			"asked_to_leave": false,
 			"seated_at": -1.0,
 			"departed": false,
 		}
@@ -1015,27 +1171,112 @@ func _activate_due_groups() -> void:
 		return
 	for group_id: StringName in _groups:
 		var group: Dictionary = _groups[group_id]
-		if group["arrived"] or _simulated_seconds + 0.0001 < float(group["arrival_at"]):
+		if group["arrived"] or group["waiting"] or group["missed"] or _simulated_seconds + 0.0001 < float(group["arrival_at"]):
 			continue
-		if not _reserve_group_seats(group_id):
-			continue
-		group["arrived"] = true
+		group["waiting"] = true
+		group["wait_remaining"] = GROUP_WAIT_SECONDS
 		_groups[group_id] = group
 		for patron_id: StringName in group["patrons"]:
 			var patron: Dictionary = _patrons[patron_id]
-			patron["lifecycle"] = &"active"
-			_set_activity(patron, &"entering", &"seat")
+			patron["lifecycle"] = &"waiting_at_entrance"
+			_set_activity(patron, &"waiting_at_entrance", &"entrance")
 			_patrons[patron_id] = patron
-		_record(&"arrival_group_arrived", group_id)
+		_record(&"arrival_group_waiting", group_id)
+
+
+func _advance_waiting_groups(step: float) -> void:
+	for group_id: StringName in _groups:
+		var group: Dictionary = _groups[group_id]
+		if not group.get("waiting", false) or group.get("missed", false):
+			continue
+		if not _admission.is_empty() and _admission["group_id"] == group_id:
+			continue
+		group["wait_remaining"] = maxf(0.0, float(group["wait_remaining"]) - step)
+		if float(group["wait_remaining"]) <= TIME_EPSILON:
+			group["waiting"] = false
+			group["missed"] = true
+			group["departed"] = true
+			_groups_missed_at_door += 1
+			for patron_id: StringName in group["patrons"]:
+				var patron: Dictionary = _patrons[patron_id]
+				patron["missed_admission"] = true
+				patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
+				patron["departure_timeout"] = MISSED_ADMISSION_DEPARTURE_SECONDS
+				_set_activity(patron, &"normal_departure", &"front_exit")
+				if not _physical_navigation_enabled:
+					_patron_actions[patron_id].submit(&"exited", &"front_exit")
+			_record(&"arrival_group_missed", group_id)
+		_groups[group_id] = group
+
+
+func begin_admit_group(cultist_id: StringName, group_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _admission.is_empty() or not _groups.has(group_id):
+		return false
+	var group: Dictionary = _groups[group_id]
+	if not group.get("waiting", false) or group.get("missed", false):
+		return false
+	_admission = {
+		"cultist_id": cultist_id, "group_id": group_id,
+		"phase": &"opening", "remaining": ADMIT_GROUP_SECONDS,
+	}
+	_record(&"admission_started", group_id, {"cultist_id": cultist_id})
+	return true
+
+
+func cancel_admit_group(cultist_id: StringName) -> bool:
+	if _admission.is_empty() or _admission["cultist_id"] != cultist_id or _admission["phase"] != &"opening":
+		return false
+	_admission.clear()
+	return true
+
+
+func _advance_admission(step: float) -> void:
+	if _admission.is_empty() or _admission["phase"] != &"opening":
+		return
+	_admission["remaining"] = float(_admission["remaining"]) - step
+	if float(_admission["remaining"]) > TIME_EPSILON:
+		return
+	var group_id: StringName = _admission["group_id"]
+	var group: Dictionary = _groups[group_id]
+	if not _reserve_group_seats(group_id):
+		_admission.clear()
+		return
+	group["waiting"] = false
+	group["admitted"] = true
+	group["arrived"] = true
+	_groups[group_id] = group
+	_admission["phase"] = &"holding"
+	_admission["remaining"] = 0.0
+	for patron_id: StringName in group["patrons"]:
+		var patron: Dictionary = _patrons[patron_id]
+		patron["lifecycle"] = &"active"
+		_set_activity(patron, &"entering", &"seat")
+		_patrons[patron_id] = patron
+	_record(&"arrival_group_admitted", group_id, {"cultist_id": _admission["cultist_id"]})
+
+
+func _admission_complete() -> bool:
+	if _admission.is_empty() or _admission["phase"] != &"holding":
+		return false
+	var group: Dictionary = _groups[_admission["group_id"]]
+	for patron_id: StringName in group["patrons"]:
+		if _activity(_patrons[patron_id]) == &"entering":
+			return false
+	return true
 
 
 func _advance_patron(patron_id: StringName, delta: float) -> void:
+	if not _windup.is_empty() and _windup["victim_id"] == patron_id:
+		return
 	var patron: Dictionary = _patrons[patron_id]
+	_patron_actions[patron_id].advance(delta)
+	if not _patron_actions[patron_id].has_action() and patron["lifecycle"] == &"active":
+		_set_activity(patron, &"socializing", &"seat")
 	if patron["lifecycle"] == &"leaving":
 		patron["departure_timeout"] = float(patron["departure_timeout"]) - delta
 		if float(patron["departure_timeout"]) <= TIME_EPSILON:
 			patron["lifecycle"] = &"exited"
-			_behavior_machines[patron_id].submit(&"exited")
+			_patron_actions[patron_id].submit(&"exited", &"front_exit")
 			_record(&"departure_timeout_expired", patron_id)
 		_patrons[patron_id] = patron
 		return
@@ -1044,24 +1285,25 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 	var recovered: float = _suspicion_states[patron_id].advance(delta)
 	if recovered > 0.0:
 		_record(&"suspicion_recovered", patron_id, {"amount": recovered})
-	patron["activity_elapsed"] += delta
-	_apply_overdrink_body_mood(patron_id, patron)
+	_apply_overdrink_body_satisfaction(patron_id, patron)
 	_advance_intoxication(patron_id, patron, delta)
-	match patron["activity"]:
+	if _character_actions.active_request(patron_id).get("name", &"") == &"step_aside":
+		return
+	match _activity(patron):
 		&"entering":
 			if _movement_complete(patron, 1.0):
 				_assign_seat(patron_id, patron)
 		&"awaiting_drink":
 			_advance_open_order(patron_id, patron)
 		&"drinking":
-			if patron["activity_elapsed"] >= DRINK_SECONDS:
+			if _behavior_elapsed(patron) >= DRINK_SECONDS:
 				_finish_drink(patron_id, patron)
 		&"socializing":
 			_advance_bathroom_checks(patron_id, patron)
 			if (
-				patron["activity"] == &"socializing"
+				_activity(patron) == &"socializing"
 				and not _closing
-				and float(patron["activity_elapsed"]) >= float(patron["social_interval"])
+				and _behavior_elapsed(patron) >= float(patron["social_interval"])
 				and _patron_can_order(patron)
 			):
 				_start_order(patron_id, patron)
@@ -1077,14 +1319,14 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 				_set_activity(patron, &"mirror_check", &"mirror")
 				_record(&"bathroom_mirror_check", patron_id)
 		&"mirror_check":
-			if patron["activity_elapsed"] >= BATHROOM_MIRROR_SECONDS:
+			if _behavior_elapsed(patron) >= BATHROOM_MIRROR_SECONDS:
 				_set_activity(patron, &"moving_to_toilet", &"toilet")
 		&"moving_to_toilet":
 			if _movement_complete(patron, 2.0):
 				_set_activity(patron, &"seated_bathroom_use", &"toilet")
 				_record(&"bathroom_seated", patron_id)
 		&"seated_bathroom_use":
-			if patron["activity_elapsed"] >= float(patron["bathroom_use_seconds"]):
+			if _behavior_elapsed(patron) >= float(patron["bathroom_use_seconds"]):
 				patron["bladder"] = 0.0
 				_set_activity(patron, &"moving_to_sink", &"sink")
 				_record(&"bladder_emptied", patron_id)
@@ -1093,7 +1335,7 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 				_set_activity(patron, &"handwashing", &"sink")
 				_record(&"bathroom_handwashing", patron_id)
 		&"handwashing":
-			if patron["activity_elapsed"] >= BATHROOM_HANDWASH_SECONDS:
+			if _behavior_elapsed(patron) >= BATHROOM_HANDWASH_SECONDS:
 				_set_activity(patron, &"standing_bathroom_exit", &"bathroom_exit")
 		&"standing_bathroom_exit":
 			if _movement_complete(patron, 3.0):
@@ -1124,6 +1366,7 @@ func _assign_seat(patron_id: StringName, patron: Dictionary) -> void:
 func _patron_can_order(patron: Dictionary) -> bool:
 	return (
 		patron["lifecycle"] == &"active"
+		and not bool(_groups[patron["group_id"]].get("asked_to_leave", false))
 		and int(patron["intoxication"]) < int(patron["ideal_intoxication"])
 		and (StringName(patron["order_id"]).is_empty() or not _order_system.is_open(patron["order_id"]))
 	)
@@ -1131,9 +1374,21 @@ func _patron_can_order(patron: Dictionary) -> bool:
 
 func _start_order(patron_id: StringName, patron: Dictionary) -> void:
 	_set_activity(patron, &"awaiting_drink", &"seat")
-	patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds)
+	var requested_type: StringName = PREPARED_DRINK_SYSTEM_SCRIPT.DRINK_TYPES[
+		_patron_rngs[patron_id].randi_range(0, PREPARED_DRINK_SYSTEM_SCRIPT.DRINK_TYPES.size() - 1)
+	]
+	patron["order_id"] = _order_system.create_order(patron_id, _simulated_seconds, requested_type)
 	patron["order_impatient"] = false
-	_record(&"order_created", patron_id, {"order_id": patron["order_id"]})
+	_record(&"order_created", patron_id, {
+		"order_id": patron["order_id"], "drink_type": requested_type,
+	})
+
+
+func _patron_order_type(patron: Dictionary) -> StringName:
+	var order_id: StringName = patron["order_id"]
+	if order_id.is_empty():
+		return &"none"
+	return StringName(_order_system.order_snapshot(order_id).get("drink_type", &"none"))
 
 
 func _advance_open_order(patron_id: StringName, patron: Dictionary) -> void:
@@ -1148,14 +1403,14 @@ func _advance_open_order(patron_id: StringName, patron: Dictionary) -> void:
 		return
 	_order_system.cancel_order(order_id, _simulated_seconds, &"failed_service")
 	patron["failed_orders"] = int(patron["failed_orders"]) + 1
-	_moods[patron_id].change(-20.0, &"failed_order")
+	_satisfaction[patron_id].change(-20.0, &"failed_order")
 	_suspicion_states[patron_id].apply_stimulus(&"cancelled_order")
 	_record(&"order_failed", patron_id, {
 		"order_id": order_id,
 		"failed_orders": patron["failed_orders"],
-		"mood": _moods[patron_id].value(),
+		"satisfaction": _satisfaction[patron_id].value(),
 	})
-	if int(patron["failed_orders"]) >= 2 or _moods[patron_id].value() <= 0.0:
+	if int(patron["failed_orders"]) >= 2 or _satisfaction[patron_id].value() <= 0.0:
 		_depart_patron(patron_id, patron, &"failed_orders")
 	else:
 		patron["social_interval"] = _patron_rngs[patron_id].randf_range(
@@ -1198,21 +1453,145 @@ func _update_group_seated_at(group_id: StringName) -> void:
 
 # --- Cultist commands --------------------------------------------------------
 
-# Puts one Prepared Drink in the Cultist's hands at the bar work position. A
-# Cultist carries at most one, and only while an Order is open somewhere.
-func prepare_drink(cultist_id: StringName) -> bool:
-	if cultist_id.is_empty() or bool(_carried_drinks.get(cultist_id, false)):
+func waiting_group_id() -> StringName:
+	for group_id: StringName in _groups:
+		if bool(_groups[group_id].get("waiting", false)):
+			return group_id
+	return &""
+
+
+func ask_to_leave_availability(patron_id: StringName) -> Dictionary:
+	if not _patrons.has(patron_id) or _patrons[patron_id]["lifecycle"] != &"active":
+		return _command_state(false, false, &"patron_unavailable")
+	var group: Dictionary = _groups[_patrons[patron_id]["group_id"]]
+	if bool(group.get("asked_to_leave", false)):
+		return _command_state(false, false, &"patron_unavailable")
+	for member_id: StringName in group["patrons"]:
+		var lifecycle: StringName = _patrons[member_id]["lifecycle"]
+		if lifecycle == &"unconscious":
+			return _command_state(true, false, &"unconscious_group_member")
+		if lifecycle == &"active" and float(_suspicion_states[member_id].snapshot()["score"]) >= ASK_TO_LEAVE_MAX_SUSPICION:
+			return _command_state(true, false, &"too_suspicious_to_leave")
+	return _command_state(true, true, &"")
+
+
+func begin_ask_to_leave(cultist_id: StringName, patron_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _ask_to_leave.is_empty():
 		return false
-	if _open_order_patrons().is_empty():
+	var state := ask_to_leave_availability(patron_id)
+	if not bool(state["available"]):
 		return false
-	_carried_drinks[cultist_id] = true
-	_record(&"prepared_drink_taken", cultist_id)
+	_ask_to_leave = {
+		"cultist_id": cultist_id,
+		"patron_id": patron_id,
+		"group_id": _patrons[patron_id]["group_id"],
+		"remaining": ASK_TO_LEAVE_SECONDS,
+		"state": &"talking",
+	}
+	_set_activity(_patrons[patron_id], &"conversing", &"conversation")
+	_record(&"ask_to_leave_started", patron_id, {"cultist_id": cultist_id})
+	return true
+
+
+func cancel_ask_to_leave(cultist_id: StringName) -> bool:
+	if _ask_to_leave.is_empty() or _ask_to_leave["cultist_id"] != cultist_id:
+		return false
+	var patron_id: StringName = _ask_to_leave["patron_id"]
+	if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active":
+		_set_activity(_patrons[patron_id], &"socializing", &"seat")
+	_ask_to_leave.clear()
+	return true
+
+
+func _advance_ask_to_leave(step: float) -> void:
+	if _ask_to_leave.is_empty() or _ask_to_leave["state"] != &"talking":
+		return
+	var patron_id: StringName = _ask_to_leave["patron_id"]
+	var state := ask_to_leave_availability(patron_id)
+	if not bool(state["available"]):
+		_ask_to_leave["state"] = &"failed"
+		if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active":
+			_set_activity(_patrons[patron_id], &"socializing", &"seat")
+		return
+	_ask_to_leave["remaining"] = float(_ask_to_leave["remaining"]) - step
+	if float(_ask_to_leave["remaining"]) > TIME_EPSILON:
+		return
+	var group_id: StringName = _ask_to_leave["group_id"]
+	var group: Dictionary = _groups[group_id]
+	group["asked_to_leave"] = true
+	_groups[group_id] = group
+	for member_id: StringName in group["patrons"]:
+		if _patrons[member_id]["lifecycle"] == &"active":
+			_suspicion_states[member_id].apply_stimulus(&"asked_to_leave")
+			_record(&"ask_to_leave_result", member_id)
+	_ask_to_leave["state"] = &"completed"
+	_record(&"group_asked_to_leave", group_id, {"cultist_id": _ask_to_leave["cultist_id"]})
+	_try_group_departures()
+
+
+# Completes one five-second bar Action by placing a typed Prepared Drink in the
+# oldest available bar position. Preparation does not need an open Order.
+func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
+	if cultist_id.is_empty() or not _prepared_drinks.can_add():
+		return false
+	var result: Dictionary = _prepared_drinks.add_drink(drink_type)
+	if not bool(result["added"]):
+		return false
+	_record(&"prepared_drink_made", StringName(result["drink_id"]), {
+		"cultist_id": cultist_id,
+		"drink_type": drink_type,
+		"evicted_id": result["evicted_id"],
+	})
 	_emit_snapshot()
 	return true
 
 
+# Kept as a narrow compatibility seam for older callers while menus migrate to
+# the three explicit preparation commands.
+func prepare_drink(cultist_id: StringName) -> bool:
+	return make_drink(&"wine", cultist_id)
+
+
 func carries_prepared_drink(cultist_id: StringName) -> bool:
-	return bool(_carried_drinks.get(cultist_id, false))
+	for drink: Dictionary in _prepared_drinks.snapshot()["drinks"]:
+		if StringName(drink["carried_by"]) == cultist_id:
+			return true
+	return false
+
+
+func prepared_drink(drink_id: StringName) -> Dictionary:
+	return _prepared_drinks.drink(drink_id)
+
+
+func reserve_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return not is_cultist_busy(cultist_id) and _prepared_drinks.reserve(drink_id, cultist_id)
+
+
+func pick_up_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _prepared_drinks.pick_up(drink_id, cultist_id)
+
+
+func release_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _prepared_drinks.release(drink_id, cultist_id)
+
+
+func dispose_prepared_drink(drink_id: StringName) -> Dictionary:
+	var result: Dictionary = _prepared_drinks.dispose(drink_id)
+	if bool(result["disposed"]):
+		_record(&"prepared_drink_disposed", drink_id, {"cultist_id": result["cultist_id"]})
+		_emit_snapshot()
+	return result
+
+
+func drug_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	if _doses_remaining <= 0 or not _prepared_drinks.drug(drink_id, cultist_id):
+		return false
+	_doses_remaining -= 1
+	_record(&"prepared_drink_drugged", drink_id, {
+		"cultist_id": cultist_id, "doses_remaining": _doses_remaining,
+	})
+	_emit_snapshot()
+	return true
 
 
 # Doses the longest-waiting open Order. The bar work position has no Patron of
@@ -1235,6 +1614,10 @@ func end_cultist_engagement(cultist_id: StringName) -> bool:
 	return end_conversation(cultist_id)
 
 
+func conversation_is_active(cultist_id: StringName, patron_id: StringName) -> bool:
+	return _conversations.get(cultist_id, &"") == patron_id
+
+
 # The single authority for whether one command applies to one target right now.
 # "visible" keeps structurally unrelated commands out of the menu; "available"
 # with a short reason explains a temporary condition the player can act on.
@@ -1243,7 +1626,16 @@ func command_availability(
 		cultist_id: StringName,
 		target_id: StringName
 ) -> Dictionary:
+	if cultist_is_incapacitated(cultist_id):
+		return _command_state(true, false, &"cultist_incapacitated")
 	match command:
+		&"admit_group":
+			var group_id := waiting_group_id()
+			if group_id.is_empty():
+				return _command_state(true, false, &"no_group_waiting")
+			if not _admission.is_empty():
+				return _command_state(true, false, &"cultist_busy")
+			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
 		&"talk":
 			var talk := _conscious_patron(target_id)
 			if not talk:
@@ -1251,10 +1643,30 @@ func command_availability(
 			if _conversation_partner(target_id) != &"":
 				return _command_state(true, false, &"not_receptive")
 			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+		&"ask_to_leave":
+			var leave := ask_to_leave_availability(target_id)
+			if not bool(leave["visible"]):
+				return leave
+			if not _ask_to_leave.is_empty():
+				return _command_state(true, false, &"cultist_busy")
+			return leave
+		&"make_wine", &"make_beer", &"make_liquor":
+			return _command_state(true, _prepared_drinks.can_add(), &"bar_full")
+		&"drug_drink":
+			if not _prepared_drinks.has(target_id):
+				return _command_state(false, false, &"drink_unavailable")
+			if _doses_remaining <= 0:
+				return _command_state(true, false, &"no_doses")
+			var drink: Dictionary = _prepared_drinks.drink(target_id)
+			if bool(drink["drugged"]):
+				return _command_state(true, false, &"already_drugged")
+			if not StringName(drink["reserved_by"]).is_empty() and drink["reserved_by"] != cultist_id:
+				return _command_state(true, false, &"drink_reserved")
+			return _command_state(true, true, &"")
 		&"serve_order":
 			if not _conscious_patron(target_id):
 				return _command_state(false, false, &"patron_unavailable")
-			if _patrons[target_id]["activity"] != &"awaiting_drink":
+			if _activity(_patrons[target_id]) != &"awaiting_drink":
 				return _command_state(false, false, &"no_open_order")
 			return _command_state(true, true, &"")
 		&"offer_drink":
@@ -1263,7 +1675,7 @@ func command_availability(
 			if not _conscious_patron(target_id):
 				return _command_state(false, false, &"patron_unavailable")
 			var patron: Dictionary = _patrons[target_id]
-			if _order_system.is_open(patron["order_id"]) or patron["activity"] != &"socializing":
+			if _order_system.is_open(patron["order_id"]) or _activity(patron) != &"socializing":
 				return _command_state(true, false, &"not_receptive")
 			if _simulated_seconds < float(patron["offer_refused_until"]):
 				return _command_state(true, false, &"not_receptive")
@@ -1272,10 +1684,18 @@ func command_availability(
 			var smoker := _conscious_patron(target_id)
 			return _command_state(smoker, smoker, &"patron_unavailable")
 		&"knock_out":
-			if not _conscious_patron(target_id):
+			if not _knockout_target_available(target_id):
 				return _command_state(false, false, &"patron_unavailable")
 			if not _windup.is_empty():
 				return _command_state(true, false, &"cultist_busy")
+			var knockout := _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
+			knockout["detail"] = "%d%%" % int(knockout_chance(target_id))
+			return knockout
+		&"stir":
+			if target_id == cultist_id or not cultist_is_incapacitated(target_id):
+				return _command_state(false, false, &"invalid_target")
+			if _stirs.has(target_id):
+				return _command_state(true, false, &"already_helping")
 			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
 		&"pick_up_body":
 			if not _patrons.has(target_id) or _patrons[target_id]["lifecycle"] != &"unconscious":
@@ -1290,7 +1710,7 @@ func command_availability(
 		&"intercept":
 			if not _patrons.has(target_id) or _patrons[target_id]["lifecycle"] != &"escaping":
 				return _command_state(false, false, &"patron_unavailable")
-			if _patrons[target_id]["activity"] != &"escaping":
+			if _activity(_patrons[target_id]) != &"escaping":
 				return _command_state(true, false, &"not_receptive")
 			if _patrons[target_id]["intercept_attempted"]:
 				return _command_state(true, false, &"already_attempted")
@@ -1335,6 +1755,22 @@ func command_availability(
 	return _command_state(false, false, &"unknown_command")
 
 
+func serve_drink_availability(
+		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+) -> Dictionary:
+	if not _conscious_patron(patron_id):
+		return _command_state(false, false, &"patron_unavailable")
+	if is_cultist_busy(cultist_id):
+		return _command_state(true, false, &"cultist_busy")
+	var drink := _prepared_drinks.drink(drink_id)
+	if drink.is_empty():
+		return _command_state(false, false, &"drink_unavailable")
+	var owner := StringName(drink["reserved_by"])
+	if not owner.is_empty() and owner != cultist_id:
+		return _command_state(true, false, &"drink_reserved")
+	return _command_state(true, true, &"")
+
+
 func _command_state(visible: bool, available: bool, reason: StringName) -> Dictionary:
 	return {
 		"visible": visible,
@@ -1348,11 +1784,27 @@ func _conscious_patron(patron_id: StringName) -> bool:
 	return _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active"
 
 
+func _knockout_target_available(patron_id: StringName) -> bool:
+	return (
+		_patrons.has(patron_id)
+		and StringName(_patrons[patron_id]["lifecycle"]) in [&"active", &"escaping", &"leaving"]
+	)
+
+
 # Busy for the purpose of offering a command. A running Talk does not count,
 # because issuing the next command ends that Talk first.
 func _busy_for_command(cultist_id: StringName) -> bool:
+	if cultist_is_incapacitated(cultist_id):
+		return true
+	if not _admission.is_empty() and _admission["cultist_id"] == cultist_id:
+		return true
+	if not _ask_to_leave.is_empty() and _ask_to_leave["cultist_id"] == cultist_id:
+		return true
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
+	for target_id: StringName in _stirs:
+		if _stirs[target_id]["helper_id"] == cultist_id:
+			return true
 	for patron_id: StringName in _follows:
 		if _follows[patron_id]["cultist_id"] == cultist_id:
 			return true
@@ -1383,9 +1835,75 @@ func serve_patron_order(patron_id: StringName) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
-	if patron["lifecycle"] != &"active" or patron["activity"] != &"awaiting_drink":
+	if patron["lifecycle"] != &"active" or _activity(patron) != &"awaiting_drink":
 		return false
 	return _serve_patron(patron_id, patron)
+
+
+func serve_prepared_drink(
+		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+) -> Dictionary:
+	var result := {
+		"served": false, "accepted": false, "correct": false,
+		"expression": &"frown", "reason": &"invalid_target", "roll": -1.0,
+	}
+	if not _conscious_patron(patron_id):
+		return result
+	var drink: Dictionary = _prepared_drinks.consume(drink_id, cultist_id)
+	if drink.is_empty():
+		result["reason"] = &"drink_unavailable"
+		return result
+	var patron: Dictionary = _patrons[patron_id]
+	var order_id: StringName = patron["order_id"]
+	var has_order := not order_id.is_empty() and _order_system.is_open(order_id)
+	if not has_order:
+		var offer_roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
+		result["roll"] = offer_roll
+		if offer_roll > OFFER_ACCEPTANCE_PERCENT:
+			result["reason"] = &"refused"
+			_record(&"drink_service_result", patron_id, result)
+			_emit_snapshot()
+			return result
+		_start_served_drink(patron_id, patron, drink)
+		result.merge({"served": true, "accepted": true, "reason": &"accepted", "expression": &"smile"}, true)
+		_record(&"drink_service_result", patron_id, result)
+		_emit_snapshot()
+		return result
+
+	var order: Dictionary = _order_system.order_snapshot(order_id)
+	var correct := StringName(order["drink_type"]) == StringName(drink["type"])
+	result["correct"] = correct
+	if correct:
+		var elapsed := _simulated_seconds - float(order["requested_at"])
+		if elapsed <= ORDER_IMPATIENT_SECONDS:
+			_satisfaction[patron_id].change(5.0, &"prompt_service")
+		_order_system.serve_order(order_id, _simulated_seconds, _satisfaction[patron_id].tip_multiplier())
+		_start_served_drink(patron_id, patron, drink)
+		result.merge({"served": true, "accepted": true, "reason": &"correct", "expression": &"smile"}, true)
+	else:
+		_satisfaction[patron_id].change(WRONG_DRINK_SATISFACTION, &"wrong_drink")
+		var wrong_roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
+		result["roll"] = wrong_roll
+		if wrong_roll <= WRONG_DRINK_ACCEPTANCE_PERCENT:
+			_order_system.serve_order(
+				order_id, _simulated_seconds, _satisfaction[patron_id].tip_multiplier() * 0.5
+			)
+			_start_served_drink(patron_id, patron, drink)
+			result.merge({"served": true, "accepted": true, "reason": &"wrong_accepted"}, true)
+		else:
+			result["reason"] = &"wrong_refused"
+	_record(&"drink_service_result", patron_id, result)
+	_emit_snapshot()
+	return result
+
+
+func _start_served_drink(patron_id: StringName, patron: Dictionary, drink: Dictionary) -> void:
+	_set_activity(patron, &"drinking", &"drink")
+	if bool(drink["drugged"]):
+		patron["drug_countdown"] = 0.0
+		patron["drug_drowsy_reported"] = false
+		_record(&"drugged_drink_sipped", patron_id)
+	_patrons[patron_id] = patron
 
 
 func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = false) -> Dictionary:
@@ -1396,15 +1914,12 @@ func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = 
 	if (
 		patron["lifecycle"] != &"active"
 		or _order_system.is_open(patron["order_id"])
-		or patron["activity"] != &"socializing"
+		or _activity(patron) != &"socializing"
 	):
 		return result
 	if _simulated_seconds < float(patron["offer_refused_until"]):
 		result["reason"] = &"refusal_cooldown"
 		return result
-	# The offer spends the carried Prepared Drink whether or not the Patron takes it.
-	if bool(_carried_drinks.get(cultist_id, false)):
-		_carried_drinks[cultist_id] = false
 	var roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
 	result["roll"] = roll
 	if roll > OFFER_ACCEPTANCE_PERCENT:
@@ -1413,6 +1928,8 @@ func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = 
 		result["reason"] = &"refused"
 		_record(&"offered_drink_refused", patron_id, {"cultist_id": cultist_id, "roll": roll})
 		return result
+	if bool(_carried_drinks.get(cultist_id, false)):
+		_carried_drinks[cultist_id] = false
 	_set_activity(patron, &"drinking", &"drink")
 	if drugged:
 		patron["drug_countdown"] = 0.0
@@ -1449,10 +1966,10 @@ func debug_set_patron_drink_state(
 	return true
 
 
-func debug_change_patron_mood(patron_id: StringName, amount: float) -> bool:
-	if not _moods.has(patron_id):
+func debug_change_patron_satisfaction(patron_id: StringName, amount: float) -> bool:
+	if not _satisfaction.has(patron_id):
 		return false
-	_moods[patron_id].change(amount, &"debug_setup")
+	_satisfaction[patron_id].change(amount, &"debug_setup")
 	return true
 
 
@@ -1472,9 +1989,9 @@ func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
 		return false
 	var elapsed := _simulated_seconds - float(order["requested_at"])
 	if elapsed <= ORDER_IMPATIENT_SECONDS:
-		_moods[patron_id].change(5.0, &"prompt_service")
+		_satisfaction[patron_id].change(5.0, &"prompt_service")
 	if not _order_system.serve_order(
-		patron["order_id"], _simulated_seconds, _moods[patron_id].tip_multiplier()
+		patron["order_id"], _simulated_seconds, _satisfaction[patron_id].tip_multiplier()
 	):
 		return false
 	_set_activity(patron, &"drinking", &"drink")
@@ -1552,12 +2069,12 @@ func activate_trapdoor() -> bool:
 	var occupant := _bathroom_occupant()
 	_trapdoor_eligible_occupant = occupant
 	_record(&"trapdoor_opened", occupant)
-	if not occupant.is_empty() and _is_standing_bathroom_activity(_patrons[occupant]["activity"]):
+	if not occupant.is_empty() and _is_standing_bathroom_activity(_activity(_patrons[occupant])):
 		_begin_trapdoor_fall(occupant)
 	else:
 		_trapdoor_state = &"open"
 		_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
-		if not occupant.is_empty() and _patrons[occupant]["activity"] == &"seated_bathroom_use":
+		if not occupant.is_empty() and _activity(_patrons[occupant]) == &"seated_bathroom_use":
 			_apply_seated_hard_evidence(occupant)
 	_emit_snapshot()
 	return true
@@ -1596,7 +2113,7 @@ func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
 	if not _patrons.has(patron_id) or cultist_id.is_empty() or not _active_intercept.is_empty():
 		return false
 	var patron: Dictionary = _patrons[patron_id]
-	if patron["lifecycle"] != &"escaping" or patron["activity"] != &"escaping":
+	if patron["lifecycle"] != &"escaping" or _activity(patron) != &"escaping":
 		return false
 	if patron["intercept_attempted"] or not _interaction_registry.request_slot(cultist_id, INTERCEPT_SLOT):
 		return false
@@ -1726,19 +2243,17 @@ func _advance_investigations(step: float) -> void:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"investigating":
 			continue
-		if patron["activity"] == &"waiting_investigation":
+		if _activity(patron) == &"waiting_investigation":
 			if _bathroom_available_for_entry() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 				_set_activity(patron, &"investigation_search", &"bathroom")
 				_patrons[patron_id] = patron
 				_record(&"investigation_started", patron_id)
 			continue
-		if patron["activity"] != &"investigation_search":
+		if _activity(patron) != &"investigation_search":
 			continue
-		if _physical_navigation_enabled and not patron["navigation_arrived"]:
+		if _physical_navigation_enabled and not _behavior_arrived(patron):
 			continue
-		patron["activity_elapsed"] = float(patron["activity_elapsed"]) + step
-		_patrons[patron_id] = patron
-		if patron["activity_elapsed"] >= INVESTIGATION_SECONDS:
+		if _behavior_elapsed(patron) >= INVESTIGATION_SECONDS:
 			_interaction_registry.release_actor(patron_id)
 			_record(&"trapdoor_discovered", patron_id)
 			_begin_escape(patron_id)
@@ -1760,19 +2275,20 @@ func _advance_escape(step: float) -> void:
 		return
 	for patron_id: StringName in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
+		if not _windup.is_empty() and _windup["victim_id"] == patron_id:
+			continue
 		if patron["lifecycle"] != &"escaping":
 			continue
-		if patron["activity"] == &"shock":
-			patron["activity_elapsed"] = float(patron["activity_elapsed"]) + step
-			if patron["activity_elapsed"] >= ESCAPE_SHOCK_SECONDS:
+		if _activity(patron) == &"shock":
+			if _behavior_elapsed(patron) >= ESCAPE_SHOCK_SECONDS:
 				_set_activity(patron, &"escaping", &"front_exit")
 				_record(&"escape_started", patron_id)
 			_patrons[patron_id] = patron
 			continue
-		if patron["activity"] != &"escaping":
+		if _activity(patron) != &"escaping":
 			continue
 		if _physical_navigation_enabled:
-			if not patron["navigation_arrived"]:
+			if not _behavior_arrived(patron):
 				continue
 			patron["escape_remaining"] = 0.0
 		patron["escape_remaining"] = maxf(0.0, float(patron["escape_remaining"]) - step)
@@ -1795,7 +2311,7 @@ func _dispatch_maximum_responses() -> void:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"active":
 			continue
-		if patron["activity"] in DISPATCH_EXCLUDED_ACTIVITIES:
+		if _activity(patron) in DISPATCH_EXCLUDED_ACTIVITIES:
 			continue
 		var state: Dictionary = _suspicion_states[patron_id].snapshot()
 		if float(state["score"]) < 100.0:
@@ -2026,12 +2542,14 @@ func _advance_collapses(step: float) -> void:
 					collapse["phase"] = &"carrying"
 					collapse["remaining"] = HELPER_CARRY_SECONDS
 					_set_helper_activity(collapse["helper_id"], &"helper_carrying")
-					_patrons[victim_id]["navigation_destination"] = &"front_exit"
-					_patrons[victim_id]["navigation_arrived"] = not _physical_navigation_enabled
+					_patron_actions[victim_id].submit(
+						_activity(_patrons[victim_id]), &"front_exit",
+						_interaction_registry.actor_slot(victim_id), _physical_navigation_enabled
+					)
 					_record(&"helper_carrying", collapse["helper_id"], {"victim_id": victim_id})
 			&"carrying":
 				var helper_id: StringName = collapse["helper_id"]
-				if _physical_navigation_enabled and not _patrons[helper_id]["navigation_arrived"]:
+				if _physical_navigation_enabled and not _behavior_arrived(_patrons[helper_id]):
 					continue
 				collapse["remaining"] = 0.0 if _physical_navigation_enabled else float(collapse["remaining"]) - step
 				if collapse["remaining"] <= TIME_EPSILON:
@@ -2091,11 +2609,11 @@ func _collapse_patron(
 		"room": collapse_room,
 		"overdrink_noticed": {},
 	}
-	_apply_collapse_mood_reactions(patron_id, collapse_room, cause)
+	_apply_collapse_satisfaction_reactions(patron_id, collapse_room, cause)
 	_record(&"overdrink_collapse" if cause == &"overdrink" else &"drugged_drink_collapse", patron_id)
 
 
-func _apply_collapse_mood_reactions(
+func _apply_collapse_satisfaction_reactions(
 	victim_id: StringName,
 	room: StringName,
 	cause: StringName
@@ -2107,23 +2625,23 @@ func _apply_collapse_mood_reactions(
 		if _patron_room(_patrons[patron_id]) != room:
 			continue
 		if cause == &"overdrink":
-			_moods[patron_id].change(-15.0, &"overdrink_body")
+			_satisfaction[patron_id].change(-15.0, &"overdrink_body")
 			collapse["overdrink_noticed"][patron_id] = true
-			_record(&"mood_changed", patron_id, {
-				"cause": &"overdrink_body", "amount": -15.0, "value": _moods[patron_id].value(),
+			_record(&"satisfaction_changed", patron_id, {
+				"cause": &"overdrink_body", "amount": -15.0, "value": _satisfaction[patron_id].value(),
 			})
 		var companion_roll: float = _patron_rngs[patron_id].randf_range(0.0, 100.0)
 		if patron_id in _patrons[victim_id]["companions"] and companion_roll <= 50.0:
-			_moods[patron_id].change(-20.0, &"companion_collapse")
-			_record(&"companion_collapse_mood", patron_id, {
-				"victim_id": victim_id, "value": _moods[patron_id].value(),
+			_satisfaction[patron_id].change(-20.0, &"companion_collapse")
+			_record(&"companion_collapse_satisfaction", patron_id, {
+				"victim_id": victim_id, "value": _satisfaction[patron_id].value(),
 			})
-		if _moods[patron_id].value() <= 0.0:
-			_depart_patron(patron_id, _patrons[patron_id], &"mood_zero")
+		if _satisfaction[patron_id].value() <= 0.0:
+			_depart_patron(patron_id, _patrons[patron_id], &"satisfaction_zero")
 	_collapses[victim_id] = collapse
 
 
-func _apply_overdrink_body_mood(patron_id: StringName, patron: Dictionary) -> void:
+func _apply_overdrink_body_satisfaction(patron_id: StringName, patron: Dictionary) -> void:
 	for victim_id: StringName in _collapses:
 		var collapse: Dictionary = _collapses[victim_id]
 		if collapse.get("cause", &"") != &"overdrink":
@@ -2132,14 +2650,14 @@ func _apply_overdrink_body_mood(patron_id: StringName, patron: Dictionary) -> vo
 			continue
 		if _patron_room(patron) != StringName(collapse["room"]):
 			continue
-		_moods[patron_id].change(-15.0, &"overdrink_body")
+		_satisfaction[patron_id].change(-15.0, &"overdrink_body")
 		collapse["overdrink_noticed"][patron_id] = true
 		_collapses[victim_id] = collapse
-		_record(&"mood_changed", patron_id, {
-			"cause": &"overdrink_body", "amount": -15.0, "value": _moods[patron_id].value(),
+		_record(&"satisfaction_changed", patron_id, {
+			"cause": &"overdrink_body", "amount": -15.0, "value": _satisfaction[patron_id].value(),
 		})
-		if _moods[patron_id].value() <= 0.0:
-			_depart_patron(patron_id, patron, &"mood_zero")
+		if _satisfaction[patron_id].value() <= 0.0:
+			_depart_patron(patron_id, patron, &"satisfaction_zero")
 
 
 func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
@@ -2177,7 +2695,7 @@ func _select_helper(victim_id: StringName) -> StringName:
 	for companion_id: StringName in _patrons[victim_id]["companions"]:
 		if not _patrons.has(companion_id) or _patrons[companion_id]["lifecycle"] != &"active":
 			continue
-		if _moods[companion_id].band() == "Miserable":
+		if _satisfaction[companion_id].band() == "Miserable":
 			continue
 		if _patron_room(_patrons[companion_id]) != StringName(_collapses[victim_id].get("room", &"main_hall")):
 			continue
@@ -2288,7 +2806,7 @@ func _active_collapse_with_helper() -> StringName:
 func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
 	if cultist_id.is_empty() or not _patrons.has(victim_id):
 		return false
-	if _patrons[victim_id]["lifecycle"] != &"active":
+	if not _knockout_target_available(victim_id):
 		return false
 	if not _windup.is_empty() or is_cultist_busy(cultist_id):
 		return false
@@ -2302,6 +2820,41 @@ func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
 	return true
 
 
+func knockout_chance(victim_id: StringName) -> float:
+	if not _patrons.has(victim_id):
+		return 0.0
+	return KNOCKOUT_CHANCES[clampi(int(_patrons[victim_id]["intoxication"]), 0, 3)]
+
+
+func cultist_is_incapacitated(cultist_id: StringName) -> bool:
+	return _incapacitated_cultists.has(cultist_id)
+
+
+func cultist_incapacitated_remaining(cultist_id: StringName) -> float:
+	return float(_incapacitated_cultists.get(cultist_id, 0.0))
+
+
+func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
+	if helper_id == target_id or helper_id not in CULTIST_IDS or target_id not in CULTIST_IDS:
+		return false
+	if not cultist_is_incapacitated(target_id) or _stirs.has(target_id) or _busy_for_command(helper_id):
+		return false
+	_stirs[target_id] = {"helper_id": helper_id, "remaining": STIR_SECONDS}
+	_record(&"stir_started", target_id, {"cultist_id": helper_id})
+	_emit_snapshot()
+	return true
+
+
+func cancel_stir(helper_id: StringName) -> bool:
+	for target_id: StringName in _stirs:
+		if _stirs[target_id]["helper_id"] == helper_id:
+			_stirs.erase(target_id)
+			_record(&"stir_cancelled", target_id, {"cultist_id": helper_id})
+			_emit_snapshot()
+			return true
+	return false
+
+
 # Interrupts the wind-up before impact. The Commitment Point has not passed, so
 # the victim is unharmed. Only the Cultist who started the wind-up can cancel it.
 func cancel_knockout(cultist_id: StringName) -> bool:
@@ -2312,6 +2865,83 @@ func cancel_knockout(cultist_id: StringName) -> bool:
 	_record(&"knockout_windup_cancelled", victim_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
 	return true
+
+
+func command_action_state(
+		command: StringName, cultist_id: StringName, target_id: StringName
+) -> StringName:
+	match command:
+		&"admit_group":
+			if _admission.is_empty() or _admission["cultist_id"] != cultist_id:
+				return &"failed"
+			if _admission["phase"] == &"holding" and _admission_complete():
+				_admission.clear()
+				return &"completed"
+			return &"committed" if _admission["phase"] == &"holding" else &"executing"
+		&"ask_to_leave":
+			if _ask_to_leave.is_empty() or _ask_to_leave["cultist_id"] != cultist_id or _ask_to_leave["patron_id"] != target_id:
+				return &"failed"
+			var leave_state: StringName = _ask_to_leave["state"]
+			if leave_state in [&"completed", &"failed"]:
+				_ask_to_leave.clear()
+			return leave_state
+		&"knock_out":
+			if (
+				not _windup.is_empty()
+				and _windup["cultist_id"] == cultist_id
+				and _windup["victim_id"] == target_id
+			):
+				return &"executing"
+			if (
+				_patrons.has(target_id)
+				and _patrons[target_id]["lifecycle"] == &"unconscious"
+				and _patrons[target_id]["collapse_cause"] == &"knockout"
+			):
+				return &"completed"
+			var outcome_key := "%s:%s" % [cultist_id, target_id]
+			if _knockout_outcomes.get(outcome_key, &"") == &"failed":
+				_knockout_outcomes.erase(outcome_key)
+				return &"failed"
+		&"stir":
+			if _stirs.has(target_id) and _stirs[target_id]["helper_id"] == cultist_id:
+				return &"executing"
+			if not cultist_is_incapacitated(target_id):
+				return &"completed"
+		&"prepare_drugged_drink":
+			if (
+				not _drug_prep.is_empty()
+				and _drug_prep["cultist_id"] == cultist_id
+			):
+				return &"executing"
+			for patron_id: StringName in _patrons:
+				if bool(_patrons[patron_id]["dosed_pending"]):
+					return &"completed"
+		&"pick_up_body":
+			if _drags.has(target_id) and _drags[target_id]["cultist_id"] == cultist_id:
+				return &"executing" if _drags[target_id]["phase"] == &"pickup" else &"completed"
+		&"intercept":
+			if (
+				not _active_intercept.is_empty()
+				and _active_intercept["cultist_id"] == cultist_id
+				and _active_intercept["patron_id"] == target_id
+			):
+				return &"executing"
+			if _patrons.has(target_id) and bool(_patrons[target_id]["intercept_attempted"]):
+				return &"completed"
+		&"lead_to_tunnel":
+			if _follows.has(target_id) and _follows[target_id]["cultist_id"] == cultist_id:
+				return &"executing"
+			if _patrons.has(target_id) and _patrons[target_id]["lifecycle"] == &"captured":
+				return &"completed"
+		&"rescue_persuasion":
+			for victim_id: StringName in _collapses:
+				var collapse: Dictionary = _collapses[victim_id]
+				if collapse["helper_id"] != target_id or collapse["acting_cultist"] != cultist_id:
+					continue
+				return &"executing" if collapse["phase"] == &"persuading" else &"completed"
+			if _patrons.has(target_id) and _patrons[target_id]["lifecycle"] == &"captured":
+				return &"completed"
+	return &"failed"
 
 
 # Starts the 1-second pickup of an Unconscious, unattended body. Pickup pauses the
@@ -2341,7 +2971,9 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 		"witness_elapsed": 0.0,
 		"source_room": _patrons[victim_id].get("body_room", &"main_hall"),
 		"source_position": _patrons[victim_id].get("body_position", BAR_POSITION),
-		"overdrink": _patrons[victim_id].get("collapse_cause", &"") == &"overdrink",
+		# Preserve the causal collapse route so a dragged body reports its true
+		# method (Drugged Drink, Overdrink, or Knockout) at the Tunnel Intake.
+		"capture_cause": _patrons[victim_id].get("collapse_cause", &"knockout"),
 	}
 	_record(&"body_pickup_started", victim_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
@@ -2374,10 +3006,15 @@ func drop_body(cultist_id: StringName) -> bool:
 
 
 func is_cultist_busy(cultist_id: StringName) -> bool:
+	if cultist_is_incapacitated(cultist_id):
+		return true
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
 	if _conversations.has(cultist_id):
 		return true
+	for target_id: StringName in _stirs:
+		if _stirs[target_id]["helper_id"] == cultist_id:
+			return true
 	for patron_id: StringName in _follows:
 		if _follows[patron_id]["cultist_id"] == cultist_id:
 			return true
@@ -2396,7 +3033,7 @@ func _advance_windup(step: float) -> void:
 		return
 	var victim_id: StringName = _windup["victim_id"]
 	# A victim who left or fell before impact aborts the wind-up harmlessly.
-	if not _patrons.has(victim_id) or _patrons[victim_id]["lifecycle"] != &"active":
+	if not _knockout_target_available(victim_id):
 		_windup.clear()
 		return
 	_windup["remaining"] = float(_windup["remaining"]) - step
@@ -2407,13 +3044,52 @@ func _advance_windup(step: float) -> void:
 	_knockout_patron(victim_id, cultist_id)
 
 
+func _advance_incapacitated_cultists(step: float) -> void:
+	for cultist_id: StringName in _incapacitated_cultists.keys():
+		_incapacitated_cultists[cultist_id] = maxf(
+			0.0, float(_incapacitated_cultists[cultist_id]) - step
+		)
+		if float(_incapacitated_cultists[cultist_id]) <= TIME_EPSILON:
+			_recover_cultist(cultist_id, &"natural")
+
+
+func _advance_stirs(step: float) -> void:
+	for target_id: StringName in _stirs.keys():
+		if not cultist_is_incapacitated(target_id):
+			_stirs.erase(target_id)
+			continue
+		var stir: Dictionary = _stirs[target_id]
+		stir["remaining"] = maxf(0.0, float(stir["remaining"]) - step)
+		_stirs[target_id] = stir
+		if float(stir["remaining"]) <= TIME_EPSILON:
+			_recover_cultist(target_id, &"stirred")
+
+
+func _recover_cultist(cultist_id: StringName, cause: StringName) -> void:
+	_incapacitated_cultists.erase(cultist_id)
+	_stirs.erase(cultist_id)
+	_record(&"cultist_recovered", cultist_id, {"cause": cause})
+
+
 # The knockout impact. This is the Commitment Point: witnesses perceive it and the
 # victim goes Unconscious for the Night, becoming an Unattended Body on the spot.
 func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
 	var patron: Dictionary = _patrons[victim_id]
 	var source_room := _patron_room(patron)
 	var source_position := _patron_position(patron)
+	var chance := knockout_chance(victim_id)
+	var roll := _rng.randi_range(1, 100)
+	var succeeded := roll <= int(chance)
 	_witness_knockout(victim_id, source_room, source_position)
+	var outcome_key := "%s:%s" % [cultist_id, victim_id]
+	_knockout_outcomes[outcome_key] = &"succeeded" if succeeded else &"failed"
+	if not succeeded:
+		_route_stimulus(victim_id, &"knockout_witnessed", &"visual", cultist_id)
+		_incapacitated_cultists[cultist_id] = CULTIST_INCAPACITATED_SECONDS
+		_record(&"knockout_failed", victim_id, {
+			"cultist_id": cultist_id, "chance": chance, "roll": roll,
+		})
+		return
 	patron["bathroom_checks_active"] = false
 	patron["lifecycle"] = &"unconscious"
 	patron["collapse_cause"] = &"knockout"
@@ -2429,7 +3105,9 @@ func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
 		_order_system.cancel_order(order_id, _simulated_seconds, &"knockout")
 	_patrons[victim_id] = patron
 	_perception.add_body(victim_id, source_room, source_position)
-	_record(&"knockout", victim_id, {"cultist_id": cultist_id})
+	_record(&"knockout", victim_id, {
+		"cultist_id": cultist_id, "chance": chance, "roll": roll,
+	})
 
 
 # Fans the impact out: a Patron who sees it receives Hard Evidence, a Patron who
@@ -2445,7 +3123,12 @@ func _witness_knockout(victim_id: StringName, source_room: StringName, source_po
 	for patron_id: StringName in _perception.auditory_recipients(source_room, perceivers):
 		if patron_id == victim_id or seen.has(patron_id):
 			continue
-		_route_stimulus(patron_id, &"knockout_heard", &"auditory", victim_id)
+		var noticed := _rng.randi_range(1, 100) <= int(KNOCKOUT_HEARING_NOTICE_PERCENT)
+		_record(&"knockout_hearing_check", patron_id, {
+			"source_id": victim_id, "noticed": noticed,
+		})
+		if noticed:
+			_route_stimulus(patron_id, &"knockout_heard", &"auditory", victim_id)
 
 
 func _advance_drags(step: float) -> void:
@@ -2463,7 +3146,7 @@ func _advance_drags(step: float) -> void:
 					_apply_drag_witnessing(victim_id, drag, true)
 					_record(&"body_drag_started", victim_id, {"cultist_id": drag["cultist_id"]})
 			&"dragging":
-				if _physical_navigation_enabled and not _patrons[victim_id]["navigation_arrived"]:
+				if _physical_navigation_enabled and not _behavior_arrived(_patrons[victim_id]):
 					continue
 				drag["witness_elapsed"] = float(drag["witness_elapsed"]) + step
 				while float(drag["witness_elapsed"]) + TIME_EPSILON >= DRAG_WITNESS_INTERVAL_SECONDS:
@@ -2491,14 +3174,14 @@ func _capture_dragged_body(victim_id: StringName) -> void:
 	patron["lifecycle"] = &"captured"
 	_set_activity(patron, &"captured", &"tunnel")
 	_patrons[victim_id] = patron
-	var cause: StringName = &"overdrink" if drag["overdrink"] else &"knockout"
+	var cause: StringName = drag.get("capture_cause", &"knockout")
 	_captures.append({"id": victim_id, "cause": cause, "at": _simulated_seconds})
 	_record(&"capture", victim_id, {"cause": cause, "cultist_id": drag["cultist_id"]})
 
 
 func _apply_drag_witnessing(victim_id: StringName, drag: Dictionary, first: bool) -> void:
 	var stimulus: StringName
-	if drag["overdrink"]:
+	if StringName(drag.get("capture_cause", &"knockout")) == &"overdrink":
 		stimulus = &"overdrink_body_drag_seen_first" if first else &"overdrink_body_drag_seen_continuing"
 	else:
 		stimulus = &"body_drag_seen_first" if first else &"body_drag_seen_continuing"
@@ -2562,9 +3245,9 @@ func end_conversation(cultist_id: StringName) -> bool:
 		if not patron["identified"]:
 			patron["identified"] = true
 			_record(&"patron_identified", patron_id, {"cultist_id": cultist_id})
-		if _moods[patron_id].complete_talk(cultist_id):
-			_record(&"mood_changed", patron_id, {
-				"cause": &"first_talk", "amount": 5.0, "value": _moods[patron_id].value(),
+		if _satisfaction[patron_id].complete_talk(cultist_id):
+			_record(&"satisfaction_changed", patron_id, {
+				"cause": &"first_talk", "amount": 5.0, "value": _satisfaction[patron_id].value(),
 			})
 		var fallback: StringName = (
 			&"awaiting_drink"
@@ -2678,7 +3361,7 @@ func _advance_conversations(step: float) -> void:
 func _advance_follows(step: float) -> void:
 	for patron_id: StringName in _follows.keys():
 		var follow: Dictionary = _follows[patron_id]
-		if _physical_navigation_enabled and not _patrons[patron_id]["navigation_arrived"]:
+		if _physical_navigation_enabled and not _behavior_arrived(_patrons[patron_id]):
 			continue
 		follow["remaining"] = 0.0 if _physical_navigation_enabled else float(follow["remaining"]) - step
 		if float(follow["remaining"]) <= TIME_EPSILON:
@@ -2715,7 +3398,11 @@ func _try_group_departures() -> void:
 		var group: Dictionary = _groups[group_id]
 		if not group["arrived"] or group["departed"] or float(group["seated_at"]) < 0.0:
 			continue
-		var due := _closing or _simulated_seconds >= float(group["seated_at"]) + DEPARTURE_AFTER_SEATED_SECONDS
+		var due := (
+			_closing
+			or bool(group.get("asked_to_leave", false))
+			or _simulated_seconds >= float(group["seated_at"]) + DEPARTURE_AFTER_SEATED_SECONDS
+		)
 		if not due or not _group_ready_to_depart(group):
 			continue
 		# The departure anchor (first-defined member) always leaves. Every other eligible
@@ -2760,7 +3447,7 @@ func _try_stayer_departures() -> void:
 		var patron: Dictionary = _patrons[patron_id]
 		if not patron["stayed_behind"] or patron["lifecycle"] != &"active":
 			continue
-		if patron["activity"] not in [&"socializing", &"awaiting_drink"]:
+		if _activity(patron) not in [&"socializing", &"awaiting_drink"]:
 			continue
 		patron["stayed_behind"] = false
 		_depart_patron(patron_id, patron, &"stayer_closing")
@@ -2771,7 +3458,7 @@ func _group_ready_to_depart(group: Dictionary) -> bool:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"active":
 			continue
-		if patron["activity"] not in [&"socializing", &"awaiting_drink"]:
+		if _activity(patron) not in [&"socializing", &"awaiting_drink"]:
 			return false
 	return true
 
@@ -2785,7 +3472,7 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 		_order_system.cancel_order(order_id, _simulated_seconds, reason)
 	patron["bathroom_checks_active"] = false
 	var departure_started := _set_activity(patron, &"normal_departure", &"front_exit")
-	if not departure_started and patron["activity"] == &"awaiting_drink":
+	if not departure_started and _activity(patron) == &"awaiting_drink":
 		# Cancelling the open Order completes that phase, so its deferred Departure can start.
 		_complete_activity(patron, &"normal_departure", &"front_exit")
 	patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
@@ -2793,53 +3480,96 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 		PHYSICAL_DEPARTURE_TIMEOUT_SECONDS if _physical_navigation_enabled else -1.0
 	)
 	if not _physical_navigation_enabled:
-		_behavior_machines[patron_id].submit(&"exited")
+		_patron_actions[patron_id].submit(&"exited")
 	_patrons[patron_id] = patron
 	_record(&"normal_departure", patron_id, {"reason": reason})
 
 
 func _set_activity(patron: Dictionary, activity: StringName, destination: StringName) -> bool:
 	var patron_id: StringName = patron["id"]
-	if _behavior_machines.has(patron_id):
-		var result: Dictionary = _behavior_machines[patron_id].submit(activity)
-		if result["decision"] != PATRON_BEHAVIOR_MACHINE_SCRIPT.ACCEPT:
+	if _patron_actions.has(patron_id):
+		var reservation: StringName = _interaction_registry.actor_slot(patron_id)
+		var result: Dictionary = _patron_actions[patron_id].submit(
+			activity, destination, reservation,
+			_physical_navigation_enabled and _activity_requires_movement(activity)
+		)
+		if result["decision"] != PATRON_INTENT_PLANNER_SCRIPT.ACCEPT:
 			var event_name: StringName = (
 				&"behavior_intent_deferred"
-				if result["decision"] == PATRON_BEHAVIOR_MACHINE_SCRIPT.DEFER
+				if result["decision"] == PATRON_INTENT_PLANNER_SCRIPT.DEFER
 				else &"behavior_intent_rejected"
 			)
 			_record(event_name, patron_id, {
 				"from": result["from"], "to": activity, "reason": result["reason"],
 			})
 			return false
-	patron["activity"] = activity
-	patron["activity_elapsed"] = 0.0
-	patron["navigation_destination"] = destination
-	patron["navigation_arrived"] = not _physical_navigation_enabled or not _activity_requires_movement(activity)
+		_patron_actions[patron_id].configure_timing(_activity_duration(patron, activity))
 	return true
+
+
+func _activity_duration(patron: Dictionary, activity: StringName) -> float:
+	match activity:
+		&"drinking": return DRINK_SECONDS
+		&"socializing": return float(patron["social_interval"])
+		&"mirror_check": return BATHROOM_MIRROR_SECONDS
+		&"seated_bathroom_use": return float(patron["bathroom_use_seconds"])
+		&"handwashing": return BATHROOM_HANDWASH_SECONDS
+		&"investigation_search": return INVESTIGATION_SECONDS
+		&"shock": return ESCAPE_SHOCK_SECONDS
+		&"escaping": return ESCAPE_TRAVEL_SECONDS
+		&"helper_reacting": return HELPER_REACTION_SECONDS
+		&"helper_lifting": return HELPER_LIFT_SECONDS
+		&"helper_carrying": return HELPER_CARRY_SECONDS
+	return INF
 
 
 func _complete_activity(patron: Dictionary, fallback: StringName, destination: StringName) -> void:
 	var patron_id: StringName = patron["id"]
-	if not _behavior_machines.has(patron_id):
+	if not _patron_actions.has(patron_id):
 		_set_activity(patron, fallback, destination)
 		return
-	var result: Dictionary = _behavior_machines[patron_id].complete_committed(fallback)
-	var next_state: StringName = result["to"]
-	patron["activity"] = next_state
-	patron["activity_elapsed"] = 0.0
-	patron["navigation_destination"] = (
-		destination if next_state == fallback else _destination_for_activity(next_state, patron)
+	var deferred: Array = _patron_actions[patron_id].snapshot()["deferred"]
+	var next_destination := destination
+	if not deferred.is_empty():
+		deferred.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+			return PATRON_INTENT_PLANNER_SCRIPT.CLASS_PRIORITY.get(
+				PATRON_INTENT_PLANNER_SCRIPT.STATE_CLASS[left["state"]], -1
+			) > PATRON_INTENT_PLANNER_SCRIPT.CLASS_PRIORITY.get(
+				PATRON_INTENT_PLANNER_SCRIPT.STATE_CLASS[right["state"]], -1
+			)
+		)
+		next_destination = _destination_for_activity(deferred[0]["state"], patron)
+	_patron_actions[patron_id].complete_committed(
+		fallback, next_destination, _interaction_registry.actor_slot(patron_id),
+		_physical_navigation_enabled and _activity_requires_movement(
+			deferred[0]["state"] if not deferred.is_empty() else fallback
+		)
 	)
-	patron["navigation_arrived"] = not _physical_navigation_enabled or not _activity_requires_movement(next_state)
+	_patron_actions[patron_id].configure_timing(_activity_duration(patron, _activity(patron)))
 
 
 func _movement_complete(patron: Dictionary, fallback_seconds: float) -> bool:
 	return (
-		bool(patron["navigation_arrived"])
+		_behavior_arrived(patron)
 		if _physical_navigation_enabled
-		else float(patron["activity_elapsed"]) >= fallback_seconds
+		else _behavior_elapsed(patron) >= fallback_seconds
 	)
+
+
+func _behavior_snapshot(patron: Dictionary) -> Dictionary:
+	return _patron_actions[patron["id"]].snapshot(false)
+
+
+func _activity(patron: Dictionary) -> StringName:
+	return _behavior_snapshot(patron)["state"]
+
+
+func _behavior_elapsed(patron: Dictionary) -> float:
+	return float(_behavior_snapshot(patron)["elapsed_seconds"])
+
+
+func _behavior_arrived(patron: Dictionary) -> bool:
+	return bool(_behavior_snapshot(patron)["navigation_arrived"])
 
 
 func _activity_requires_movement(activity: StringName) -> bool:
@@ -2914,6 +3644,7 @@ func _visible_activity(activity: StringName) -> String:
 		&"following": "Following Cultist",
 		&"captured": "Captured",
 		&"normal_departure": "Normal Departure",
+		&"exited": "Normal Departure",
 	}
 	return labels.get(activity, "Present")
 

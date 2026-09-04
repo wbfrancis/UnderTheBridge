@@ -6,7 +6,7 @@ const EMOTE_DIRECTOR_PATH := "res://scripts/presentation/emote_director.gd"
 # Every hidden simulation value the sanitized emote_view must never carry.
 const FORBIDDEN_KEYS: Array[String] = [
 	"suspicion", "suspicion_cause", "bladder", "bathroom_probability",
-	"next_bathroom_check_in", "recent_bathroom_rolls", "mood_value",
+	"next_bathroom_check_in", "recent_bathroom_rolls", "satisfaction_value",
 	"overdrink_limit", "excess_drinks", "ideal_intoxication",
 	"ideal_intoxication_level", "intoxication_level", "collapse_cause",
 	"drug_countdown", "dosed_pending", "friendship", "reservation",
@@ -56,8 +56,8 @@ func _shown(director) -> Dictionary:
 func test_every_persistent_state_appears_from_its_source_and_ends_with_it() -> void:
 	var director = _director()
 	var states: Array[StringName] = [
-		&"escaping", &"investigating", &"unconscious", &"bathroom",
-		&"ordering", &"conversation", &"cultist_action",
+		&"escaping", &"investigating", &"unconscious", &"cultist_incapacitated", &"bathroom",
+		&"ordering", &"conversation",
 	]
 	for state: StringName in states:
 		director.reset()
@@ -119,7 +119,7 @@ func test_one_actor_never_shows_two_bubbles_or_holds_more_than_two_transients() 
 	director.update(_view([_row(&"patron_a", &"none")]), 0.1, false)
 	director.update(_view([_row(
 		&"patron_a", &"none", {},
-		[&"drink_result", &"command_result", &"mood_up", &"relationship_gain"]
+		[&"service_smile", &"service_frown", &"mood_up", &"relationship_gain"]
 	)]), 0.0, false)
 
 	assert_eq(director.bubbles().size(), 1, "One actor shows one bubble.")
@@ -130,10 +130,10 @@ func test_one_actor_never_shows_two_bubbles_or_holds_more_than_two_transients() 
 func test_repeated_events_of_one_kind_are_deduplicated() -> void:
 	var director = _director()
 	director.update(_view([_row(&"patron_a", &"none")]), 0.1, false)
-	director.update(_view([_row(&"patron_a", &"none", {}, [&"drink_result", &"drink_result"])]), 0.0, false)
-	director.update(_view([_row(&"patron_a", &"none", {}, [&"drink_result"])]), 0.0, false)
+	director.update(_view([_row(&"patron_a", &"none", {}, [&"service_smile", &"service_smile"])]), 0.0, false)
+	director.update(_view([_row(&"patron_a", &"none", {}, [&"service_smile"])]), 0.0, false)
 
-	assert_eq(_shown(director)[&"patron_a"], &"drink_result")
+	assert_eq(_shown(director)[&"patron_a"], &"service_smile")
 	assert_true(director.snapshot()["pending"][&"patron_a"].is_empty(),
 		"A repeated event refreshes the active transient instead of stacking.")
 
@@ -143,23 +143,46 @@ func test_repeated_events_of_one_kind_are_deduplicated() -> void:
 func test_transients_use_real_time_so_four_times_play_does_not_shorten_them() -> void:
 	var director = _director()
 	director.update(_view([_row(&"patron_a", &"none")]), 0.1, false)
-	director.update(_view([_row(&"patron_a", &"none", {}, [&"command_result"])]), 0.0, false)
-	assert_eq(_shown(director)[&"patron_a"], &"command_result")
+	director.update(_view([_row(&"patron_a", &"none", {}, [&"service_frown"])]), 0.0, false)
+	assert_eq(_shown(director)[&"patron_a"], &"service_frown")
 
-	# 1.25 real seconds, delivered as frames at any simulation speed.
-	director.update(_view([_row(&"patron_a", &"none")]), 1.0, false)
-	assert_eq(_shown(director)[&"patron_a"], &"command_result", "The transient still has time left.")
-	director.update(_view([_row(&"patron_a", &"none")]), 0.3, false)
+	# Two real seconds, delivered as frames at any simulation speed.
+	director.update(_view([_row(&"patron_a", &"none")]), 1.7, false)
+	assert_eq(_shown(director)[&"patron_a"], &"service_frown", "The transient still has time left.")
+	director.update(_view([_row(&"patron_a", &"none")]), 0.4, false)
 	assert_false(_shown(director).has(&"patron_a"), "The transient ends on its real duration.")
+
+
+func test_repeated_snapshots_do_not_restart_one_public_emotional_event() -> void:
+	var director = _director()
+	var row := _row(&"cultist_01", &"none")
+	row["events"] = [{"id": 7, "kind": &"service_smile"}]
+	director.update(_view([row]), 0.0, false)
+	assert_eq(_shown(director)[&"cultist_01"], &"service_smile")
+
+	director.update(_view([row]), 1.7, false)
+	director.update(_view([row]), 0.4, false)
+	assert_false(
+		_shown(director).has(&"cultist_01"),
+		"Repeated snapshots of one event cannot restart its transient."
+	)
+
+	row["events"] = [{"id": 8, "kind": &"service_smile"}]
+	director.update(_view([row]), 0.0, false)
+	assert_eq(
+		_shown(director)[&"cultist_01"],
+		&"service_smile",
+		"A later emotional event starts a new transient."
+	)
 
 
 func test_pause_freezes_transient_timers() -> void:
 	var director = _director()
 	director.update(_view([_row(&"patron_a", &"none")]), 0.1, false)
-	director.update(_view([_row(&"patron_a", &"none", {}, [&"command_result"])]), 0.0, false)
+	director.update(_view([_row(&"patron_a", &"none", {}, [&"service_frown"])]), 0.0, false)
 	for _frame in range(20):
 		director.update(_view([_row(&"patron_a", &"none")]), 1.0, true)
-	assert_eq(_shown(director)[&"patron_a"], &"command_result",
+	assert_eq(_shown(director)[&"patron_a"], &"service_frown",
 		"Pause freezes the timer so the player can inspect the scene.")
 
 
@@ -214,9 +237,7 @@ func _assert_no_forbidden_keys(value: Variant, path: String) -> void:
 
 
 func test_the_emote_view_carries_no_hidden_simulation_value() -> void:
-	var session = load(GAME_SESSION_PATH).new()
-	session.start_night(707)
-	session.advance(95.0)
+	var session = _session_with_first_group()
 	session.debug_set_patron_drink_state(&"patron_june", 3, 1, 0, 3)
 	session.report_patron_stimulus(&"patron_mara", &"drink_dosed_seen")
 	session.advance(2.2)
@@ -227,9 +248,7 @@ func test_the_emote_view_carries_no_hidden_simulation_value() -> void:
 
 
 func test_unknown_patrons_show_bubbles_without_leaking_profile_fields() -> void:
-	var session = load(GAME_SESSION_PATH).new()
-	session.start_night(707)
-	session.advance(95.0)
+	var session = _session_with_first_group()
 	var row: Dictionary = session.snapshot()["emote_view"][&"patron_june"]
 
 	assert_eq(row["state"], &"ordering", "An Unidentified Patron still shows their intention.")
@@ -243,16 +262,12 @@ func test_unknown_patrons_show_bubbles_without_leaking_profile_fields() -> void:
 
 
 func test_both_collapse_causes_show_the_same_public_unconscious_bubble() -> void:
-	var overdrink = load(GAME_SESSION_PATH).new()
-	overdrink.start_night(707)
-	overdrink.advance(95.0)
+	var overdrink = _session_with_first_group()
 	overdrink.debug_set_patron_drink_state(&"patron_june", 3, 1, 0, 3)
 	overdrink.debug_force_finish_drink(&"patron_june")
 	overdrink.advance(0.2)
 
-	var drugged = load(GAME_SESSION_PATH).new()
-	drugged.start_night(707)
-	drugged.advance(95.0)
+	var drugged = _session_with_first_group()
 	drugged.prepare_drugged_drink(&"patron_june", &"cultist_01")
 	drugged.advance(8.1)
 	drugged.serve_patron_order(&"patron_june", &"cultist_01")
@@ -268,7 +283,6 @@ func test_both_collapse_causes_show_the_same_public_unconscious_bubble() -> void
 func test_ordinary_move_needs_no_cultist_bubble() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(95.0)
 
 	var moving := {&"cultist_01": {
 		"active": {"command": &"move", "label": "Move"},
@@ -287,25 +301,35 @@ func test_ordinary_move_needs_no_cultist_bubble() -> void:
 		"markers": [],
 		"feedback": {"message": "", "reason": &"", "outcome": &"accepted"},
 	}}
-	assert_eq(session.emote_view(working)[&"cultist_01"]["state"], &"cultist_action",
-		"A contextual Cultist Action gets a compact bubble.")
+	assert_eq(session.emote_view(working)[&"cultist_01"]["state"], &"none",
+		"A contextual Cultist Action also needs no mechanics bubble.")
 
 
-func test_a_finished_command_produces_a_public_command_result_change() -> void:
+func test_a_finished_command_produces_no_emote_event() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(95.0)
 	var finished := {&"cultist_02": {
 		"active": {},
 		"pending": [],
 		"action_count": 0,
 		"markers": [],
-		"feedback": {"message": "Talk done.", "reason": &"", "outcome": &"completed"},
+		"feedback": {
+			"message": "Talk done.", "reason": &"", "outcome": &"completed", "event_id": 42,
+		},
 	}}
 	var row: Dictionary = session.emote_view(finished)[&"cultist_02"]
-	assert_true(row["changes"].has(&"command_result"))
+	assert_true(row["events"].is_empty(), "Mechanical completion stays in command feedback.")
 
 	var director = _director()
 	director.update(session.emote_view(), 0.1, false)
 	director.update(session.emote_view(finished), 0.0, false)
-	assert_eq(_shown(director)[&"cultist_02"], &"command_result")
+	assert_false(_shown(director).has(&"cultist_02"))
+
+
+func _session_with_first_group():
+	var session = load(GAME_SESSION_PATH).new()
+	session.start_night(707)
+	session.advance(3.1)
+	assert_true(session.begin_admit_group(&"cultist_01"))
+	session.advance(15.0)
+	return session

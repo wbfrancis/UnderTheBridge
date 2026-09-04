@@ -23,6 +23,7 @@ var _simulated_seconds: float = 0.0
 var _time_scale: float = 1.0
 var _phase: StringName = &"preparation"
 var _outcome: StringName = &"running"
+var _outcome_cause: StringName = &""
 var _next_representative_roll_at: float = REPRESENTATIVE_ROLL_INTERVAL_SECONDS
 var _representative_rolls: Array[int] = []
 var _representative_outcome: StringName = &"running"
@@ -37,6 +38,7 @@ func start_night(night_seed: int) -> void:
 	_time_scale = 1.0
 	_phase = &"preparation"
 	_outcome = &"running"
+	_outcome_cause = &""
 	_next_representative_roll_at = REPRESENTATIVE_ROLL_INTERVAL_SECONDS
 	_representative_rolls.clear()
 	_representative_outcome = &"running"
@@ -174,6 +176,32 @@ func debug_force_bathroom(patron_id: StringName) -> bool:
 	return forced
 
 
+func character_actions():
+	return _ordinary_visits.character_actions()
+
+
+func request_patron_step_aside(
+	patron_id: StringName, position: Vector3, incident_id: StringName
+) -> bool:
+	return _ordinary_visits.request_patron_step_aside(patron_id, position, incident_id)
+
+
+func debug_cancel_patron_action(patron_id: StringName, action_id: int, current_position: Variant = null) -> bool:
+	return _ordinary_visits.debug_cancel_patron_action(patron_id, action_id, current_position)
+
+
+func debug_force_complete_patron_action(patron_id: StringName) -> bool:
+	return _ordinary_visits.debug_force_complete_patron_action(patron_id)
+
+
+func debug_clear_patron_queue(patron_id: StringName) -> bool:
+	return _ordinary_visits.debug_clear_patron_queue(patron_id)
+
+
+func debug_set_patron_planner_paused(patron_id: StringName, paused: bool) -> bool:
+	return _ordinary_visits.debug_set_patron_planner_paused(patron_id, paused)
+
+
 func serve_patron_order(patron_id: StringName, cultist_id: StringName) -> bool:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return false
@@ -207,8 +235,8 @@ func debug_set_patron_drink_state(
 	)
 
 
-func debug_change_patron_mood(patron_id: StringName, amount: float) -> bool:
-	return _ordinary_visits.debug_change_patron_mood(patron_id, amount)
+func debug_change_patron_satisfaction(patron_id: StringName, amount: float) -> bool:
+	return _ordinary_visits.debug_change_patron_satisfaction(patron_id, amount)
 
 
 func debug_force_finish_drink(patron_id: StringName) -> bool:
@@ -219,8 +247,8 @@ func set_physical_patron_navigation_enabled(enabled: bool) -> void:
 	_ordinary_visits.set_physical_navigation_enabled(enabled)
 
 
-func patron_destination_reached(patron_id: StringName) -> bool:
-	var reached := _ordinary_visits.patron_destination_reached(patron_id)
+func patron_destination_reached(patron_id: StringName, action_id: int = -1) -> bool:
+	var reached := _ordinary_visits.patron_destination_reached(patron_id, action_id)
 	if reached:
 		_emit_snapshot()
 	return reached
@@ -269,6 +297,42 @@ func cancel_knockout(cultist_id: StringName) -> bool:
 		_record(&"knockout_windup_cancelled", {"cultist_id": cultist_id})
 		_emit_snapshot()
 	return cancelled
+
+
+func knockout_chance(victim_id: StringName) -> float:
+	return _ordinary_visits.knockout_chance(victim_id)
+
+
+func cultist_is_incapacitated(cultist_id: StringName) -> bool:
+	return _ordinary_visits.cultist_is_incapacitated(cultist_id)
+
+
+func cultist_incapacitated_remaining(cultist_id: StringName) -> float:
+	return _ordinary_visits.cultist_incapacitated_remaining(cultist_id)
+
+
+func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
+	if _phase == &"results":
+		return false
+	var started := _ordinary_visits.begin_stir(helper_id, target_id)
+	if started:
+		_record(&"stir_started", {"cultist_id": helper_id, "target_id": target_id})
+		_emit_snapshot()
+	return started
+
+
+func cancel_stir(helper_id: StringName) -> bool:
+	var cancelled := _ordinary_visits.cancel_stir(helper_id)
+	if cancelled:
+		_record(&"stir_cancelled", {"cultist_id": helper_id})
+		_emit_snapshot()
+	return cancelled
+
+
+func command_action_state(
+		command: StringName, cultist_id: StringName, target_id: StringName
+) -> StringName:
+	return _ordinary_visits.command_action_state(command, cultist_id, target_id)
 
 
 func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
@@ -363,35 +427,22 @@ func emote_view(cultist_commands: Dictionary = {}) -> Dictionary:
 		var state: StringName = &"none"
 		if cultist_id in talking:
 			state = &"conversation"
-		elif cultist_commands.has(cultist_id):
-			state = _command_emote_state(cultist_commands[cultist_id])
-		elif activity != &"idle":
-			state = &"cultist_action"
+		elif activity == &"talk":
+			state = &"conversation"
+		if cultist_is_incapacitated(cultist_id):
+			state = &"cultist_incapacitated"
 		var changes: Array[StringName] = []
-		if cultist_commands.has(cultist_id):
-			var outcome: StringName = StringName(
-				cultist_commands[cultist_id]["feedback"]["outcome"]
-			)
-			if outcome in [&"completed", &"failed", &"rejected"]:
-				changes.append(&"command_result")
+		var events: Array[Dictionary] = []
 		rows[cultist_id] = {
 			"id": cultist_id,
 			"kind": &"cultist",
 			"present": true,
 			"state": state,
 			"changes": changes,
+			"events": events,
 			"public": {"activity": String(activity).replace("_", " ").capitalize()},
 		}
 	return rows
-
-
-# Ordinary Move needs no bubble: its destination marker already communicates it.
-func _command_emote_state(command_summary: Dictionary) -> StringName:
-	var active: Dictionary = command_summary["active"]
-	if active.is_empty() or active["command"] == &"move":
-		return &"none"
-	return &"cultist_action"
-
 
 # --- Cultist command seam ----------------------------------------------------
 # CultistCommandSystem owns the Action Queue and the Commitment Point; the rules
@@ -407,6 +458,14 @@ func command_availability(
 	return _ordinary_visits.command_availability(command, cultist_id, target_id)
 
 
+func serve_drink_availability(
+		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+) -> Dictionary:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return {"visible": false, "available": false, "reason": &"night_over", "detail": ""}
+	return _ordinary_visits.serve_drink_availability(patron_id, cultist_id, drink_id)
+
+
 func prepare_drink(cultist_id: StringName) -> bool:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return false
@@ -415,6 +474,64 @@ func prepare_drink(cultist_id: StringName) -> bool:
 		_record(&"prepared_drink_taken", {"cultist_id": cultist_id})
 		_emit_snapshot()
 	return prepared
+
+
+func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return false
+	var made: bool = _ordinary_visits.make_drink(drink_type, cultist_id)
+	if made:
+		_record(&"prepared_drink_made", {"cultist_id": cultist_id, "drink_type": drink_type})
+		_emit_snapshot()
+	return made
+
+
+func reserve_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _ordinary_visits.reserve_prepared_drink(drink_id, cultist_id)
+
+
+func prepared_drink(drink_id: StringName) -> Dictionary:
+	return _ordinary_visits.prepared_drink(drink_id)
+
+
+func pick_up_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _ordinary_visits.pick_up_prepared_drink(drink_id, cultist_id)
+
+
+func release_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _ordinary_visits.release_prepared_drink(drink_id, cultist_id)
+
+
+func dispose_prepared_drink(drink_id: StringName) -> Dictionary:
+	return _ordinary_visits.dispose_prepared_drink(drink_id)
+
+
+func drug_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+	return _ordinary_visits.drug_prepared_drink(drink_id, cultist_id)
+
+
+func serve_prepared_drink(
+		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+) -> Dictionary:
+	if _phase == &"results" or cultist_id not in CULTIST_IDS:
+		return {"served": false, "accepted": false, "reason": &"invalid_cultist"}
+	return _ordinary_visits.serve_prepared_drink(patron_id, cultist_id, drink_id)
+
+
+func begin_admit_group(cultist_id: StringName) -> bool:
+	return _ordinary_visits.begin_admit_group(cultist_id, _ordinary_visits.waiting_group_id())
+
+
+func cancel_admit_group(cultist_id: StringName) -> bool:
+	return _ordinary_visits.cancel_admit_group(cultist_id)
+
+
+func begin_ask_to_leave(cultist_id: StringName, patron_id: StringName) -> bool:
+	return _ordinary_visits.begin_ask_to_leave(cultist_id, patron_id)
+
+
+func cancel_ask_to_leave(cultist_id: StringName) -> bool:
+	return _ordinary_visits.cancel_ask_to_leave(cultist_id)
 
 
 func carries_prepared_drink(cultist_id: StringName) -> bool:
@@ -437,6 +554,10 @@ func end_cultist_engagement(cultist_id: StringName) -> bool:
 		_record(&"conversation_ended", {"cultist_id": cultist_id})
 		_emit_snapshot()
 	return ended
+
+
+func conversation_is_active(cultist_id: StringName, patron_id: StringName) -> bool:
+	return _ordinary_visits.conversation_is_active(cultist_id, patron_id)
 
 
 func advance(real_seconds: float) -> void:
@@ -473,8 +594,9 @@ func _finalize_defeat() -> void:
 	_phase = &"results"
 	_time_scale = 0.0
 	_outcome = &"defeat"
+	_outcome_cause = &"maximum_suspicion_escape"
 	_ordinary_visits.finish_night()
-	_record(&"results_reached", {"outcome": _outcome})
+	_record(&"results_reached", {"outcome": _outcome, "cause": _outcome_cause})
 
 
 func snapshot() -> Dictionary:
@@ -501,8 +623,13 @@ func snapshot() -> Dictionary:
 		"escaping_patrons": visit["escaping_patrons"],
 		"doses_remaining": visit["doses_remaining"],
 		"drug_prep": visit["drug_prep"],
+		"prepared_drinks": visit["prepared_drinks"],
+		"admission": visit["admission"],
+		"ask_to_leave": visit["ask_to_leave"],
 		"collapses": visit["collapses"],
 		"windup": visit["windup"],
+		"incapacitated_cultists": visit["incapacitated_cultists"],
+		"stirs": visit["stirs"],
 		"drags": visit["drags"],
 		"conversations": visit["conversations"],
 		"follows": visit["follows"],
@@ -523,7 +650,7 @@ func snapshot() -> Dictionary:
 		"escape_alerts": visit["escaping_patrons"],
 		"runtime": {
 			"spawned_patrons": patrons["active_count"],
-			"prepared_drinks": 0,
+			"prepared_drinks": visit["prepared_drinks"]["drinks"].size(),
 			"actions": 0,
 			"reservations": _reservation_count(visit),
 			"timers": 0,
@@ -550,7 +677,10 @@ func _apply_phase_boundary() -> void:
 		# A safe Closing with the Capture quota met is a success; short of it, a failed operation.
 		var captures: int = _ordinary_visits.snapshot()["captures"].size()
 		_outcome = &"success" if captures >= CAPTURE_QUOTA else &"failed_operation"
-		_record(&"results_reached", {"outcome": _outcome, "captures": captures})
+		_outcome_cause = &"quota_met" if captures >= CAPTURE_QUOTA else &"quota_shortfall"
+		_record(&"results_reached", {
+			"outcome": _outcome, "cause": _outcome_cause, "captures": captures,
+		})
 	elif _simulated_seconds >= CLOSING_START_SECONDS - 0.0001 and _phase != &"closing":
 		_phase = &"closing"
 		_ordinary_visits.begin_closing()
@@ -601,14 +731,24 @@ func _patron_summary(visit: Dictionary) -> Dictionary:
 func _order_summary(order_state: Dictionary) -> Dictionary:
 	var served_count := 0
 	var cancelled_count := 0
+	var missed_count := 0
 	for order_id: StringName in order_state["orders"]:
-		match order_state["orders"][order_id]["state"]:
-			&"served": served_count += 1
-			&"cancelled": cancelled_count += 1
+		var order: Dictionary = order_state["orders"][order_id]
+		match order["state"]:
+			&"served":
+				served_count += 1
+			&"cancelled":
+				# Missed and cancelled are mutually exclusive: a failed service is
+				# missed, every other terminal cancellation reason is cancelled.
+				if order["terminal_reason"] == &"failed_service":
+					missed_count += 1
+				else:
+					cancelled_count += 1
 	return {
 		"all": order_state["orders"].duplicate(true),
 		"served_count": served_count,
 		"cancelled_count": cancelled_count,
+		"missed_count": missed_count,
 		"revenue": order_state["revenue"],
 		"tips": order_state["tips"],
 	}
@@ -641,6 +781,12 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 	if not windup.is_empty():
 		_set_active_cultist_summary(
 			summaries, windup["cultist_id"], &"knockout_windup", windup["victim_id"]
+		)
+	for target_id: StringName in visit["incapacitated_cultists"]:
+		_set_active_cultist_summary(summaries, target_id, &"knocked_out", &"")
+	for target_id: StringName in visit["stirs"]:
+		_set_active_cultist_summary(
+			summaries, visit["stirs"][target_id]["helper_id"], &"stirring", target_id
 		)
 	for victim_id: StringName in visit["drags"]:
 		var drag: Dictionary = visit["drags"][victim_id]
@@ -688,6 +834,7 @@ func _results(orders: Dictionary, patrons: Dictionary, captures: int, visit: Dic
 		"visible": _phase == &"results",
 		"night_seed": _night_seed,
 		"outcome": _outcome,
+		"outcome_cause": _outcome_cause,
 		"captures": captures,
 		"capture_quota": CAPTURE_QUOTA,
 		"capture_methods": visit["capture_methods"],
@@ -695,8 +842,11 @@ func _results(orders: Dictionary, patrons: Dictionary, captures: int, visit: Dic
 		"tips": orders["tips"],
 		"orders_served": orders["served_count"],
 		"orders_cancelled": orders["cancelled_count"],
+		"orders_missed": orders["missed_count"],
+		"groups_missed_at_door": visit["groups_missed_at_door"],
 		"normal_departures": patrons["normal_departure_count"],
 		"peak_suspicion": visit["peak_suspicion"],
+		"peak_suspicion_band": PatronSuspicion.band_for_score(visit["peak_suspicion"]),
 		"interceptions": visit["interceptions"],
 		"unattended_body_seconds": visit["unattended_body_seconds"],
 	}

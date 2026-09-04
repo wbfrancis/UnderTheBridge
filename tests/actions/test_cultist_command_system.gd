@@ -5,7 +5,7 @@ const COMMAND_SYSTEM_PATH := "res://scripts/actions/cultist_command_system.gd"
 
 const FLOOR_Y := 0.18
 const BAR_APPROACH := Vector3(0.0, FLOOR_Y, 1.62)
-const TRAPDOOR_APPROACH := Vector3(18.0, FLOOR_Y, 4.6)
+const TRAPDOOR_APPROACH := Vector3(7.2, FLOOR_Y, 1.62)
 const INTAKE_APPROACH := Vector3(15.0, FLOOR_Y, 6.0)
 
 
@@ -13,17 +13,46 @@ func _commands_for(session):
 	var commands = load(COMMAND_SYSTEM_PATH).new()
 	commands.reset(session)
 	commands.register_smart_object(&"bar_work_position", "Bar Work Position", BAR_APPROACH)
+	commands.register_smart_object(&"front_entrance", "Front Entrance", Vector3(-17.5, FLOOR_Y, 5.0))
 	commands.register_smart_object(&"trapdoor_control", "Trapdoor Control", TRAPDOOR_APPROACH)
 	commands.register_smart_object(&"tunnel_intake", "Tunnel Intake", INTAKE_APPROACH)
 	return commands
+
+
+# Connects snapshot refresh without forming a session-to-command-system ownership
+# cycle: the command system already owns the session.
+func _connect_command_refresh(session, commands) -> void:
+	var weak_commands: WeakRef = weakref(commands)
+	session.snapshot_changed.connect(func(_state: Dictionary) -> void:
+		var live_commands: Object = weak_commands.get_ref()
+		if live_commands != null:
+			live_commands.refresh()
+	)
 
 
 # A Night with the first Arrival Group seated and waiting on their Orders.
 func _seated_night(seed: int = 707) -> Array:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(seed)
-	session.advance(95.0)
+	session.advance(3.0)
+	assert_true(session.begin_admit_group(&"cultist_01"))
+	session.advance(4.1)
+	assert_eq(session.command_action_state(&"admit_group", &"cultist_01", &"front_entrance"), &"completed")
 	return [session, _commands_for(session)]
+
+
+func _advance_with_admissions(session, target_seconds: float) -> void:
+	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
+		if arrival > target_seconds:
+			break
+		if float(session.snapshot()["simulated_seconds"]) < arrival:
+			session.advance(arrival - float(session.snapshot()["simulated_seconds"]))
+		if session.begin_admit_group(&"cultist_03"):
+			session.advance(3.1)
+			session.advance(1.1)
+			session.command_action_state(&"admit_group", &"cultist_03", &"front_entrance")
+	if float(session.snapshot()["simulated_seconds"]) < target_seconds:
+		session.advance(target_seconds - float(session.snapshot()["simulated_seconds"]))
 
 
 func _floor_target(x: float, z: float) -> Dictionary:
@@ -32,6 +61,10 @@ func _floor_target(x: float, z: float) -> Dictionary:
 
 func _patron_target(patron_id: StringName) -> Dictionary:
 	return {"kind": &"patron", "id": patron_id, "position": Vector3.ZERO}
+
+
+func _cultist_target(cultist_id: StringName) -> Dictionary:
+	return {"kind": &"cultist", "id": cultist_id, "position": Vector3.ZERO}
 
 
 func _object_target(object_id: StringName) -> Dictionary:
@@ -193,8 +226,8 @@ func test_cancellation_cannot_undo_an_action_past_its_commitment_point() -> void
 
 	var refused: Dictionary = commands.request_cancel_active(&"cultist_01")
 	assert_false(bool(refused["cancelled"]),
-		"A committed Action has already left the queue, so nothing can cancel it.")
-	assert_eq(refused["reason"], &"no_active_action")
+		"A committed held Action cannot be cancelled through its tile.")
+	assert_eq(refused["reason"], &"already_committed")
 	assert_false(String(refused["message"]).is_empty(),
 		"A refusal always carries a visible reason.")
 	assert_false(session.snapshot()["conversations"].is_empty(),
@@ -235,7 +268,7 @@ func test_the_normal_snapshot_marks_each_action_cancellable_without_hidden_state
 	# The view adds display and chain fields only; no internal payload leaks.
 	var expected: Array[String] = [
 		"id", "command", "icon", "label", "target_kind", "target_id", "target_label", "stage",
-		"cancellable", "chain_id", "chain_index", "chain_size", "generated",
+		"cancellable", "chain_id", "chain_index", "chain_size", "generated", "progress_ratio",
 	]
 	var keys: Array = queue["active"].keys()
 	keys.sort()
@@ -248,13 +281,16 @@ func test_the_effect_fires_once_at_commitment_and_a_later_command_cannot_reverse
 	var session = pair[0]
 	var commands = pair[1]
 
-	var committed := _run(commands, &"cultist_01", &"serve_order", _patron_target(&"patron_june"))
-	assert_true(bool(committed["committed"]), "Serve Order commits on arrival.")
-	var served_orders: int = int(session.snapshot()["orders"]["served_count"])
-	assert_eq(served_orders, 1)
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"make_wine", _object_target(&"bar_work_position"), false
+	)
+	commands.notify_reached(&"cultist_01", int(issued["action_id"]))
+	commands.advance(5.0)
+	var drink_count: int = session.snapshot()["prepared_drinks"]["drinks"].size()
+	assert_eq(drink_count, 1)
 
 	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), false)
-	assert_eq(int(session.snapshot()["orders"]["served_count"]), served_orders,
+	assert_eq(session.snapshot()["prepared_drinks"]["drinks"].size(), drink_count,
 		"A command issued after the Commitment Point does not undo the effect.")
 	assert_true(commands.snapshot()["cultists"][&"cultist_01"]["active"]["command"] == &"move")
 
@@ -265,13 +301,15 @@ func test_a_stale_target_fails_visibly_and_advances_the_queue() -> void:
 	var commands = pair[1]
 
 	var issued: Dictionary = commands.issue(
-		&"cultist_01", &"serve_order", _patron_target(&"patron_june"), false, {"is_adjacent": true}
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false, {"is_adjacent": true}
 	)
 	assert_true(bool(issued["accepted"]))
 	commands.issue(&"cultist_01", &"move", _floor_target(-6.0, 4.0), true)
 
-	# Another Cultist serves the same Order, so the approach target goes stale.
-	assert_true(session.serve_patron_order(&"patron_june", &"cultist_02"))
+	# The Patron becomes unconscious, so the pending social target goes stale.
+	session.debug_set_patron_drink_state(&"patron_june", 3, 1, 0, 3)
+	session.debug_force_finish_drink(&"patron_june")
+	session.advance(0.2)
 	commands.refresh(&"cultist_01")
 
 	var queue := _queue(commands, &"cultist_01")
@@ -300,34 +338,58 @@ func test_navigation_failure_releases_the_reservation_and_reports_a_reason() -> 
 
 # --- Contention ---------------------------------------------------------------
 
-func test_two_cultists_requesting_one_approach_produce_one_owner_and_one_rejection() -> void:
+func test_three_cultists_can_work_at_the_bar_at_the_same_time() -> void:
 	var pair := _seated_night()
+	var session = pair[0]
 	var commands = pair[1]
 
-	var owner: Dictionary = commands.issue(
-		&"cultist_01", &"prepare_drink", _object_target(&"bar_work_position"), false
+	var first: Dictionary = commands.issue(
+		&"cultist_01", &"make_wine", _object_target(&"bar_work_position"), false
 	)
-	var rival: Dictionary = commands.issue(
-		&"cultist_02", &"prepare_drink", _object_target(&"bar_work_position"), false
+	var second: Dictionary = commands.issue(
+		&"cultist_02", &"make_beer", _object_target(&"bar_work_position"), false
+	)
+	var third: Dictionary = commands.issue(
+		&"cultist_03", &"make_liquor", _object_target(&"bar_work_position"), false
 	)
 
-	assert_true(bool(owner["accepted"]))
-	assert_false(bool(rival["accepted"]), "The bar work position has one owner at a time.")
-	assert_eq(rival["reason"], &"approach_reserved")
-	assert_false(String(rival["message"]).is_empty(), "The rejection is visible to the player.")
-	var reserved: Dictionary = commands.snapshot()["reserved_slots"]
-	assert_eq(reserved.get(&"cultist_01", &""), &"bar_work_position")
-	assert_false(reserved.has(&"cultist_02"), "A rejected command creates no hidden wait queue.")
+	assert_true(bool(first["accepted"]))
+	assert_true(bool(second["accepted"]))
+	assert_true(bool(third["accepted"]))
+	commands.notify_reached(&"cultist_01", int(first["action_id"]))
+	commands.notify_reached(&"cultist_02", int(second["action_id"]))
+	commands.notify_reached(&"cultist_03", int(third["action_id"]))
+	commands.advance(5.0)
+	assert_eq(session.snapshot()["prepared_drinks"]["drinks"].size(), 3,
+		"Three simultaneous bar Actions complete without blocking one another.")
 
 
 # --- Generated Move and Action Chains -----------------------------------------
+
+
+func test_admission_survives_command_ticks_and_releases_after_group_entry() -> void:
+	var session = load(GAME_SESSION_PATH).new()
+	session.start_night(707)
+	session.advance(3.1)
+	var commands = _commands_for(session)
+	_connect_command_refresh(session, commands)
+	var issued: Dictionary = commands.issue(&"cultist_01", &"admit_group", _object_target(&"front_entrance"), false)
+	assert_true(issued["accepted"])
+	commands.notify_reached(&"cultist_01", int(issued["action_id"]))
+	commands.advance(0.1)
+	assert_false(_queue(commands, &"cultist_01")["active"].is_empty(), "The active admission must not reject itself as Busy.")
+	for step in range(50):
+		session.advance(0.1)
+		commands.advance(0.1)
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["activity"], &"awaiting_drink")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty(), "The committed door hold ends when the group enters.")
 
 func test_every_patron_command_is_proximity_dependent() -> void:
 	var catalog: Dictionary = CultistCommandSystem.CATALOG
 	for command: StringName in CultistCommandSystem.PATRON_COMMANDS:
 		assert_true(bool(catalog[command].get("requires_proximity", false)),
 			"%s is a Patron command, so it needs a Generated Move when not adjacent." % command)
-	for command: StringName in [&"move", &"drop_body", &"prepare_drink", &"activate_trapdoor"]:
+	for command: StringName in [&"move", &"drop_body", &"make_wine", &"make_beer", &"make_liquor", &"drug_drink", &"activate_trapdoor"]:
 		assert_false(bool(catalog[command].get("requires_proximity", false)),
 			"%s is not proximity-dependent." % command)
 
@@ -481,47 +543,122 @@ func test_talk_commits_and_is_unavailable_for_a_missing_patron() -> void:
 
 	assert_true(bool(_run(commands, &"cultist_01", &"talk", _patron_target(&"patron_june"))["committed"]))
 	assert_eq(session.snapshot()["conversations"].get(&"cultist_01", &""), &"patron_june")
+	assert_eq(
+		_queue(commands, &"cultist_01")["active"]["command"],
+		&"talk",
+		"Talk remains the active Action while the conversation continues."
+	)
 
 	assert_true(_option(commands, &"cultist_01", _patron_target(&"patron_clara"), &"talk").is_empty(),
 		"A Patron who has not arrived offers no Talk.")
 
 
-func test_serve_order_commits_and_disappears_once_the_order_closes() -> void:
+func test_replacing_talk_ends_it_but_shift_appended_work_waits() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
 	var commands = pair[1]
 
-	assert_true(bool(_run(commands, &"cultist_01", &"serve_order", _patron_target(&"patron_june"))["committed"]))
-	assert_eq(int(session.snapshot()["orders"]["served_count"]), 1)
+	assert_true(bool(_run(
+		commands, &"cultist_01", &"talk", _patron_target(&"patron_june")
+	)["committed"]))
+	var appended: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(-6.0, 4.0), true
+	)
+	var waiting := _queue(commands, &"cultist_01")
+	assert_eq(waiting["active"]["command"], &"talk")
+	assert_eq(int(waiting["pending"][0]["id"]), int(appended["action_id"]))
+
+	var replacement: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(2.0, 4.0), false
+	)
+	assert_true(session.snapshot()["conversations"].is_empty())
+	var replaced := _queue(commands, &"cultist_01")
+	assert_eq(int(replaced["active"]["id"]), int(replacement["action_id"]))
+	assert_true(replaced["pending"].is_empty())
+
+
+func test_a_higher_priority_patron_behavior_completes_talk_and_starts_waiting_work() -> void:
+	var pair := _seated_night()
+	var session = pair[0]
+	var commands = pair[1]
+
+	assert_true(bool(_run(
+		commands, &"cultist_01", &"talk", _patron_target(&"patron_june")
+	)["committed"]))
+	var appended: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(-6.0, 4.0), true
+	)
+	assert_true(session.end_conversation(&"cultist_01"))
+	commands.refresh(&"cultist_01")
+
+	var queue := _queue(commands, &"cultist_01")
+	assert_eq(int(queue["active"]["id"]), int(appended["action_id"]))
+	assert_true(queue["pending"].is_empty())
+
+
+func test_service_uses_a_reserved_drink_pickup_move_and_handoff_chain() -> void:
+	var pair := _seated_night()
+	var session = pair[0]
+	var commands = pair[1]
+
 	assert_true(
 		_option(commands, &"cultist_01", _patron_target(&"patron_june"), &"serve_order").is_empty(),
-		"Serve Order leaves the menu once no Order is open."
+		"Patrons no longer expose the direct Serve Order command."
 	)
+	var drink_type: StringName = session.patron_view(&"patron_june", &"cultist_01")["ordered_drink"]
+	var make_command := StringName("make_%s" % drink_type)
+	var make: Dictionary = commands.issue(
+		&"cultist_01", make_command, _object_target(&"bar_work_position"), false
+	)
+	commands.notify_reached(&"cultist_01", int(make["action_id"]))
+	commands.advance(5.0)
+	var drink_id: StringName = session.snapshot()["prepared_drinks"]["drinks"][0]["id"]
+	var service: Dictionary = commands.issue_drink_service(
+		&"cultist_01", drink_id, _patron_target(&"patron_june"), false
+	)
+	assert_true(bool(service["accepted"]))
+	assert_eq(_queue(commands, &"cultist_01")["active"]["command"], &"pick_up_drink")
+	commands.notify_reached(&"cultist_01", int(service["generated_action_ids"][0]))
+	commands.advance(1.0)
+	commands.notify_reached(&"cultist_01", int(service["generated_action_ids"][1]))
+	commands.resolve_proximity(&"cultist_01", int(service["action_id"]), true)
+	commands.advance(1.0)
+	assert_eq(int(session.snapshot()["orders"]["served_count"]), 1)
+	assert_true(session.prepared_drink(drink_id).is_empty())
+	assert_false(session.is_cultist_busy(&"cultist_01"),
+		"A successful handoff releases the serving Cultist's busy state.")
+	var talk: Dictionary = commands.issue(
+		&"cultist_01", &"talk", _patron_target(&"patron_june"), false,
+		{"is_adjacent": true}
+	)
+	assert_true(bool(talk["accepted"]),
+		"The serving Cultist can start another context Action after handoff.")
+
+	assert_true(session.make_drink(&"wine", &"cultist_02"))
+	var next_drink_id: StringName = session.snapshot()["prepared_drinks"]["drinks"][0]["id"]
+	var drug: Dictionary = commands.issue(
+		&"cultist_02", &"drug_drink",
+		{"kind": &"prepared_drink", "id": next_drink_id, "position": Vector3.ZERO}, false
+	)
+	assert_true(bool(drug["accepted"]),
+		"The other Cultist can drug a drink after the first Cultist serves one.")
 
 
-func test_offer_drink_needs_a_carried_prepared_drink() -> void:
+func test_drink_menu_exposes_service_drugging_and_disposal() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
 	var commands = pair[1]
 
-	assert_true(
-		_option(commands, &"cultist_01", _patron_target(&"patron_june"), &"offer_drink").is_empty(),
-		"Offer Drink stays hidden while the Cultist carries nothing."
+	var preparation: Dictionary = commands.issue(
+		&"cultist_01", &"make_wine", _object_target(&"bar_work_position"), false
 	)
-
-	assert_true(bool(_run(commands, &"cultist_01", &"prepare_drink", _object_target(&"bar_work_position"))["committed"]))
-	assert_true(session.carries_prepared_drink(&"cultist_01"))
-	# June still has an open Order, so she cannot receive an offer yet.
-	var blocked := _option(commands, &"cultist_01", _patron_target(&"patron_june"), &"offer_drink")
-	assert_false(blocked.is_empty())
-	assert_false(bool(blocked["available"]))
-	assert_eq(blocked["reason"], &"not_receptive")
-
-	session.serve_patron_order(&"patron_june", &"cultist_02")
-	session.advance(31.0)  # June finishes the drink and goes back to socializing.
-	assert_true(bool(_run(commands, &"cultist_01", &"offer_drink", _patron_target(&"patron_june"))["committed"]))
-	assert_false(session.carries_prepared_drink(&"cultist_01"),
-		"The offer spends the carried Prepared Drink.")
+	commands.notify_reached(&"cultist_01", int(preparation["action_id"]))
+	commands.advance(5.0)
+	var drink_id: StringName = session.snapshot()["prepared_drinks"]["drinks"][0]["id"]
+	var options: Array[Dictionary] = commands.resolve_drink_options(drink_id, &"cultist_01")
+	assert_eq(options.map(func(option: Dictionary) -> StringName: return option["command"]), [
+		&"serve_drink_to", &"drug_drink", &"dispose_drink",
+	])
 
 
 func test_offer_cigarette_commits_and_needs_a_conscious_patron() -> void:
@@ -542,14 +679,80 @@ func test_knock_out_commits_and_is_disabled_while_another_windup_runs() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
 	var commands = pair[1]
+	_connect_command_refresh(session, commands)
 
-	assert_true(bool(_run(commands, &"cultist_01", &"knock_out", _patron_target(&"patron_june"))["committed"]))
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"knock_out", _patron_target(&"patron_june"), false,
+		{"is_adjacent": true}
+	)
+	var started: Dictionary = commands.notify_reached(&"cultist_01", int(issued["action_id"]))
+	assert_false(bool(started["committed"]), "The two-second wind-up starts before impact.")
 	assert_eq(session.snapshot()["windup"]["victim_id"], &"patron_june")
+	assert_eq(_queue(commands, &"cultist_01")["active"]["stage"], &"executing")
 
 	var blocked := _option(commands, &"cultist_02", _patron_target(&"patron_mara"), &"knock_out")
 	assert_false(blocked.is_empty())
 	assert_false(bool(blocked["available"]), "One wind-up at a time.")
 	assert_eq(blocked["reason"], &"cultist_busy")
+
+	assert_true(bool(commands.request_cancel_active(&"cultist_01")["cancelled"]))
+	assert_true(session.snapshot()["windup"].is_empty())
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["lifecycle"], &"active")
+
+	var second: Dictionary = commands.issue(
+		&"cultist_01", &"knock_out", _patron_target(&"patron_june"), false,
+		{"is_adjacent": true}
+	)
+	commands.notify_reached(&"cultist_01", int(second["action_id"]))
+	session.advance(2.1)
+	commands.refresh(&"cultist_01")
+	assert_eq(session.snapshot()["debug_patron_views"][&"patron_june"]["lifecycle"], &"unconscious")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
+
+
+func test_failed_knockout_replaces_the_queue_with_a_locked_tile_until_stirred() -> void:
+	var session = null
+	var commands = null
+	for seed in range(1, 101):
+		var pair := _seated_night(seed)
+		session = pair[0]
+		commands = pair[1]
+		_connect_command_refresh(session, commands)
+		session.debug_set_patron_drink_state(&"patron_june", 0, 5)
+		var attempt: Dictionary = commands.issue(
+			&"cultist_01", &"knock_out", _patron_target(&"patron_june"), false,
+			{"is_adjacent": true}
+		)
+		commands.notify_reached(&"cultist_01", int(attempt["action_id"]))
+		session.advance(2.1)
+		commands.refresh()
+		if session.cultist_is_incapacitated(&"cultist_01"):
+			break
+	assert_true(session.cultist_is_incapacitated(&"cultist_01"))
+	var locked: Dictionary = _queue(commands, &"cultist_01")["active"]
+	assert_eq(locked["command"], &"knocked_out")
+	assert_false(bool(locked["cancellable"]))
+	assert_almost_eq(float(locked["progress_ratio"]), 1.0, 0.01)
+	var rejected: Dictionary = commands.issue(
+		&"cultist_01", &"move", _floor_target(1.0, 1.0), false
+	)
+	assert_false(bool(rejected["accepted"]))
+	assert_eq(rejected["reason"], &"cultist_incapacitated")
+
+	var stir: Dictionary = commands.issue(
+		&"cultist_02", &"stir", _cultist_target(&"cultist_01"), false,
+		{"is_adjacent": true}
+	)
+	assert_true(bool(stir["accepted"]))
+	commands.notify_reached(&"cultist_02", int(stir["action_id"]))
+	var duplicate: Dictionary = _option(commands, &"cultist_03", _cultist_target(&"cultist_01"), &"stir")
+	assert_false(bool(duplicate["available"]))
+	assert_eq(duplicate["reason"], &"already_helping")
+	session.advance(3.1)
+	commands.refresh()
+	assert_false(session.cultist_is_incapacitated(&"cultist_01"))
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
+	assert_true(_queue(commands, &"cultist_02")["active"].is_empty())
 
 
 func test_pick_up_body_commits_only_for_an_unconscious_patron() -> void:
@@ -569,6 +772,11 @@ func test_pick_up_body_commits_only_for_an_unconscious_patron() -> void:
 
 	assert_true(bool(_run(commands, &"cultist_01", &"pick_up_body", _patron_target(&"patron_june"))["committed"]))
 	assert_true(session.snapshot()["drags"].has(&"patron_june"))
+	assert_eq(_queue(commands, &"cultist_01")["active"]["command"], &"pick_up_body")
+	session.advance(1.1)
+	commands.refresh(&"cultist_01")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty(),
+		"Pick Up Body completes when the body enters the dragging phase.")
 
 
 func test_drop_body_appears_only_while_a_body_is_carried() -> void:
@@ -583,6 +791,8 @@ func test_drop_body_appears_only_while_a_body_is_carried() -> void:
 	session.debug_force_finish_drink(&"patron_june")
 	session.advance(0.2)
 	_run(commands, &"cultist_01", &"pick_up_body", _patron_target(&"patron_june"))
+	session.advance(1.1)
+	commands.refresh(&"cultist_01")
 
 	assert_false(_option(commands, &"cultist_01", _floor_target(-6.0, 4.0), &"drop_body").is_empty())
 	assert_true(bool(_run(commands, &"cultist_01", &"drop_body", _floor_target(-6.0, 4.0))["committed"]))
@@ -592,7 +802,7 @@ func test_drop_body_appears_only_while_a_body_is_carried() -> void:
 func test_intercept_appears_only_for_an_escaping_patron() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(185.0)
+	_advance_with_admissions(session, 100.0)
 	var commands = _commands_for(session)
 
 	assert_true(_option(commands, &"cultist_01", _patron_target(&"patron_elias"), &"intercept").is_empty(),
@@ -602,12 +812,16 @@ func test_intercept_appears_only_for_an_escaping_patron() -> void:
 	session.advance(2.2)
 	assert_true(bool(_run(commands, &"cultist_01", &"intercept", _patron_target(&"patron_elias"))["committed"]))
 	assert_eq(session.snapshot()["active_intercept"]["patron_id"], &"patron_elias")
+	assert_eq(_queue(commands, &"cultist_01")["active"]["command"], &"intercept")
+	session.advance(5.1)
+	commands.refresh(&"cultist_01")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
 
 
 func test_lead_to_tunnel_appears_only_at_trusted_friendship() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(185.0)
+	_advance_with_admissions(session, 100.0)
 	var commands = _commands_for(session)
 
 	assert_true(
@@ -619,12 +833,16 @@ func test_lead_to_tunnel_appears_only_at_trusted_friendship() -> void:
 
 	assert_true(bool(_run(commands, &"cultist_01", &"lead_to_tunnel", _patron_target(&"patron_elias"))["committed"]))
 	assert_true(session.snapshot()["follows"].has(&"patron_elias"))
+	assert_eq(_queue(commands, &"cultist_01")["active"]["command"], &"lead_to_tunnel")
+	session.advance(14.1)
+	commands.refresh(&"cultist_01")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
 
 
 func test_rescue_persuasion_targets_the_current_helper_only() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(95.0)
+	_advance_with_admissions(session, 10.0)
 	session.prepare_drugged_drink(&"patron_mara", &"cultist_01")
 	session.advance(8.1)
 	session.serve_patron_order(&"patron_mara", &"cultist_02")
@@ -637,11 +855,15 @@ func test_rescue_persuasion_targets_the_current_helper_only() -> void:
 	)
 	assert_true(bool(_run(commands, &"cultist_01", &"rescue_persuasion", _patron_target(&"patron_june"))["committed"]))
 	assert_eq(session.snapshot()["collapses"][&"patron_mara"]["phase"], &"persuading")
+	assert_eq(_queue(commands, &"cultist_01")["active"]["command"], &"rescue_persuasion")
+	session.advance(6.1)
+	commands.refresh(&"cultist_01")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
 
 
 # --- Catalog: smart-object and floor targets ----------------------------------
 
-func test_bar_commands_prepare_a_drink_and_a_dose_for_the_waiting_order() -> void:
+func test_bar_commands_make_each_drink_type() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
 	var commands = pair[1]
@@ -650,14 +872,38 @@ func test_bar_commands_prepare_a_drink_and_a_dose_for_the_waiting_order() -> voi
 		&"cultist_01", _object_target(&"bar_work_position")
 	)
 	var listed: Array = options.map(func(option: Dictionary) -> StringName: return option["command"])
-	assert_eq(listed, [&"prepare_drink", &"prepare_drugged_drink", &"move"],
+	assert_eq(listed, [&"make_wine", &"make_beer", &"make_liquor", &"move"],
 		"The bar work position offers its own commands and a plain approach.")
 
-	assert_true(bool(_run(commands, &"cultist_02", &"prepare_drugged_drink", _object_target(&"bar_work_position"))["committed"]))
-	assert_false(session.snapshot()["drug_prep"].is_empty())
-	var busy := _option(commands, &"cultist_01", _object_target(&"bar_work_position"), &"prepare_drugged_drink")
-	assert_false(bool(busy["available"]))
-	assert_eq(busy["reason"], &"drug_prep_running")
+	var issued: Dictionary = commands.issue(
+		&"cultist_02", &"make_liquor", _object_target(&"bar_work_position"), false
+	)
+	commands.notify_reached(&"cultist_02", int(issued["action_id"]))
+	commands.advance(5.0)
+	assert_eq(session.snapshot()["prepared_drinks"]["drinks"][0]["type"], &"liquor")
+
+
+func test_make_drink_uses_its_five_second_action_duration() -> void:
+	var pair := _seated_night()
+	var session = pair[0]
+	var commands = pair[1]
+	_connect_command_refresh(session, commands)
+
+	var issued: Dictionary = commands.issue(
+		&"cultist_01", &"make_beer", _object_target(&"bar_work_position"), false
+	)
+	var reached: Dictionary = commands.notify_reached(&"cultist_01", int(issued["action_id"]))
+	assert_false(bool(reached["committed"]), "Arrival starts preparation before commitment.")
+	assert_true(session.snapshot()["prepared_drinks"]["drinks"].is_empty())
+	assert_eq(_queue(commands, &"cultist_01")["active"]["stage"], &"executing")
+
+	commands.advance(4.9)
+	assert_true(session.snapshot()["prepared_drinks"]["drinks"].is_empty())
+	assert_false(_queue(commands, &"cultist_01")["active"].is_empty())
+
+	commands.advance(0.1)
+	assert_eq(session.snapshot()["prepared_drinks"]["drinks"][0]["type"], &"beer")
+	assert_true(_queue(commands, &"cultist_01")["active"].is_empty())
 
 
 func test_activate_trapdoor_commits_and_reports_its_cooldown() -> void:
@@ -705,7 +951,7 @@ func test_normal_snapshots_and_menu_labels_hide_simulation_values() -> void:
 	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), false)
 
 	var forbidden: Array[String] = [
-		"suspicion", "bladder", "mood_value", "overdrink_limit", "excess_drinks",
+		"suspicion", "bladder", "satisfaction_value", "overdrink_limit", "excess_drinks",
 		"ideal_intoxication_level", "roll", "remaining", "elapsed_seconds",
 		"bathroom_probability", "drug_countdown",
 	]
@@ -737,7 +983,7 @@ func test_ten_restarts_leave_no_command_or_reservation_state() -> void:
 func test_a_captured_patron_drops_the_command_queued_against_them() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(185.0)
+	_advance_with_admissions(session, 100.0)
 	var commands = _commands_for(session)
 	for _cigarette in range(8):
 		session.offer_cigarette(&"cultist_01", &"patron_elias")
@@ -751,6 +997,7 @@ func test_a_captured_patron_drops_the_command_queued_against_them() -> void:
 
 	session.advance(15.0)  # the follow reaches the Tunnel Intake and Captures
 	assert_eq(int(session.snapshot()["captures"]), 1)
+	commands.refresh()
 	commands.notify_reached(&"cultist_02", int(move["action_id"]))
 
 	var queue := _queue(commands, &"cultist_02")
@@ -763,7 +1010,7 @@ func test_a_captured_patron_drops_the_command_queued_against_them() -> void:
 func test_the_night_ending_closes_every_command() -> void:
 	var session = load(GAME_SESSION_PATH).new()
 	session.start_night(707)
-	session.advance(95.0)
+	_advance_with_admissions(session, 95.0)
 	var commands = _commands_for(session)
 	commands.issue(&"cultist_01", &"talk", _patron_target(&"patron_june"), false)
 
