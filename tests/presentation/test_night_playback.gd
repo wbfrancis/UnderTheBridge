@@ -20,11 +20,12 @@ func _select(value: float) -> Dictionary:
 
 func _trigger_escape() -> void:
 	_session.set_time_scale(1.0)
-	var remaining := 200.0 - float(_session.snapshot()["simulated_seconds"])
-	if remaining > 0.0:
-		_session.advance(remaining)
+	if float(_session.snapshot()["simulated_seconds"]) < 3.0:
+		_session.advance(3.1)
+		assert_true(_session.begin_admit_group(1))
+		_session.advance(4.1)
 	_session.set_time_scale(4.0)
-	assert_true(_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen"))
+	assert_true(_session.report_patron_stimulus(4, &"drink_dosed_seen"))
 	_session.advance(0.2)
 
 

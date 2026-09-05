@@ -17,8 +17,8 @@ const DRAG_TOTAL_SECONDS := 15.1  # 1 s pickup + 14 s drag to the intake + margi
 
 var _session = GAME_SESSION_SCRIPT.new()
 var _scenario: String = "windup_commitment"
-var _victim_id: StringName = &"patron_elias"
-var _gauge_id: StringName = &"patron_june"
+var _victim_id: int = 6
+var _gauge_id: int = 4
 var _scenario_trace: String = ""
 var _capture_mode: bool = false
 var _scenario_buttons: Dictionary = {}
@@ -221,77 +221,77 @@ func _set_scenario(scenario_id: String) -> void:
 	_session.restart_night(707)
 	match scenario_id:
 		"windup_commitment":
-			_victim_id = &"patron_elias"
-			_gauge_id = &"patron_june"
+			_victim_id = 6
+			_gauge_id = 4
 			_session.advance(200.0)
-			_session.begin_knockout(&"cultist_01", &"patron_elias")
+			_session.begin_knockout(1, 6)
 			_session.advance(1.0)
-			var cancelled := _session.cancel_knockout(&"cultist_01")
-			var still_active: StringName = _debug_for(&"patron_elias")["lifecycle"]
-			_session.begin_knockout(&"cultist_01", &"patron_elias")
+			var cancelled := _session.cancel_knockout(1)
+			var still_active: StringName = _debug_for(6)["lifecycle"]
+			_session.begin_knockout(1, 6)
 			_session.advance(2.05)
-			var after: StringName = _debug_for(&"patron_elias")["lifecycle"]
+			var after: StringName = _debug_for(6)["lifecycle"]
 			_scenario_trace = "Began a 2 s wind-up on Elias.\nCancelled at 1 s (interruptible=%s); Elias stayed %s.\nRe-committed the wind-up: impact -> lifecycle %s." % [
 				str(cancelled), _humanize(still_active), _humanize(after),
 			]
 		"witness_split":
-			_victim_id = &"patron_mara"
-			_gauge_id = &"patron_june"
+			_victim_id = 5
+			_gauge_id = 4
 			_session.advance(470.0)
-			_session.begin_knockout(&"cultist_01", &"patron_mara")
+			_session.begin_knockout(1, 5)
 			_session.advance(2.05)
-			var seer: Dictionary = _debug_for(&"patron_june")
-			var hearer: Dictionary = _debug_for(&"patron_clara")
+			var seer: Dictionary = _debug_for(4)
+			var hearer: Dictionary = _debug_for(11)
 			_scenario_trace = "Knocked out Mara in the crowded main hall.\nJune saw it -> %s (%.0f, permanent).\nClara only heard it -> %s (%.0f, soft)." % [
 				_humanize(seer["suspicion_cause"]), seer["suspicion"],
 				_humanize(hearer["suspicion_cause"]), hearer["suspicion"],
 			]
 		"drag_occupies":
-			_victim_id = &"patron_elias"
-			_gauge_id = &"patron_june"
+			_victim_id = 6
+			_gauge_id = 4
 			_session.advance(200.0)
-			_session.begin_knockout(&"cultist_01", &"patron_elias")
+			_session.begin_knockout(1, 6)
 			_session.advance(2.05)
-			_session.pick_up_body(&"cultist_01", &"patron_elias")
+			_session.pick_up_body(1, 6)
 			_session.advance(1.05)
-			var busy := _session.is_cultist_busy(&"cultist_01")
-			var refused := not _session.begin_knockout(&"cultist_01", &"patron_june")
-			var scale: float = _session.snapshot()["drags"][&"patron_elias"]["movement_scale"]
+			var busy := _session.is_cultist_busy(1)
+			var refused := not _session.begin_knockout(1, 4)
+			var scale: float = _session.snapshot()["drags"][6]["movement_scale"]
 			_scenario_trace = "Knocked out Elias, then picked up and began dragging.\nCultist 01 occupied=%s; a second Action refused=%s.\nMovement reduced to %.0f%% while dragging." % [
 				str(busy), str(refused), scale * 100.0,
 			]
 		"drop_restarts":
-			_victim_id = &"patron_elias"
-			_gauge_id = &"patron_june"
+			_victim_id = 6
+			_gauge_id = 4
 			_session.advance(200.0)
-			_session.debug_force_bathroom(&"patron_elias")
+			_session.debug_force_bathroom(6)
 			_session.advance(2.1)
-			_session.begin_knockout(&"cultist_01", &"patron_elias")
+			_session.begin_knockout(1, 6)
 			_session.advance(2.05)
-			_session.pick_up_body(&"cultist_01", &"patron_elias")
+			_session.pick_up_body(1, 6)
 			_session.advance(11.0)
-			var held_gauge: float = _debug_for(&"patron_june")["suspicion"]
-			_session.drop_body(&"cultist_01")
+			var held_gauge: float = _debug_for(4)["suspicion"]
+			_session.drop_body(1)
 			_session.advance(8.9)  # fresh grace (3 s) + one 5 s interval
-			var resumed_gauge: float = _debug_for(&"patron_june")["suspicion"]
+			var resumed_gauge: float = _debug_for(4)["suspicion"]
 			_scenario_trace = "Elias knocked out and held: gauge June at %.0f (no pressure).\nDropped the body -> a fresh Unattended grace begins.\nAfter grace + interval, pressure resumes: June at %.0f." % [
 				held_gauge, resumed_gauge,
 			]
 		"intake_capture":
-			_victim_id = &"patron_elias"
-			_gauge_id = &"patron_june"
+			_victim_id = 6
+			_gauge_id = 4
 			_session.advance(200.0)
-			_session.debug_force_bathroom(&"patron_elias")
+			_session.debug_force_bathroom(6)
 			_session.advance(2.1)
-			_session.begin_knockout(&"cultist_01", &"patron_elias")
+			_session.begin_knockout(1, 6)
 			_session.advance(2.05)
-			_session.pick_up_body(&"cultist_01", &"patron_elias")
+			_session.pick_up_body(1, 6)
 			_session.advance(DRAG_TOTAL_SECONDS)
 			var captures_after: int = _session.snapshot()["captures"]
 			_session.advance(10.0)
 			var captures_final: int = _session.snapshot()["captures"]
 			_scenario_trace = "Dragged Elias's body across the Tunnel Intake.\nCaptures on crossing: %d; lifecycle %s.\nAfter another 10 s the crossing still captures once: %d." % [
-				captures_after, _humanize(_debug_for(&"patron_elias")["lifecycle"]), captures_final,
+				captures_after, _humanize(_debug_for(6)["lifecycle"]), captures_final,
 			]
 	_refresh(_session.snapshot())
 
@@ -333,16 +333,19 @@ func _victim_markup(state: Dictionary) -> String:
 	]
 
 
-func _debug_for(patron_id: StringName) -> Dictionary:
+func _debug_for(patron_id: int) -> Dictionary:
 	return _session.snapshot()["debug_patron_views"][patron_id]
 
 
 func _humanize(value: Variant) -> String:
-	return String(value).replace("_", " ").capitalize()
+	return str(value).replace("_", " ").capitalize()
 
 
-func _actor_name(actor_id: StringName) -> String:
-	return String(actor_id).trim_prefix("patron_").capitalize()
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _command_line_value(prefix: String, fallback: String = "") -> String:
@@ -377,55 +380,55 @@ func _validation_report() -> Dictionary:
 	var windup = GAME_SESSION_SCRIPT.new()
 	windup.start_night(707)
 	windup.advance(200.0)
-	windup.begin_knockout(&"cultist_01", &"patron_elias")
+	windup.begin_knockout(1, 6)
 	windup.advance(1.0)
-	var cancelled := windup.cancel_knockout(&"cultist_01")
-	var stayed_active: StringName = windup.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"]
-	windup.begin_knockout(&"cultist_01", &"patron_elias")
+	var cancelled := windup.cancel_knockout(1)
+	var stayed_active: StringName = windup.snapshot()["debug_patron_views"][6]["lifecycle"]
+	windup.begin_knockout(1, 6)
 	windup.advance(2.05)
-	var committed: StringName = windup.snapshot()["debug_patron_views"][&"patron_elias"]["lifecycle"]
+	var committed: StringName = windup.snapshot()["debug_patron_views"][6]["lifecycle"]
 
 	# AC2: visual witnesses get Hard Evidence; hearing-only witnesses get the +25 soft increase.
 	var witness = GAME_SESSION_SCRIPT.new()
 	witness.start_night(707)
 	witness.advance(470.0)
-	witness.begin_knockout(&"cultist_01", &"patron_mara")
+	witness.begin_knockout(1, 5)
 	witness.advance(2.05)
-	var seer: Dictionary = witness.snapshot()["debug_patron_views"][&"patron_june"]
-	var hearer: Dictionary = witness.snapshot()["debug_patron_views"][&"patron_clara"]
+	var seer: Dictionary = witness.snapshot()["debug_patron_views"][4]
+	var hearer: Dictionary = witness.snapshot()["debug_patron_views"][11]
 
 	# AC3: dragging occupies the Cultist, reduces movement, and can always be interrupted.
 	var drag = GAME_SESSION_SCRIPT.new()
 	drag.start_night(707)
 	drag.advance(200.0)
-	drag.begin_knockout(&"cultist_01", &"patron_elias")
+	drag.begin_knockout(1, 6)
 	drag.advance(2.05)
-	drag.pick_up_body(&"cultist_01", &"patron_elias")
+	drag.pick_up_body(1, 6)
 	drag.advance(1.05)
-	var busy := drag.is_cultist_busy(&"cultist_01")
-	var scale: float = drag.snapshot()["drags"][&"patron_elias"]["movement_scale"]
-	var second_refused := not drag.begin_knockout(&"cultist_01", &"patron_june")
-	var dropped := drag.drop_body(&"cultist_01")
+	var busy := drag.is_cultist_busy(1)
+	var scale: float = drag.snapshot()["drags"][6]["movement_scale"]
+	var second_refused := not drag.begin_knockout(1, 4)
+	var dropped := drag.drop_body(1)
 	var after_drop: Dictionary = drag.snapshot()
-	var freed := not drag.is_cultist_busy(&"cultist_01")
+	var freed := not drag.is_cultist_busy(1)
 
 	# AC4: dropping restarts Unattended Body pressure; the intake crossing captures once.
 	var body = GAME_SESSION_SCRIPT.new()
 	body.start_night(707)
 	body.advance(200.0)
-	body.debug_force_bathroom(&"patron_elias")
+	body.debug_force_bathroom(6)
 	body.advance(2.1)
-	body.begin_knockout(&"cultist_01", &"patron_elias")
+	body.begin_knockout(1, 6)
 	body.advance(2.05)
-	body.pick_up_body(&"cultist_01", &"patron_elias")
+	body.pick_up_body(1, 6)
 	body.advance(11.0)
-	var held_gauge: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
-	body.drop_body(&"cultist_01")
+	var held_gauge: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
+	body.drop_body(1)
 	body.advance(2.9)
-	var grace_gauge: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var grace_gauge: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
 	body.advance(6.0)
-	var resumed_gauge: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
-	body.pick_up_body(&"cultist_01", &"patron_elias")
+	var resumed_gauge: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
+	body.pick_up_body(1, 6)
 	body.advance(DRAG_TOTAL_SECONDS)
 	var captured: Dictionary = body.snapshot()
 	body.advance(10.0)
@@ -440,12 +443,12 @@ func _validation_report() -> Dictionary:
 			and hearer["suspicion_cause"] == &"general_danger" and hearer["suspicion_recoverable"],
 		"dragging_occupies_and_reduces_movement": busy and is_equal_approx(scale, 0.5) and second_refused,
 		"dropping_always_interrupts": dropped and freed
-			and not after_drop["drags"].has(&"patron_elias")
-			and after_drop["debug_patron_views"][&"patron_elias"]["lifecycle"] == &"unconscious",
+			and not after_drop["drags"].has(6)
+			and after_drop["debug_patron_views"][6]["lifecycle"] == &"unconscious",
 		"dropping_restarts_unattended_pressure": is_equal_approx(held_gauge, 0.0)
 			and is_equal_approx(grace_gauge, 0.0) and is_equal_approx(resumed_gauge, 5.0),
 		"intake_crossing_captures_once": captured["captures"] == 1
-			and captured["debug_patron_views"][&"patron_elias"]["lifecycle"] == &"captured"
+			and captured["debug_patron_views"][6]["lifecycle"] == &"captured"
 			and captures_final == 1,
 	}
 	return {

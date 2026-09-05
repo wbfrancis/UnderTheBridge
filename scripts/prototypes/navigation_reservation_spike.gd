@@ -295,7 +295,7 @@ func _spawn_agents() -> void:
 	]
 	for index in 11:
 		var is_cultist := index < 3
-		var actor_id := StringName(("cultist_%02d" if is_cultist else "patron_%02d") % (index + 1 if is_cultist else index - 2))
+		var actor_id: int = index + 1
 		var actor = AGENT_SCRIPT.new()
 		add_child(actor)
 		actor.global_position = _spawn_positions[index]
@@ -313,7 +313,7 @@ func _spawn_agents() -> void:
 
 
 func _update_actor_states(simulated_delta: float) -> void:
-	for actor_id: StringName in _runtime:
+	for actor_id: int in _runtime:
 		var runtime: Dictionary = _runtime[actor_id]
 		var state: StringName = runtime["state"]
 		if state == &"navigating":
@@ -336,7 +336,7 @@ func _update_actor_states(simulated_delta: float) -> void:
 			_assign_destination(actor_id)
 
 
-func _assign_destination(actor_id: StringName) -> void:
+func _assign_destination(actor_id: int) -> void:
 	var runtime: Dictionary = _runtime[actor_id]
 	var candidates := _candidate_slots(bool(runtime["is_cultist"]))
 	_shuffle_with_seed(candidates)
@@ -370,7 +370,7 @@ func _shuffle_with_seed(values: Array[StringName]) -> void:
 		values[swap_index] = temporary
 
 
-func _on_destination_reached(actor_id: StringName, slot_id: StringName) -> void:
+func _on_destination_reached(actor_id: int, slot_id: StringName) -> void:
 	if _registry.actor_slot(actor_id) != slot_id:
 		_invariant_violations.append("%s reached %s without owning it" % [actor_id, slot_id])
 		return
@@ -390,7 +390,7 @@ func _run_scheduled_transitions() -> void:
 		_next_terminal_at += 71.0
 
 
-func _interrupt_actor(actor_id: StringName, terminal: bool) -> void:
+func _interrupt_actor(actor_id: int, terminal: bool) -> void:
 	var released_slot := _registry.release_actor(actor_id)
 	var actor = _actors[actor_id]
 	actor.cancel_navigation()
@@ -407,7 +407,7 @@ func _interrupt_actor(actor_id: StringName, terminal: bool) -> void:
 		_cleanup_failures += 1
 
 
-func _on_actor_stuck(actor_id: StringName, _slot_id: StringName) -> void:
+func _on_actor_stuck(actor_id: int, _slot_id: StringName) -> void:
 	_stuck_events += 1
 	_registry.release_actor(actor_id)
 	var actor = _actors[actor_id]
@@ -489,8 +489,8 @@ func _update_overlay() -> void:
 	var owners_text := "EXCLUSIVE DESTINATIONS\n"
 	var snapshot: Dictionary = _registry.snapshot()
 	for slot_id: StringName in snapshot["slots"]:
-		var owner: StringName = snapshot["slots"][slot_id]["owner"]
-		owners_text += "%s  %s\n" % [String(slot_id), "—" if owner.is_empty() else String(owner)]
+		var owner: int = snapshot["slots"][slot_id]["owner"]
+		owners_text += "%s  %s\n" % [String(slot_id), "—" if owner == ActorIds.NO_ACTOR else str(owner)]
 	_owners_label.text = owners_text
 
 
@@ -513,7 +513,7 @@ func _finish_run() -> void:
 
 	var all_actors_completed := true
 	var actor_results: Dictionary = {}
-	for actor_id: StringName in _runtime:
+	for actor_id: int in _runtime:
 		var completed: int = _runtime[actor_id]["completed"]
 		all_actors_completed = all_actors_completed and completed > 0
 		actor_results[actor_id] = {
@@ -572,12 +572,12 @@ func _total_repaths() -> int:
 	return result
 
 
-func _actor_id_at(index: int) -> StringName:
+func _actor_id_at(index: int) -> int:
 	var ids: Array = _actors.keys()
 	return ids[index % ids.size()]
 
 
-func _actor_index(actor_id: StringName) -> int:
+func _actor_index(actor_id: int) -> int:
 	return _actors.keys().find(actor_id)
 
 

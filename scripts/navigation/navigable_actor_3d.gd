@@ -1,8 +1,8 @@
 class_name NavigableActor3D
 extends CharacterBody3D
 
-signal destination_reached(actor_id: StringName, action_id: int)
-signal navigation_stuck(actor_id: StringName, action_id: int)
+signal destination_reached(actor_id: int, action_id: int)
+signal navigation_stuck(actor_id: int, action_id: int)
 
 const PROGRESS_TRACKER_SCRIPT := preload(
 	"res://scripts/navigation/navigation_progress_tracker.gd"
@@ -10,7 +10,7 @@ const PROGRESS_TRACKER_SCRIPT := preload(
 
 const ARRIVAL_DISTANCE := 0.38
 
-var actor_id: StringName
+var actor_id: int
 var navigation_agent: NavigationAgent3D
 var base_speed := 1.3
 var simulation_scale := 1.0
@@ -30,10 +30,10 @@ var _last_travel_position := Vector3.ZERO
 var _selection_ring: MeshInstance3D
 
 
-func configure(id: StringName, is_cultist: bool) -> void:
+func configure(id: int, is_cultist: bool) -> void:
 	actor_id = id
-	name = String(id)
-	base_speed = 1.5 if is_cultist else 1.3
+	name = str(id)
+	base_speed = 2.25 if is_cultist else 1.3
 	arrival_distance = ARRIVAL_DISTANCE if is_cultist else 0.7
 	collision_layer = 2
 	# Patron-to-Patron separation is handled by RVO. Hard body collision made a
@@ -175,6 +175,14 @@ func _planned_route_length(from: Vector3, waypoints: Array[Vector3]) -> float:
 # a moving target drifts away from the approach point they asked for.
 func target_position() -> Vector3:
 	return _target_position
+
+
+func next_path_segment_end() -> Vector3:
+	if navigation_agent == null:
+		return _target_position
+	var path := navigation_agent.get_current_navigation_path()
+	var index := navigation_agent.get_current_navigation_path_index()
+	return path[index] if index >= 0 and index < path.size() else _target_position
 
 
 func _physics_process(delta: float) -> void:

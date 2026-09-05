@@ -1,11 +1,11 @@
 extends Control
 
 const SESSION_SCRIPT := preload("res://scripts/simulation/ordinary_visit_session.gd")
-const JUNE := &"patron_june"
-const MARA := &"patron_mara"
+const JUNE := 4
+const MARA := 5
 
 var _session = SESSION_SCRIPT.new()
-var _selected_patron: StringName = JUNE
+var _selected_patron: int = JUNE
 var _debug_mode: bool = false
 var _title_status: Label
 var _time_label: Label
@@ -197,7 +197,7 @@ func _add_advance_button(parent: HBoxContainer, label: String, target_time: floa
 	parent.add_child(button)
 
 
-func _select_patron(patron_id: StringName) -> void:
+func _select_patron(patron_id: int) -> void:
 	_selected_patron = patron_id
 	_refresh(_session.snapshot())
 
@@ -253,7 +253,7 @@ func _debug_markup(view: Dictionary) -> String:
 func _group_markup(state: Dictionary) -> String:
 	var june: Dictionary = state["normal_views"][JUNE]
 	var mara: Dictionary = state["normal_views"][MARA]
-	return "[b]June[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Mara[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Bathroom occupant[/b]  %s" % [june["visible_activity"], _seat_for(state, JUNE), june["order_state"], june["intoxication"], mara["visible_activity"], _seat_for(state, MARA), mara["order_state"], mara["intoxication"], "None" if StringName(state["bathroom_owner"]).is_empty() else state["bathroom_owner"]]
+	return "[b]June[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Mara[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Bathroom occupant[/b]  %s" % [june["visible_activity"], _seat_for(state, JUNE), june["order_state"], june["intoxication"], mara["visible_activity"], _seat_for(state, MARA), mara["order_state"], mara["intoxication"], "None" if int(state["bathroom_owner"]) == ActorIds.NO_ACTOR else state["bathroom_owner"]]
 
 
 func _timeline_markup(events: Array) -> String:
@@ -323,7 +323,7 @@ func _format_time(seconds: float) -> String:
 	return "%02d:%02d" % [int(seconds) / 60, int(seconds) % 60]
 
 
-func _seat_for(state: Dictionary, patron_id: StringName) -> String:
+func _seat_for(state: Dictionary, patron_id: int) -> String:
 	for seat_id: StringName in state["seat_owners"]:
 		if state["seat_owners"][seat_id] == patron_id:
 			return String(seat_id)
@@ -337,14 +337,11 @@ func _companion_names(companions: Array) -> String:
 	return ", ".join(names)
 
 
-func _actor_name(actor_id: StringName) -> String:
-	if actor_id == JUNE:
-		return "June"
-	if actor_id == MARA:
-		return "Mara"
-	if actor_id == &"arrival_group_pair_01":
-		return "Pair 01"
-	return String(actor_id)
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _has_event(events: Array, event_name: StringName) -> bool:

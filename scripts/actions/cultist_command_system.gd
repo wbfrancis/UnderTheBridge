@@ -14,18 +14,22 @@ extends RefCounted
 ## supplies geometry facts (positions, adjacency) and drives NavigableActor3D; it
 ## never creates a chain or removes a dependent Action.
 
-const ACTION_QUEUE_SCRIPT := preload("res://scripts/actions/cultist_action_queue.gd")
+const CHARACTER_ACTION_SYSTEM_SCRIPT := preload("res://scripts/actions/character_action_system.gd")
 const INTERACTION_REGISTRY_SCRIPT := preload("res://scripts/interactions/interaction_registry.gd")
 
-const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
+const CULTIST_IDS: Array[int] = ActorIds.CULTIST_IDS
 
 const TARGET_FLOOR := &"floor"
 const TARGET_PATRON := &"patron"
+const TARGET_CULTIST := &"cultist"
 const TARGET_OBJECT := &"smart_object"
+const TARGET_DRINK := &"prepared_drink"
 
 ## The internal command used for a Generated Move. It renders as Move, targets a
 ## Patron, never appears in a Context Menu, and has no gameplay effect.
 const GENERATED_MOVE := &"generated_move"
+const PICK_UP_DRINK := &"pick_up_drink"
+const STEP_ASIDE := &"step_aside"
 
 ## One centralized catalog. Menu order follows the per-kind command lists below,
 ## so the same target always produces the same option order. Patron commands are
@@ -35,24 +39,78 @@ const CATALOG := {
 	&"move": {"label": "Move", "kinds": [TARGET_FLOOR, TARGET_OBJECT], "reserves": false, "requires_proximity": false},
 	&"drop_body": {"label": "Drop Body Here", "kinds": [TARGET_FLOOR, TARGET_OBJECT], "reserves": false, "requires_proximity": false},
 	&"talk": {"label": "Talk", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"serve_order": {"label": "Serve Order", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"offer_drink": {"label": "Offer Drink", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
+	&"ask_to_leave": {
+		"label": "Ask to Leave", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_precommit",
+	},
+	&"serve_drink": {
+		"label": "Serve Drink", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "duration_seconds": 1.0, "commitment_seconds": 1.0,
+	},
+	PICK_UP_DRINK: {
+		"label": "Pick Up Drink", "kinds": [], "reserves": false,
+		"requires_proximity": false, "duration_seconds": 1.0, "commitment_seconds": 1.0,
+	},
 	&"offer_cigarette": {"label": "Offer Cigarette", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"knock_out": {"label": "Knock Out", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"pick_up_body": {"label": "Pick Up Body", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"intercept": {"label": "Intercept", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"lead_to_tunnel": {"label": "Lead to Tunnel", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"rescue_persuasion": {"label": "Rescue Persuasion", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
-	&"prepare_drink": {"label": "Prepare Drink", "kinds": [TARGET_OBJECT], "reserves": true, "requires_proximity": false},
-	&"prepare_drugged_drink": {"label": "Prepare Drugged Drink", "kinds": [TARGET_OBJECT], "reserves": true, "requires_proximity": false},
+	&"knock_out": {
+		"label": "Knock Out", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_precommit",
+	},
+	&"stir": {
+		"label": "Stir", "kinds": [TARGET_CULTIST], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_precommit",
+	},
+	&"knocked_out": {
+		"label": "Knocked Out", "kinds": [], "reserves": false,
+		"requires_proximity": false,
+	},
+	STEP_ASIDE: {
+		"label": "Step Aside", "kinds": [], "reserves": false,
+		"requires_proximity": false,
+	},
+	&"pick_up_body": {
+		"label": "Pick Up Body", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_committed",
+	},
+	&"intercept": {
+		"label": "Intercept", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_committed",
+	},
+	&"lead_to_tunnel": {
+		"label": "Lead to Tunnel", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_committed",
+	},
+	&"rescue_persuasion": {
+		"label": "Rescue Persuasion", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_committed",
+	},
+	&"make_wine": {
+		"label": "Make Wine", "kinds": [TARGET_OBJECT], "reserves": true,
+		"requires_proximity": false, "duration_seconds": 5.0, "commitment_seconds": 5.0,
+	},
+	&"make_beer": {
+		"label": "Make Beer", "kinds": [TARGET_OBJECT], "reserves": true,
+		"requires_proximity": false, "duration_seconds": 5.0, "commitment_seconds": 5.0,
+	},
+	&"make_liquor": {
+		"label": "Make Liquor", "kinds": [TARGET_OBJECT], "reserves": true,
+		"requires_proximity": false, "duration_seconds": 5.0, "commitment_seconds": 5.0,
+	},
+	&"drug_drink": {
+		"label": "Drug Drink", "kinds": [TARGET_DRINK], "reserves": true,
+		"requires_proximity": false, "duration_seconds": 5.0, "commitment_seconds": 5.0,
+	},
+	&"admit_group": {
+		"label": "Admit Group", "kinds": [TARGET_OBJECT], "reserves": true,
+		"requires_proximity": false, "execution_mode": &"session_precommit",
+	},
 	&"activate_trapdoor": {"label": "Activate Trapdoor", "kinds": [TARGET_OBJECT], "reserves": true, "requires_proximity": false},
 	GENERATED_MOVE: {"label": "Move", "kinds": [], "reserves": true, "requires_proximity": false},
 }
 
 const PATRON_COMMANDS: Array[StringName] = [
 	&"talk",
-	&"serve_order",
-	&"offer_drink",
+	&"ask_to_leave",
 	&"offer_cigarette",
 	&"knock_out",
 	&"pick_up_body",
@@ -61,27 +119,43 @@ const PATRON_COMMANDS: Array[StringName] = [
 	&"rescue_persuasion",
 ]
 const FLOOR_COMMANDS: Array[StringName] = [&"move", &"drop_body"]
+const CULTIST_COMMANDS: Array[StringName] = [&"stir"]
 ## Authored smart objects and the commands each one offers, in menu order.
 const OBJECT_COMMANDS := {
-	&"bar_work_position": [&"prepare_drink", &"prepare_drugged_drink", &"move"],
+	&"bar_work_position": [&"make_wine", &"make_beer", &"make_liquor", &"move"],
+	&"front_entrance": [&"admit_group", &"move"],
 	&"trapdoor_control": [&"activate_trapdoor", &"move"],
 	&"tunnel_intake": [&"move", &"drop_body"],
 }
+const DRINK_COMMANDS: Array[StringName] = [&"drug_drink"]
+const BAR_WORK_SLOT_IDS: Array[StringName] = [
+	&"bar_work_position_01", &"bar_work_position_02", &"bar_work_position_03",
+]
+const BAR_WORK_OFFSETS: Array[float] = [-1.8, 0.0, 1.8]
 
 const REASON_LABELS := {
 	&"": "",
 	&"already_attempted": "Already attempted",
 	&"already_committed": "That Action is already under way",
 	&"already_carrying": "Already carrying a drink",
+	&"already_drugged": "Drink is already drugged",
+	&"bar_full": "The bar is full of reserved drinks",
 	&"approach_reserved": "Another Cultist holds that position",
 	&"chain_cancelled": "Cancelled with its Action Chain",
 	&"cultist_busy": "Cultist is occupied",
+	&"cultist_incapacitated": "Cultist is knocked out",
+	&"already_helping": "Another Cultist is already helping",
 	&"dependency_failed": "A prerequisite failed",
 	&"drug_prep_running": "A dose is already being prepared",
 	&"invalid_target": "That target is gone",
 	&"no_active_action": "No Action is running",
 	&"no_doses": "No dose remains",
 	&"no_open_order": "No open Order",
+	&"no_group_waiting": "No group is waiting outside",
+	&"drink_reserved": "Another Cultist has this drink",
+	&"drink_unavailable": "That drink is gone",
+	&"too_suspicious_to_leave": "Too suspicious to ask to leave",
+	&"unconscious_group_member": "An unconscious group member cannot leave",
 	&"no_prepared_drink": "No Prepared Drink carried",
 	&"night_over": "The Night is over",
 	&"not_carrying_body": "Not carrying a body",
@@ -94,26 +168,39 @@ const REASON_LABELS := {
 }
 
 var _session = null
-var _queues: Dictionary = {}
+var _actions = CHARACTER_ACTION_SYSTEM_SCRIPT.new()
 var _registry = INTERACTION_REGISTRY_SCRIPT.new()
 var _objects: Dictionary = {}
 var _feedback: Dictionary = {}
 var _events: Array[Dictionary] = []
+var _next_feedback_id: int = 1
+var _suppressed_step_aside_incidents: Dictionary = {}
 
 
 ## Starts a new Night. Every queue, reservation, and outcome message is dropped.
 func reset(session) -> void:
 	_session = session
-	_queues.clear()
+	_actions = (
+		_session.character_actions()
+		if _session != null and _session.has_method("character_actions")
+		else CHARACTER_ACTION_SYSTEM_SCRIPT.new()
+	)
 	_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_feedback.clear()
 	_events.clear()
+	_next_feedback_id = 1
+	_suppressed_step_aside_incidents.clear()
 	for cultist_id in CULTIST_IDS:
-		_queues[cultist_id] = ACTION_QUEUE_SCRIPT.new()
-		_feedback[cultist_id] = {"message": "", "reason": &"", "outcome": &"idle"}
+		if not _actions.has_actor(cultist_id):
+			_actions.register_actor(cultist_id, &"cultist")
+		else:
+			_actions.clear(cultist_id, true)
+		_feedback[cultist_id] = {
+			"message": "", "reason": &"", "outcome": &"idle", "event_id": 0,
+		}
 	for object_id: StringName in OBJECT_COMMANDS:
 		if _objects.has(object_id):
-			_registry.register_slot(object_id, TARGET_OBJECT)
+			_register_object_slots(object_id)
 
 
 ## Records an authored smart object and its approach slot. The position is the
@@ -122,15 +209,23 @@ func register_smart_object(object_id: StringName, label: String, approach_positi
 	if not OBJECT_COMMANDS.has(object_id):
 		return false
 	_objects[object_id] = {"label": label, "approach_position": approach_position}
-	_registry.register_slot(object_id, TARGET_OBJECT)
+	_register_object_slots(object_id)
 	return true
+
+
+func _register_object_slots(object_id: StringName) -> void:
+	if object_id == &"bar_work_position":
+		for slot_id: StringName in BAR_WORK_SLOT_IDS:
+			_registry.register_slot(slot_id, &"bar_work")
+		return
+	_registry.register_slot(object_id, TARGET_OBJECT)
 
 
 ## The command descriptions for one Selected Cultist and one target. The menu
 ## renders these verbatim; it owns no eligibility branch of its own.
-func resolve_options(cultist_id: StringName, target: Dictionary) -> Array[Dictionary]:
+func resolve_options(cultist_id: int, target: Dictionary) -> Array[Dictionary]:
 	var options: Array[Dictionary] = []
-	if _session == null or not _queues.has(cultist_id) or target.is_empty():
+	if _session == null or not _actions.has_actor(cultist_id) or target.is_empty():
 		return options
 	for command: StringName in _commands_for_target(target):
 		var state := _availability(command, cultist_id, target)
@@ -149,6 +244,122 @@ func resolve_options(cultist_id: StringName, target: Dictionary) -> Array[Dictio
 	return options
 
 
+func resolve_drink_options(drink_id: StringName, cultist_id: int) -> Array[Dictionary]:
+	if _session == null or drink_id.is_empty():
+		return []
+	var target := {"kind": TARGET_DRINK, "id": drink_id}
+	var drug_state := _availability(&"drug_drink", cultist_id, target)
+	return [
+		{
+			"command": &"serve_drink_to", "label": "Serve Drink To...",
+			"available": true, "reason": &"", "reason_label": "",
+		},
+		{
+			"command": &"drug_drink", "label": "Drug Drink",
+			"available": bool(drug_state["available"]), "reason": drug_state["reason"],
+			"reason_label": _reason_label(drug_state["reason"]),
+		},
+		{
+			"command": &"dispose_drink", "label": "Dispose",
+			"available": true, "reason": &"", "reason_label": "",
+		},
+	]
+
+
+func issue_step_aside(
+	cultist_id: int, position: Vector3, incident_id: StringName
+) -> Dictionary:
+	if (
+		_session == null or not _actions.has_actor(cultist_id)
+		or _cultist_is_incapacitated(cultist_id)
+		or not _active_action(cultist_id).is_empty()
+		or _suppressed_step_aside_incidents.has(incident_id)
+	):
+		return {"accepted": false, "reason": &"cultist_busy"}
+	var target := {
+		"kind": TARGET_FLOOR, "id": StringName("step_aside_%s" % cultist_id),
+		"position": position, "incident_id": incident_id,
+	}
+	var action_id: int = _actions.queue_for_coordinator(cultist_id).append(
+		STEP_ASIDE, target["id"], INF, INF, true,
+		{
+			"command": STEP_ASIDE, "target": target, "committed": false,
+			"reserved": false, "engagement_cleared": true, "stage": &"approaching",
+			"incident_id": incident_id,
+		}
+	)
+	_sync_active(cultist_id)
+	return {"accepted": true, "action_id": action_id, "reason": &""}
+
+
+func issue_drink_service(
+		cultist_id: int,
+		drink_id: StringName,
+		patron_target: Dictionary,
+		append: bool
+) -> Dictionary:
+	if _session == null or not _actions.has_actor(cultist_id):
+		return _reject(cultist_id, &"serve_drink", &"invalid_target")
+	if _cultist_is_incapacitated(cultist_id):
+		return _reject(cultist_id, &"serve_drink", &"cultist_incapacitated")
+	var normalized := _normalized_target(patron_target)
+	normalized["drink_id"] = drink_id
+	var state := _availability(&"serve_drink", cultist_id, normalized)
+	if not bool(state["available"]):
+		return _reject(cultist_id, &"serve_drink", state["reason"])
+	if not _session.reserve_prepared_drink(drink_id, cultist_id):
+		return _reject(cultist_id, &"serve_drink", &"drink_reserved")
+	var drink_target := {
+		"kind": TARGET_DRINK, "id": drink_id,
+		"position": normalized.get("bar_position", Vector3.ZERO),
+		"approach_slot": StringName("drink_%s" % drink_id),
+		"drink_id": drink_id,
+	}
+	var specs: Array[Dictionary] = [
+		_command_spec(PICK_UP_DRINK, drink_target),
+		_generated_move_spec(&"serve_drink", normalized),
+		_command_spec(&"serve_drink", normalized),
+	]
+	var queue = _actions.queue_for_coordinator(cultist_id)
+	var queued: Dictionary
+	if append:
+		queued = queue.append_chain(specs)
+	else:
+		_complete_replaceable_hold(cultist_id)
+		var precommit_command: StringName = _precommit_execution_command(cultist_id)
+		_release(cultist_id)
+		queued = queue.replace_with_chain(specs)
+		_cancel_session_execution(cultist_id, precommit_command)
+	_record_removed(cultist_id, queued.get("removed", []), &"replace")
+	_sync_active(cultist_id)
+	var ids: Array = queued["action_ids"]
+	return {
+		"accepted": true,
+		"action_id": int(ids[-1]),
+		"chain_id": int(queued["chain_id"]),
+		"generated_action_ids": [int(ids[0]), int(ids[1])],
+		"command": &"serve_drink", "reason": &"", "message": "Serve Drink started.",
+	}
+
+
+func cancel_drink_service(drink_id: StringName) -> bool:
+	for cultist_id: int in _actions.actor_ids(&"cultist"):
+		var state: Dictionary = _actions.snapshot(cultist_id)
+		var actions: Array = []
+		if not state["active"].is_empty():
+			actions.append(state["active"])
+		actions.append_array(state["pending"])
+		for action: Dictionary in actions:
+			var target: Dictionary = action["payload"].get("target", {})
+			if StringName(target.get("drink_id", &"")) != drink_id:
+				continue
+			var action_id := int(action["id"])
+			if not state["active"].is_empty() and action_id == int(state["active"]["id"]):
+				return bool(request_cancel_active(cultist_id)["cancelled"])
+			return remove_pending(cultist_id, action_id)
+	return false
+
+
 ## Issues Move or a chosen context command. A normal issue replaces the queue,
 ## Shift appends it. A proximity command issued while not adjacent gains a visible
 ## Generated Move prerequisite, so the two form one Action Chain. `context` is a
@@ -156,14 +367,16 @@ func resolve_options(cultist_id: StringName, target: Dictionary) -> Array[Dictio
 ## visible outcome and reports the requested `action_id`, the `chain_id`, and any
 ## `generated_action_ids`, so no caller has to guess which id is player intent.
 func issue(
-		cultist_id: StringName,
+		cultist_id: int,
 		command: StringName,
 		target: Dictionary,
 		append: bool,
 		context: Dictionary = {}
 ) -> Dictionary:
-	if _session == null or not _queues.has(cultist_id):
+	if _session == null or not _actions.has_actor(cultist_id):
 		return _reject(cultist_id, command, &"invalid_target")
+	if _cultist_is_incapacitated(cultist_id):
+		return _reject(cultist_id, command, &"cultist_incapacitated")
 	if not CATALOG.has(command) or command == GENERATED_MOVE or target.is_empty():
 		return _reject(cultist_id, command, &"unknown_command")
 	if command not in _commands_for_target(target):
@@ -181,13 +394,16 @@ func issue(
 		specs.append(_generated_move_spec(command, normalized))
 	specs.append(_command_spec(command, normalized))
 
-	var queue = _queues[cultist_id]
+	var queue = _actions.queue_for_coordinator(cultist_id)
 	var result: Dictionary
 	if append:
 		result = queue.append_chain(specs)
 	else:
+		_complete_replaceable_hold(cultist_id)
+		var precommit_command: StringName = _precommit_execution_command(cultist_id)
 		_release(cultist_id)
 		result = queue.replace_with_chain(specs)
+		_cancel_session_execution(cultist_id, precommit_command)
 	_record_removed(cultist_id, result.get("removed", []), &"replace")
 	_sync_active(cultist_id)
 
@@ -227,8 +443,8 @@ func issue(
 
 
 ## Removes a queued Action and every unfinished link of its Action Chain.
-func remove_pending(cultist_id: StringName, action_id: int) -> bool:
-	if not _queues.has(cultist_id):
+func remove_pending(cultist_id: int, action_id: int) -> bool:
+	if not _actions.has_actor(cultist_id):
 		return false
 	if _find_action(cultist_id, action_id).is_empty():
 		return false
@@ -240,8 +456,8 @@ func remove_pending(cultist_id: StringName, action_id: int) -> bool:
 ## Chain. Cancellation is only allowed before the Commitment Point, because after
 ## it the gameplay effect has fired and no undo exists. A refusal carries a
 ## visible reason, never a silent no-op.
-func request_cancel_active(cultist_id: StringName) -> Dictionary:
-	if _session == null or not _queues.has(cultist_id):
+func request_cancel_active(cultist_id: int) -> Dictionary:
+	if _session == null or not _actions.has_actor(cultist_id):
 		return _cancel_refusal(cultist_id, -1, &"", &"invalid_target")
 	var action := _active_action(cultist_id)
 	if action.is_empty():
@@ -251,7 +467,7 @@ func request_cancel_active(cultist_id: StringName) -> Dictionary:
 
 # Cancels one Action and its unfinished chain links. Releases the reservation
 # once when the cascade removes the active Action that held it.
-func _cancel_action(cultist_id: StringName, action_id: int) -> Dictionary:
+func _cancel_action(cultist_id: int, action_id: int) -> Dictionary:
 	var target := _find_action(cultist_id, action_id)
 	if target.is_empty():
 		return _cancel_refusal(cultist_id, action_id, &"", &"no_active_action")
@@ -260,8 +476,18 @@ func _cancel_action(cultist_id: StringName, action_id: int) -> Dictionary:
 	var active_id := int(active["id"]) if not active.is_empty() else -1
 	if not active.is_empty() and int(active["id"]) == action_id and bool(active["payload"]["committed"]):
 		return _cancel_refusal(cultist_id, action_id, command, &"already_committed")
+	var precommit_command: StringName = (
+		_precommit_execution_command(cultist_id)
+		if not active.is_empty() and int(active["id"]) == action_id
+		else &""
+	)
 
-	var result: Dictionary = _queues[cultist_id].cancel_chain(action_id)
+	var result: Dictionary = _actions.queue_for_coordinator(cultist_id).cancel_chain(action_id)
+	if command == STEP_ASIDE:
+		var incident_id := StringName(target["payload"].get("incident_id", &""))
+		if not incident_id.is_empty():
+			_suppressed_step_aside_incidents[incident_id] = true
+	_cancel_session_execution(cultist_id, precommit_command)
 	var removed: Array = result["removed"]
 	if removed.is_empty():
 		return _cancel_refusal(cultist_id, action_id, command, &"already_committed")
@@ -285,7 +511,7 @@ func _cancel_action(cultist_id: StringName, action_id: int) -> Dictionary:
 
 
 func _cancel_refusal(
-		cultist_id: StringName,
+		cultist_id: int,
 		action_id: int,
 		command: StringName,
 		reason: StringName
@@ -307,7 +533,7 @@ func _cancel_refusal(
 ## A Generated Move completes and hands its reservation to the dependent Patron
 ## Action. A floor or smart-object Action commits its effect here. This is the
 ## Commitment Point: the gameplay effect fires exactly once.
-func notify_reached(cultist_id: StringName, action_id: int) -> Dictionary:
+func notify_reached(cultist_id: int, action_id: int) -> Dictionary:
 	var action := _active_action(cultist_id)
 	if action.is_empty() or int(action["id"]) != action_id:
 		return {"committed": false, "reason": &"invalid_target"}
@@ -322,13 +548,13 @@ func notify_reached(cultist_id: StringName, action_id: int) -> Dictionary:
 	if not bool(state["available"]):
 		_fail_active(cultist_id, state["reason"])
 		return {"committed": false, "reason": state["reason"]}
-	return _commit_active(cultist_id, action_id, command, target)
+	return _start_or_commit_active(cultist_id, action_id, command, target)
 
 
 ## The adapter reports the live proximity result for a Patron Action that has
 ## reached the head of the queue. The command system either commits the Action or
 ## inserts a Generated Move prerequisite. The adapter never edits the chain.
-func resolve_proximity(cultist_id: StringName, action_id: int, is_adjacent: bool) -> Dictionary:
+func resolve_proximity(cultist_id: int, action_id: int, is_adjacent: bool) -> Dictionary:
 	var action := _active_action(cultist_id)
 	if action.is_empty() or int(action["id"]) != action_id:
 		return {"committed": false, "reason": &"invalid_target", "changed": false}
@@ -343,43 +569,134 @@ func resolve_proximity(cultist_id: StringName, action_id: int, is_adjacent: bool
 	if not is_adjacent:
 		# The Patron moved out of reach, so insert one visible Generated Move ahead
 		# of this Action. The reservation stays with this Cultist across the insert.
-		_queues[cultist_id].insert_prerequisite_for_active(_generated_move_spec(command, target))
+		_actions.queue_for_coordinator(cultist_id).insert_prerequisite_for_active(_generated_move_spec(command, target))
 		_sync_active(cultist_id)
 		return {"committed": false, "reason": &"approaching", "changed": true, "inserted_move": true}
-	var result := _commit_active(cultist_id, action_id, command, target)
+	var result := _start_or_commit_active(cultist_id, action_id, command, target)
 	result["changed"] = true
 	return result
+
+
+func _start_or_commit_active(
+		cultist_id: int, action_id: int, command: StringName, target: Dictionary
+) -> Dictionary:
+	var duration := float(CATALOG[command].get("duration_seconds", 0.0))
+	var execution_mode := StringName(CATALOG[command].get("execution_mode", &"immediate"))
+	if execution_mode == &"session_precommit":
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "stage", &"executing")
+		var outcome := _execute(command, cultist_id, target)
+		if not bool(outcome["ok"]):
+			_fail_active(cultist_id, outcome["reason"])
+			return {"committed": false, "reason": outcome["reason"]}
+		_sync_active(cultist_id)
+		return {"committed": false, "reason": &"", "started": true}
+	if execution_mode == &"session_committed":
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "committed", true)
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "stage", &"committed")
+		_actions.queue_for_coordinator(cultist_id).mark_active_committed(action_id)
+		var outcome := _execute(command, cultist_id, target)
+		if not bool(outcome["ok"]):
+			_fail_active(cultist_id, outcome["reason"])
+			return {"committed": false, "reason": outcome["reason"]}
+		_record(cultist_id, action_id, command, &"committed", outcome["reason"])
+		_note(cultist_id, &"committed", "%s started." % CATALOG[command]["label"], outcome["reason"])
+		_sync_active(cultist_id)
+		return {"committed": true, "reason": outcome["reason"], "held": true}
+	if duration <= 0.0:
+		return _commit_active(cultist_id, action_id, command, target)
+	_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "stage", &"executing")
+	_sync_active(cultist_id)
+	return {"committed": false, "reason": &"", "started": true}
+
+
+## Advances fixed-duration Actions with scaled simulation time. Navigation owns
+## Move duration; held Actions such as Talk complete from their gameplay state.
+func advance(simulated_delta: float) -> void:
+	if simulated_delta <= 0.0:
+		return
+	for cultist_id: int in _actions.actor_ids(&"cultist"):
+		var action := _active_action(cultist_id)
+		if action.is_empty():
+			continue
+		var payload: Dictionary = action["payload"]
+		if StringName(payload.get("stage", &"approaching")) != &"executing":
+			continue
+		_actions.queue_for_coordinator(cultist_id).advance_clock(simulated_delta)
+		# These operations start once on arrival. Their simulation state, not
+		# the fixed-duration command timer, decides commitment and completion.
+		if StringName(CATALOG[payload["command"]].get("execution_mode", &"immediate")) in [
+			&"session_precommit", &"session_committed",
+		]:
+			_sync_active(cultist_id)
+			continue
+		var elapsed := float(action["elapsed_seconds"]) + simulated_delta
+		var commitment := float(action["commitment_seconds"])
+		if not bool(payload["committed"]) and elapsed + 0.0001 >= commitment:
+			var command: StringName = payload["command"]
+			var target: Dictionary = payload["target"]
+			var state := _availability_for(cultist_id, action)
+			if not bool(state["available"]):
+				_fail_active(cultist_id, state["reason"])
+				continue
+			_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "committed", true)
+			_actions.queue_for_coordinator(cultist_id).mark_active_committed(int(action["id"]))
+			var outcome := _execute(command, cultist_id, target)
+			if not bool(outcome["ok"]):
+				_fail_active(cultist_id, outcome["reason"])
+				continue
+			_record(cultist_id, int(action["id"]), command, &"committed", outcome["reason"])
+		if elapsed + 0.0001 >= float(action["duration_seconds"]):
+			_complete_timed_active(cultist_id)
+
+
+func _complete_timed_active(cultist_id: int) -> void:
+	var action := _active_action(cultist_id)
+	if action.is_empty():
+		return
+	var command: StringName = action["payload"]["command"]
+	if command == &"drug_drink" and _session != null and _session.has_method("release_prepared_drink"):
+		_session.release_prepared_drink(
+			action["payload"]["target"]["id"], cultist_id
+		)
+	_release(cultist_id)
+	_actions.queue_for_coordinator(cultist_id).complete_active()
+	_note(cultist_id, &"completed", "%s done." % CATALOG[command]["label"], &"")
+	_sync_active(cultist_id)
 
 
 # The Generated Move has no gameplay effect. It completes, keeps the approach
 # reservation, and lets the dependent Patron Action become active with the slot
 # already held, so no other Cultist can steal it in a release gap.
-func _complete_generated_move(cultist_id: StringName, action_id: int) -> Dictionary:
+func _complete_generated_move(cultist_id: int, action_id: int) -> Dictionary:
 	_record(cultist_id, action_id, GENERATED_MOVE, &"completed", &"")
-	_queues[cultist_id].complete_active()
+	_actions.queue_for_coordinator(cultist_id).complete_active()
 	_sync_active(cultist_id)
 	return {"committed": true, "reason": &"", "generated": true, "changed": true}
 
 
 func _commit_active(
-		cultist_id: StringName, action_id: int, command: StringName, target: Dictionary
+		cultist_id: int, action_id: int, command: StringName, target: Dictionary
 ) -> Dictionary:
 	var outcome := _execute(command, cultist_id, target)
-	_queues[cultist_id].set_payload_value(action_id, "committed", true)
+	_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "committed", true)
 	_record(cultist_id, action_id, command, &"committed", outcome["reason"])
 	if not bool(outcome["ok"]):
 		_fail_active(cultist_id, outcome["reason"])
 		return {"committed": true, "reason": outcome["reason"]}
+	if command == &"talk":
+		_note(cultist_id, &"committed", "Talk started.", outcome["reason"])
+		_sync_active(cultist_id)
+		return {"committed": true, "reason": outcome["reason"], "held": true}
 	_note(cultist_id, &"completed", "%s done." % CATALOG[command]["label"], outcome["reason"])
 	_release(cultist_id)
-	_queues[cultist_id].complete_active()
+	_actions.queue_for_coordinator(cultist_id).complete_active()
 	_sync_active(cultist_id)
 	return {"committed": true, "reason": outcome["reason"]}
 
 
 ## Navigation could not reach the approach point. Nothing was committed; the
 ## whole Action Chain fails once and the next unrelated Action starts.
-func notify_failed(cultist_id: StringName, action_id: int, reason: StringName) -> Dictionary:
+func notify_failed(cultist_id: int, action_id: int, reason: StringName) -> Dictionary:
 	var action := _active_action(cultist_id)
 	if action.is_empty() or int(action["id"]) != action_id:
 		return {"failed": false, "reason": &"invalid_target"}
@@ -389,26 +706,62 @@ func notify_failed(cultist_id: StringName, action_id: int, reason: StringName) -
 
 ## Re-checks every queued target and drops the ones that went stale. The adapter
 ## calls this whenever the session state changes.
-func refresh(cultist_id: StringName = &"") -> void:
-	var ids: Array = [cultist_id] if not cultist_id.is_empty() else _queues.keys()
-	for id: StringName in ids:
-		if _queues.has(id):
+func refresh(cultist_id: int = ActorIds.NO_ACTOR) -> void:
+	var ids: Array = [cultist_id] if cultist_id != ActorIds.NO_ACTOR else _actions.actor_ids(&"cultist")
+	for id: int in ids:
+		if _actions.has_actor(id):
 			_sync_active(id)
+
+
+func _cultist_is_incapacitated(cultist_id: int) -> bool:
+	return (
+		_session != null
+		and _session.has_method("cultist_is_incapacitated")
+		and _session.cultist_is_incapacitated(cultist_id)
+	)
+
+
+func _sync_incapacitation(cultist_id: int) -> bool:
+	var active := _active_action(cultist_id)
+	if _cultist_is_incapacitated(cultist_id):
+		var remaining := float(_session.cultist_incapacitated_remaining(cultist_id))
+		if active.is_empty() or StringName(active["payload"].get("command", &"")) != &"knocked_out":
+			_release(cultist_id)
+			var result: Dictionary = _actions.queue_for_coordinator(cultist_id).force_lock(
+				&"knocked_out", cultist_id, 60.0,
+				{
+					"command": &"knocked_out",
+					"target": {"kind": TARGET_CULTIST, "id": cultist_id, "position": Vector3.ZERO},
+					"committed": true, "reserved": false, "stage": &"committed",
+					"remaining": remaining,
+				}
+			)
+			_record_removed(cultist_id, result["removed"], &"cultist_incapacitated")
+		else:
+			_actions.queue_for_coordinator(cultist_id).set_payload_value(int(active["id"]), "remaining", remaining)
+		return true
+	if not active.is_empty() and StringName(active["payload"].get("command", &"")) == &"knocked_out":
+		_actions.queue_for_coordinator(cultist_id).clear_forced_lock(&"knocked_out")
+	return false
 
 
 ## What the adapter should do for this Cultist, or {} when idle. A Generated Move,
 ## a floor Move, and a smart-object Action use `navigate`. A Patron Action whose
 ## prerequisites finished uses `check_proximity`: the adapter reports adjacency
 ## through resolve_proximity and never navigates it itself.
-func active_request(cultist_id: StringName) -> Dictionary:
+func active_request(cultist_id: int) -> Dictionary:
+	if _sync_incapacitation(cultist_id):
+		return {}
 	var action := _active_action(cultist_id)
 	if action.is_empty():
 		return {}
 	var payload: Dictionary = action["payload"]
+	if StringName(payload.get("stage", &"approaching")) in [&"executing", &"committed"]:
+		return {}
 	var target: Dictionary = payload["target"]
 	var command: StringName = payload["command"]
 	var mode := &"navigate"
-	if command != GENERATED_MOVE and StringName(target["kind"]) == TARGET_PATRON:
+	if command != GENERATED_MOVE and StringName(target["kind"]) in [TARGET_PATRON, TARGET_CULTIST]:
 		mode = &"check_proximity"
 	return {
 		"action_id": int(action["id"]),
@@ -425,8 +778,8 @@ func active_request(cultist_id: StringName) -> Dictionary:
 func snapshot() -> Dictionary:
 	var cultists: Dictionary = {}
 	var action_count := 0
-	for cultist_id: StringName in _queues:
-		var state: Dictionary = _queues[cultist_id].snapshot()
+	for cultist_id: int in _actions.actor_ids(&"cultist"):
+		var state: Dictionary = _actions.snapshot(cultist_id)
 		var pending: Array[Dictionary] = []
 		for entry: Dictionary in state["pending"]:
 			pending.append(_action_view(cultist_id, entry))
@@ -452,8 +805,8 @@ func debug_snapshot() -> Dictionary:
 	var result := snapshot()
 	result["registry"] = _registry.snapshot()
 	var raw: Dictionary = {}
-	for cultist_id: StringName in _queues:
-		raw[cultist_id] = _queues[cultist_id].snapshot()
+	for cultist_id: int in _actions.actor_ids(&"cultist"):
+		raw[cultist_id] = _actions.snapshot(cultist_id)
 	result["raw_queues"] = raw
 	return result
 
@@ -463,7 +816,9 @@ func debug_snapshot() -> Dictionary:
 ## Brings the active Action into a runnable state: it clears a stale Action or
 ## chain, takes the approach reservation, and stops when the queue is idle or the
 ## head Action is ready for the adapter to drive.
-func _sync_active(cultist_id: StringName) -> void:
+func _sync_active(cultist_id: int) -> void:
+	if _sync_incapacitation(cultist_id):
+		return
 	var guard := 0
 	while guard < 16:
 		guard += 1
@@ -475,6 +830,41 @@ func _sync_active(cultist_id: StringName) -> void:
 		var command: StringName = payload["command"]
 		var target: Dictionary = payload["target"]
 		if bool(payload["committed"]):
+			if command == &"talk" and not _talk_is_active(cultist_id, target):
+				_complete_held_talk(cultist_id, action)
+				continue
+			if StringName(CATALOG[command].get("execution_mode", &"immediate")) in [
+				&"session_precommit", &"session_committed",
+			]:
+				var committed_state := _session_action_state(command, cultist_id, target)
+				if committed_state == &"completed":
+					_complete_timed_active(cultist_id)
+					continue
+				if committed_state == &"failed":
+					_fail_active(cultist_id, &"invalid_target")
+					continue
+			return
+		if StringName(payload.get("stage", &"approaching")) == &"executing":
+			if StringName(CATALOG[command].get("execution_mode", &"immediate")) == &"session_precommit":
+				var execution_state := _session_action_state(command, cultist_id, target)
+				if execution_state == &"completed":
+					_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "committed", true)
+					_record(cultist_id, int(action["id"]), command, &"committed", &"")
+					_complete_timed_active(cultist_id)
+					continue
+				if execution_state == &"committed":
+					_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "committed", true)
+					_actions.queue_for_coordinator(cultist_id).mark_active_committed(int(action["id"]))
+					_record(cultist_id, int(action["id"]), command, &"committed", &"")
+					return
+				if execution_state == &"failed":
+					_fail_active(cultist_id, &"invalid_target")
+					continue
+				return
+			var executing_state := _availability_for(cultist_id, action)
+			if not bool(executing_state["available"]):
+				_fail_active(cultist_id, executing_state["reason"])
+				continue
 			return
 		# Revalidation point 3: movement has not started yet.
 		var state := _availability_for(cultist_id, action)
@@ -482,32 +872,100 @@ func _sync_active(cultist_id: StringName) -> void:
 			_fail_active(cultist_id, state["reason"])
 			continue
 		if not bool(payload["reserved"]) and bool(CATALOG[command]["reserves"]):
+			if command in [&"make_wine", &"make_beer", &"make_liquor", &"drug_drink"]:
+				target = _normalized_target(target)
+				_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "target", target)
 			var slot := _slot_for(target)
 			# A Patron's interaction slot exists as soon as a Cultist aims at them.
 			_registry.register_slot(slot, StringName(target["kind"]))
 			if not _registry.request_slot(cultist_id, slot):
 				_fail_active(cultist_id, &"approach_reserved")
 				continue
-			_queues[cultist_id].set_payload_value(int(action["id"]), "reserved", true)
+			if command == &"drug_drink" and not _session.reserve_prepared_drink(target["id"], cultist_id):
+				_fail_active(cultist_id, &"drink_reserved")
+				continue
+			_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "reserved", true)
 		# A new Action replaces any standing engagement, such as an active Talk.
 		# Done once per Action so a session snapshot cannot loop back into here.
 		if not bool(payload["engagement_cleared"]):
-			_queues[cultist_id].set_payload_value(int(action["id"]), "engagement_cleared", true)
+			_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "engagement_cleared", true)
 			if _session != null and _session.has_method("end_cultist_engagement"):
 				_session.end_cultist_engagement(cultist_id)
 		return
 
 
-func _fail_active(cultist_id: StringName, reason: StringName) -> void:
+func _talk_is_active(cultist_id: int, target: Dictionary) -> bool:
+	return (
+		_session != null
+		and _session.has_method("conversation_is_active")
+		and _session.conversation_is_active(cultist_id, target["id"])
+	)
+
+
+func _complete_held_talk(cultist_id: int, action: Dictionary) -> void:
+	_release(cultist_id)
+	_record(cultist_id, int(action["id"]), &"talk", &"completed", &"")
+	_actions.queue_for_coordinator(cultist_id).complete_active()
+	_note(cultist_id, &"completed", "Talk done.", &"")
+
+
+func _complete_replaceable_hold(cultist_id: int) -> void:
+	var action := _active_action(cultist_id)
+	if action.is_empty():
+		return
+	var payload: Dictionary = action["payload"]
+	if not bool(payload["committed"]) or StringName(payload["command"]) != &"talk":
+		return
+	if _session != null and _session.has_method("end_cultist_engagement"):
+		_session.end_cultist_engagement(cultist_id)
+	_complete_held_talk(cultist_id, action)
+
+
+func _session_action_state(
+		command: StringName, cultist_id: int, target: Dictionary
+) -> StringName:
+	if _session == null or not _session.has_method("command_action_state"):
+		return &"failed"
+	return _session.command_action_state(command, cultist_id, target["id"])
+
+
+func _precommit_execution_command(cultist_id: int) -> StringName:
+	var action := _active_action(cultist_id)
+	if action.is_empty():
+		return &""
+	var payload: Dictionary = action["payload"]
+	if bool(payload["committed"]) or StringName(payload.get("stage", &"approaching")) != &"executing":
+		return &""
+	var command: StringName = payload["command"]
+	return command if StringName(CATALOG[command].get("execution_mode", &"immediate")) == &"session_precommit" else &""
+
+
+func _cancel_session_execution(cultist_id: int, command: StringName) -> void:
+	if command == &"knock_out" and _session.has_method("cancel_knockout"):
+		_session.cancel_knockout(cultist_id)
+	elif command == &"admit_group" and _session.has_method("cancel_admit_group"):
+		_session.cancel_admit_group(cultist_id)
+	elif command == &"ask_to_leave" and _session.has_method("cancel_ask_to_leave"):
+		_session.cancel_ask_to_leave(cultist_id)
+	elif command == &"stir" and _session.has_method("cancel_stir"):
+		_session.cancel_stir(cultist_id)
+
+
+func _fail_active(cultist_id: int, reason: StringName) -> void:
 	var action := _active_action(cultist_id)
 	if action.is_empty():
 		return
 	var command: StringName = action["payload"]["command"]
 	var active_id := int(action["id"])
+	_cancel_session_execution(cultist_id, command)
 	_release(cultist_id)
-	var result: Dictionary = _queues[cultist_id].fail_active_chain(reason)
+	var result: Dictionary = _actions.queue_for_coordinator(cultist_id).fail_active_chain(reason)
 	for snap: Dictionary in result["removed"]:
 		var snap_command: StringName = snap["payload"]["command"]
+		var snap_target: Dictionary = snap["payload"].get("target", {})
+		var drink_id := _drink_id_for_target(snap_target)
+		if not drink_id.is_empty() and _session != null and _session.has_method("release_prepared_drink"):
+			_session.release_prepared_drink(drink_id, cultist_id)
 		if int(snap["id"]) == active_id:
 			_record(cultist_id, int(snap["id"]), snap_command, &"failed", reason)
 		else:
@@ -520,26 +978,38 @@ func _fail_active(cultist_id: StringName, reason: StringName) -> void:
 	)
 
 
-func _record_removed(cultist_id: StringName, removed: Array, reason: StringName) -> void:
+func _record_removed(cultist_id: int, removed: Array, reason: StringName) -> void:
 	for snap: Dictionary in removed:
+		var target: Dictionary = snap["payload"].get("target", {})
+		var drink_id := _drink_id_for_target(target)
+		if not drink_id.is_empty() and _session != null and _session.has_method("release_prepared_drink"):
+			_session.release_prepared_drink(drink_id, cultist_id)
 		_record(cultist_id, int(snap["id"]), snap["payload"]["command"], &"cancelled", reason)
 
 
-func _release(cultist_id: StringName) -> void:
+func _release(cultist_id: int) -> void:
 	_registry.release_actor(cultist_id)
 	var action := _active_action(cultist_id)
 	if not action.is_empty():
-		_queues[cultist_id].set_payload_value(int(action["id"]), "reserved", false)
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "reserved", false)
 
 
-func _active_action(cultist_id: StringName) -> Dictionary:
-	if not _queues.has(cultist_id):
+func _drink_id_for_target(target: Dictionary) -> StringName:
+	if target.has("drink_id"):
+		return StringName(target["drink_id"])
+	if StringName(target.get("kind", &"")) == TARGET_DRINK:
+		return StringName(target.get("id", &""))
+	return &""
+
+
+func _active_action(cultist_id: int) -> Dictionary:
+	if not _actions.has_actor(cultist_id):
 		return {}
-	return _queues[cultist_id].snapshot()["active"]
+	return _actions.active_request(cultist_id)
 
 
-func _find_action(cultist_id: StringName, action_id: int) -> Dictionary:
-	var state: Dictionary = _queues[cultist_id].snapshot()
+func _find_action(cultist_id: int, action_id: int) -> Dictionary:
+	var state: Dictionary = _actions.snapshot(cultist_id)
 	if not state["active"].is_empty() and int(state["active"]["id"]) == action_id:
 		return state["active"]
 	for entry: Dictionary in state["pending"]:
@@ -552,7 +1022,7 @@ func _find_action(cultist_id: StringName, action_id: int) -> Dictionary:
 
 ## Reads the availability rule for one queued Action, including a Generated Move,
 ## whose validity is the validity of the Patron command it approaches for.
-func _availability_for(cultist_id: StringName, action: Dictionary) -> Dictionary:
+func _availability_for(cultist_id: int, action: Dictionary) -> Dictionary:
 	var payload: Dictionary = action["payload"]
 	return _availability(
 		StringName(payload["command"]),
@@ -567,16 +1037,31 @@ func _availability_for(cultist_id: StringName, action: Dictionary) -> Dictionary
 ## Move defers to the command it precedes.
 func _availability(
 		command: StringName,
-		cultist_id: StringName,
+		cultist_id: int,
 		target: Dictionary,
 		chain_command: StringName = &""
 ) -> Dictionary:
+	if _cultist_is_incapacitated(cultist_id):
+		return {"visible": true, "available": false, "reason": &"cultist_incapacitated", "detail": ""}
+	if command == PICK_UP_DRINK:
+		var drink_id := StringName(target.get("drink_id", target.get("id", &"")))
+		if _session == null or not _session.has_method("prepared_drink"):
+			return {"visible": false, "available": false, "reason": &"drink_unavailable", "detail": ""}
+		var drink: Dictionary = _session.prepared_drink(drink_id)
+		var available := not drink.is_empty() and int(drink["reserved_by"]) == cultist_id
+		return {"visible": false, "available": available, "reason": &"" if available else &"drink_unavailable", "detail": ""}
+	if command == &"serve_drink":
+		if _session == null or not _session.has_method("serve_drink_availability"):
+			return {"visible": false, "available": false, "reason": &"drink_unavailable", "detail": ""}
+		return _session.serve_drink_availability(
+			target["id"], cultist_id, StringName(target.get("drink_id", &""))
+		)
 	if command == GENERATED_MOVE:
 		var effective := chain_command if not chain_command.is_empty() else &"move"
 		return _availability(effective, cultist_id, target)
-	if command == &"move":
+	if command in [&"move", STEP_ASIDE]:
 		var reachable: bool = (
-			target["kind"] != TARGET_OBJECT or _objects.has(StringName(target["id"]))
+			target["kind"] != TARGET_OBJECT or _objects.has(target["id"])
 		)
 		return {
 			"visible": true,
@@ -587,7 +1072,7 @@ func _availability(
 	if _session == null or not _session.has_method("command_availability"):
 		return {"visible": false, "available": false, "reason": &"unknown_command", "detail": ""}
 	var state: Dictionary = _session.command_availability(
-		command, cultist_id, StringName(target["id"])
+		command, cultist_id, target["id"]
 	)
 	return {
 		"visible": bool(state.get("visible", false)),
@@ -598,25 +1083,33 @@ func _availability(
 
 
 ## Fires the gameplay operation. Called once, at the Commitment Point.
-func _execute(command: StringName, cultist_id: StringName, target: Dictionary) -> Dictionary:
-	var target_id := StringName(target["id"])
+func _execute(command: StringName, cultist_id: int, target: Dictionary) -> Dictionary:
+	var target_id: Variant = target["id"]
 	match command:
-		GENERATED_MOVE, &"move":
+		GENERATED_MOVE, STEP_ASIDE, &"move":
 			return {"ok": true, "reason": &""}
 		&"drop_body":
 			return _outcome(_session.drop_body(cultist_id), &"not_carrying_body")
 		&"talk":
 			return _outcome(_session.begin_conversation(cultist_id, target_id), &"rejected")
-		&"serve_order":
-			return _outcome(_session.serve_patron_order(target_id, cultist_id), &"no_open_order")
-		&"offer_drink":
-			# The offer itself is the effect. A refusal is a visible result, not a failure.
-			var offer: Dictionary = _session.offer_drink(target_id, cultist_id)
-			return {"ok": true, "reason": StringName(offer["reason"])}
+		&"ask_to_leave":
+			return _outcome(_session.begin_ask_to_leave(cultist_id, target_id), &"rejected")
+		PICK_UP_DRINK:
+			return _outcome(
+				_session.pick_up_prepared_drink(StringName(target.get("drink_id", target_id)), cultist_id),
+				&"drink_unavailable"
+			)
+		&"serve_drink":
+			var service: Dictionary = _session.serve_prepared_drink(
+				target_id, cultist_id, StringName(target.get("drink_id", &""))
+			)
+			return {"ok": StringName(service.get("reason", &"")) != &"drink_unavailable", "reason": service.get("reason", &"")}
 		&"offer_cigarette":
 			return _outcome(_session.offer_cigarette(cultist_id, target_id), &"rejected")
 		&"knock_out":
 			return _outcome(_session.begin_knockout(cultist_id, target_id), &"cultist_busy")
+		&"stir":
+			return _outcome(_session.begin_stir(cultist_id, target_id), &"already_helping")
 		&"pick_up_body":
 			return _outcome(_session.pick_up_body(cultist_id, target_id), &"cultist_busy")
 		&"intercept":
@@ -627,12 +1120,15 @@ func _execute(command: StringName, cultist_id: StringName, target: Dictionary) -
 			)
 		&"rescue_persuasion":
 			return _outcome(_session.attempt_rescue_persuasion(cultist_id), &"already_attempted")
-		&"prepare_drink":
-			return _outcome(_session.prepare_drink(cultist_id), &"already_carrying")
-		&"prepare_drugged_drink":
+		&"make_wine", &"make_beer", &"make_liquor":
 			return _outcome(
-				_session.prepare_drugged_drink_for_next_order(cultist_id), &"no_open_order"
+				_session.make_drink(StringName(String(command).trim_prefix("make_")), cultist_id),
+				&"bar_full"
 			)
+		&"drug_drink":
+			return _outcome(_session.drug_prepared_drink(target_id, cultist_id), &"drink_unavailable")
+		&"admit_group":
+			return _outcome(_session.begin_admit_group(cultist_id), &"no_group_waiting")
 		&"activate_trapdoor":
 			return _outcome(_session.activate_trapdoor(), &"trapdoor_busy")
 	return {"ok": false, "reason": &"unknown_command"}
@@ -649,11 +1145,13 @@ func _requires_proximity(command: StringName) -> bool:
 
 
 func _command_spec(command: StringName, normalized: Dictionary) -> Dictionary:
+	var duration := float(CATALOG[command].get("duration_seconds", 0.0))
+	var commitment := float(CATALOG[command].get("commitment_seconds", duration))
 	return {
 		"name": command,
-		"target_id": StringName(normalized["id"]),
-		"duration_seconds": INF,
-		"commitment_seconds": INF,
+		"target_id": normalized["id"],
+		"duration_seconds": duration,
+		"commitment_seconds": commitment,
 		"target_is_valid": true,
 		"generated": false,
 		"payload": {
@@ -662,6 +1160,7 @@ func _command_spec(command: StringName, normalized: Dictionary) -> Dictionary:
 			"committed": false,
 			"reserved": false,
 			"engagement_cleared": false,
+			"stage": &"approaching",
 		},
 	}
 
@@ -669,7 +1168,7 @@ func _command_spec(command: StringName, normalized: Dictionary) -> Dictionary:
 func _generated_move_spec(chain_command: StringName, normalized: Dictionary) -> Dictionary:
 	return {
 		"name": GENERATED_MOVE,
-		"target_id": StringName(normalized["id"]),
+		"target_id": normalized["id"],
 		"duration_seconds": INF,
 		"commitment_seconds": INF,
 		"target_is_valid": true,
@@ -689,10 +1188,14 @@ func _commands_for_target(target: Dictionary) -> Array:
 	match StringName(target.get("kind", &"")):
 		TARGET_PATRON:
 			return PATRON_COMMANDS
+		TARGET_CULTIST:
+			return CULTIST_COMMANDS
 		TARGET_FLOOR:
 			return FLOOR_COMMANDS
 		TARGET_OBJECT:
-			return OBJECT_COMMANDS.get(StringName(target["id"]), [])
+			return OBJECT_COMMANDS.get(target["id"], [])
+		TARGET_DRINK:
+			return DRINK_COMMANDS
 	return []
 
 
@@ -700,33 +1203,57 @@ func _commands_for_target(target: Dictionary) -> Array:
 ## approach slot. Scene nodes never enter this state.
 func _normalized_target(target: Dictionary) -> Dictionary:
 	var kind := StringName(target.get("kind", TARGET_FLOOR))
-	var id := StringName(target.get("id", &"floor"))
+	var id: Variant = target.get("id", &"floor")
 	var position: Vector3 = target.get("position", Vector3.ZERO)
 	if kind == TARGET_OBJECT and _objects.has(id):
 		position = _objects[id]["approach_position"]
-	return {
+	var approach_slot := _slot_for({"kind": kind, "id": id})
+	if (kind == TARGET_OBJECT and id == &"bar_work_position") or kind == TARGET_DRINK:
+		# When all three are occupied, contention must fail on a real work
+		# position rather than creating an unbounded fallback reservation.
+		approach_slot = BAR_WORK_SLOT_IDS[0]
+		if _objects.has(&"bar_work_position"):
+			position = _objects[&"bar_work_position"]["approach_position"]
+		for index in range(BAR_WORK_SLOT_IDS.size()):
+			var candidate: StringName = BAR_WORK_SLOT_IDS[index]
+			if _registry.slot_owner(candidate) == ActorIds.NO_ACTOR:
+				approach_slot = candidate
+				position += Vector3(BAR_WORK_OFFSETS[index], 0.0, 0.0)
+				break
+	var normalized := {
 		"kind": kind,
 		"id": id,
 		"position": position,
-		"approach_slot": _slot_for({"kind": kind, "id": id}),
+		"approach_slot": approach_slot,
 	}
+	if target.has("drink_id"):
+		normalized["drink_id"] = StringName(target["drink_id"])
+	if target.has("bar_position"):
+		normalized["bar_position"] = target["bar_position"]
+	return normalized
 
 
 func _slot_for(target: Dictionary) -> StringName:
+	if target.has("approach_slot") and not StringName(target["approach_slot"]).is_empty():
+		return StringName(target["approach_slot"])
 	match StringName(target["kind"]):
-		TARGET_PATRON:
+		TARGET_PATRON, TARGET_CULTIST:
 			return StringName("approach_%s" % target["id"])
 		TARGET_OBJECT:
-			return StringName(target["id"])
+			return target["id"]
+		TARGET_DRINK:
+			return StringName("drink_%s" % target["id"])
 	return &""
 
 
-func _target_label(cultist_id: StringName, target: Dictionary) -> String:
+func _target_label(cultist_id: int, target: Dictionary) -> String:
 	match StringName(target["kind"]):
 		TARGET_PATRON:
-			return _patron_name(cultist_id, StringName(target["id"]))
+			return _patron_name(cultist_id, target["id"])
+		TARGET_CULTIST:
+			return _display_name(target["id"])
 		TARGET_OBJECT:
-			var id := StringName(target["id"])
+			var id: Variant = target["id"]
 			return _objects[id]["label"] if _objects.has(id) else _humanize(id)
 	return "Floor"
 
@@ -738,20 +1265,33 @@ func _option_label(command: StringName, state: Dictionary) -> String:
 
 
 ## The Patron's player-readable name. An Unidentified Patron stays "???".
-func _patron_name(cultist_id: StringName, patron_id: StringName) -> String:
+func _patron_name(cultist_id: int, patron_id: int) -> String:
 	if _session == null or not _session.has_method("patron_view"):
-		return _humanize(patron_id)
+		return "Patron %d" % patron_id
 	var view: Dictionary = _session.patron_view(patron_id, cultist_id)
-	return String(view["name"]) if not view.is_empty() else _humanize(patron_id)
+	return String(view["name"]) if not view.is_empty() else "Patron %d" % patron_id
 
 
-func _action_view(cultist_id: StringName, action: Dictionary) -> Dictionary:
+func _action_view(cultist_id: int, action: Dictionary) -> Dictionary:
 	if action.is_empty():
 		return {}
 	var payload: Dictionary = action["payload"]
 	var command: StringName = payload["command"]
 	var target: Dictionary = payload["target"]
 	var generated := command == GENERATED_MOVE or bool(action.get("generated", false))
+	var stage := StringName(payload.get("stage", &"approaching"))
+	var progress_ratio: Variant = null
+	if command == &"knocked_out":
+		progress_ratio = clampf(
+			float(payload.get("remaining", 0.0)) / maxf(float(action["duration_seconds"]), 0.001),
+			0.0, 1.0
+		)
+	if stage == &"executing" and float(action["duration_seconds"]) > 0.0:
+		progress_ratio = clampf(
+			float(action["elapsed_seconds"]) / float(action["duration_seconds"]),
+			0.0,
+			1.0
+		)
 	return {
 		"id": int(action["id"]),
 		"command": command,
@@ -760,8 +1300,9 @@ func _action_view(cultist_id: StringName, action: Dictionary) -> Dictionary:
 		"target_kind": target["kind"],
 		"target_id": target["id"],
 		"target_label": _target_label(cultist_id, target),
-		"stage": &"committed" if bool(payload["committed"]) else &"approaching",
+		"stage": &"committed" if bool(payload["committed"]) else stage,
 		"cancellable": not bool(payload["committed"]),
+		"progress_ratio": progress_ratio,
 		"chain_id": int(action.get("chain_id", -1)),
 		"chain_index": int(action.get("chain_index", 0)),
 		"chain_size": int(action.get("chain_size", 1)),
@@ -769,7 +1310,7 @@ func _action_view(cultist_id: StringName, action: Dictionary) -> Dictionary:
 	}
 
 
-func _markers(cultist_id: StringName, state: Dictionary) -> Array[Dictionary]:
+func _markers(cultist_id: int, state: Dictionary) -> Array[Dictionary]:
 	var markers: Array[Dictionary] = []
 	var ordered: Array[Dictionary] = []
 	if not state["active"].is_empty():
@@ -789,8 +1330,8 @@ func _markers(cultist_id: StringName, state: Dictionary) -> Array[Dictionary]:
 	return markers
 
 
-func _display_name(cultist_id: StringName) -> String:
-	return String(cultist_id).replace("cultist_", "Cultist ")
+func _display_name(cultist_id: int) -> String:
+	return str(cultist_id).replace("cultist_", "Cultist ")
 
 
 func _reason_label(reason: StringName) -> String:
@@ -801,7 +1342,7 @@ func _humanize(value: Variant) -> String:
 	return String(value).replace("_", " ").capitalize()
 
 
-func _reject(cultist_id: StringName, command: StringName, reason: StringName) -> Dictionary:
+func _reject(cultist_id: int, command: StringName, reason: StringName) -> Dictionary:
 	var label: String = CATALOG[command]["label"] if CATALOG.has(command) else _humanize(command)
 	var message := "%s rejected: %s." % [label, _reason_label(reason)]
 	if _feedback.has(cultist_id):
@@ -817,12 +1358,18 @@ func _reject(cultist_id: StringName, command: StringName, reason: StringName) ->
 	}
 
 
-func _note(cultist_id: StringName, outcome: StringName, message: String, reason: StringName) -> void:
-	_feedback[cultist_id] = {"message": message, "reason": reason, "outcome": outcome}
+func _note(cultist_id: int, outcome: StringName, message: String, reason: StringName) -> void:
+	_feedback[cultist_id] = {
+		"message": message,
+		"reason": reason,
+		"outcome": outcome,
+		"event_id": _next_feedback_id,
+	}
+	_next_feedback_id += 1
 
 
 func _record(
-		cultist_id: StringName,
+		cultist_id: int,
 		action_id: int,
 		command: StringName,
 		state: StringName,

@@ -216,26 +216,26 @@ func _panel(content: Control, color: Color, inset: int) -> PanelContainer:
 static func drive_all_four_routes(session) -> void:
 	session.start_night(707)
 	session.advance(110.0)
-	session.debug_force_bathroom(&"patron_june")
+	session.debug_force_bathroom(4)
 	session.activate_trapdoor()
-	session.debug_force_bathroom(&"patron_mara")
+	session.debug_force_bathroom(5)
 	session.advance(2.1)
-	session.begin_knockout(&"cultist_01", &"patron_mara")
+	session.begin_knockout(1, 5)
 	session.advance(2.05)
-	session.pick_up_body(&"cultist_01", &"patron_mara")
+	session.pick_up_body(1, 5)
 	session.advance(15.2)
 	session.advance(200.0 - float(session.snapshot()["simulated_seconds"]))
 	for _i in range(8):
-		session.offer_cigarette(&"cultist_01", &"patron_elias")
-	session.begin_friendship_capture(&"cultist_01", &"patron_elias")
+		session.offer_cigarette(1, 6)
+	session.begin_friendship_capture(1, 6)
 	session.advance(14.2)
 	session.advance(421.0 - float(session.snapshot()["simulated_seconds"]))
 	for _j in range(20):
-		session.offer_cigarette(&"cultist_02", &"patron_clara")
-	session.prepare_drugged_drink(&"patron_vincent", &"cultist_02")
+		session.offer_cigarette(2, 11)
+	session.prepare_drugged_drink(10, 2)
 	session.advance(8.2)
 	session.advance(31.0)
-	session.attempt_rescue_persuasion(&"cultist_02")
+	session.attempt_rescue_persuasion(2)
 	session.advance(6.2)
 
 
@@ -269,7 +269,7 @@ func _set_scenario(scenario_id: String) -> void:
 		"defeat":
 			_session.start_night(707)
 			_session.advance(200.0)
-			_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+			_session.report_patron_stimulus(6, &"drink_dosed_seen")
 			_session.advance(10.2)
 			_scenario_trace = "A maximum-Suspicion Patron reaches the front exit.\nThe Night ends immediately.\nOutcome: %s." % [
 				_humanize(_session.snapshot()["outcome"]),
@@ -277,11 +277,11 @@ func _set_scenario(scenario_id: String) -> void:
 		"readable_info":
 			_session.start_night(707)
 			_session.advance(200.0)
-			_session.debug_force_bathroom(&"patron_june")
-			_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+			_session.debug_force_bathroom(4)
+			_session.report_patron_stimulus(6, &"drink_dosed_seen")
 			_session.advance(0.2)
-			var june: Dictionary = _session.snapshot()["normal_patron_views"][&"patron_june"]
-			var elias: Dictionary = _session.snapshot()["normal_patron_views"][&"patron_elias"]
+			var june: Dictionary = _session.snapshot()["normal_patron_views"][4]
+			var elias: Dictionary = _session.snapshot()["normal_patron_views"][6]
 			_scenario_trace = "Observable only: June's urgent intention is '%s', Elias's is '%s'.\nEscape alerts: %s.\nHidden data (Bladder, exact Suspicion) never appears in normal views." % [
 				_humanize(june["urgent_intention"]), _humanize(elias["urgent_intention"]),
 				str(_session.snapshot()["escape_alerts"]),
@@ -325,7 +325,7 @@ func _metrics_markup(state: Dictionary) -> String:
 
 
 func _humanize(value: Variant) -> String:
-	return String(value).replace("_", " ").capitalize()
+	return str(value).replace("_", " ").capitalize()
 
 
 func _command_line_value(prefix: String, fallback: String = "") -> String:
@@ -380,7 +380,7 @@ func _validation_report() -> Dictionary:
 	var loss = GAME_SESSION_SCRIPT.new()
 	loss.start_night(707)
 	loss.advance(200.0)
-	loss.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+	loss.report_patron_stimulus(6, &"drink_dosed_seen")
 	loss.advance(10.2)
 	var defeat_ok: bool = loss.snapshot()["outcome"] == &"defeat"
 
@@ -388,16 +388,16 @@ func _validation_report() -> Dictionary:
 	var metrics = GAME_SESSION_SCRIPT.new()
 	metrics.start_night(707)
 	metrics.advance(200.0)
-	metrics.debug_force_bathroom(&"patron_elias")
+	metrics.debug_force_bathroom(6)
 	metrics.advance(2.1)
-	metrics.begin_knockout(&"cultist_01", &"patron_elias")
+	metrics.begin_knockout(1, 6)
 	metrics.advance(2.05)
 	metrics.advance(10.0)
-	metrics.pick_up_body(&"cultist_01", &"patron_elias")
+	metrics.pick_up_body(1, 6)
 	metrics.advance(15.2)
-	metrics.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
+	metrics.report_patron_stimulus(4, &"drink_dosed_seen")
 	metrics.advance(2.5)
-	metrics.begin_intercept(&"patron_june", &"cultist_02")
+	metrics.begin_intercept(4, 2)
 	metrics.advance(1200.0)
 	var m: Dictionary = metrics.snapshot()["results"]
 	var metrics_ok: bool = int(m["capture_methods"].get(&"knockout", 0)) == 1 \
@@ -410,22 +410,22 @@ func _validation_report() -> Dictionary:
 	var ui = GAME_SESSION_SCRIPT.new()
 	ui.start_night(707)
 	ui.advance(200.0)
-	var view: Dictionary = ui.snapshot()["normal_patron_views"][&"patron_june"]
+	var view: Dictionary = ui.snapshot()["normal_patron_views"][4]
 	var hidden_withheld: bool = view.has("urgent_intention") \
 		and not view.has("bladder") and not view.has("suspicion") and not view.has("bathroom_probability")
-	ui.debug_force_bathroom(&"patron_june")
-	var bathroom_intention: bool = ui.snapshot()["normal_patron_views"][&"patron_june"]["urgent_intention"] == &"bathroom"
-	ui.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+	ui.debug_force_bathroom(4)
+	var bathroom_intention: bool = ui.snapshot()["normal_patron_views"][4]["urgent_intention"] == &"bathroom"
+	ui.report_patron_stimulus(6, &"drink_dosed_seen")
 	ui.advance(0.2)
-	var escape_alert: bool = ui.snapshot()["escape_alerts"].has(&"patron_elias")
+	var escape_alert: bool = ui.snapshot()["escape_alerts"].has(6)
 
 	var carry = GAME_SESSION_SCRIPT.new()
 	carry.start_night(707)
 	carry.advance(95.0)
-	carry.prepare_drugged_drink(&"patron_mara", &"cultist_01")
+	carry.prepare_drugged_drink(5, 1)
 	carry.advance(36.2)
 	var odds: float = carry.snapshot()["rescue_odds"]
-	var rescue_odds_readable: bool = odds >= 0.0 and is_equal_approx(odds, carry.rescue_persuasion_chance(&"cultist_01"))
+	var rescue_odds_readable: bool = odds >= 0.0 and is_equal_approx(odds, carry.rescue_persuasion_chance(1))
 
 	var checks := {
 		"all_four_routes_complete": all_four,

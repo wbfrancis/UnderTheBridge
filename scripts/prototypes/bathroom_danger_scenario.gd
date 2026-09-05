@@ -27,12 +27,12 @@ var _time_scale: float = 1.0
 var _rng := RandomNumberGenerator.new()
 var _registry = INTERACTION_REGISTRY_SCRIPT.new()
 var _patrons: Dictionary = {}
-var _queue: Array[StringName] = []
-var _occupant_id: StringName = &""
-var _pending_investigator_id: StringName = &""
+var _queue: Array[int] = []
+var _occupant_id: int = ActorIds.NO_ACTOR
+var _pending_investigator_id: int = ActorIds.NO_ACTOR
 var _trapdoor_state: StringName = &"closed"
 var _trapdoor_remaining: float = 0.0
-var _trapdoor_eligible_occupant: StringName = &""
+var _trapdoor_eligible_occupant: int = ActorIds.NO_ACTOR
 var _active_intercept: Dictionary = {}
 var _defeat: bool = false
 var _recent_rolls: Array[Dictionary] = []
@@ -46,11 +46,11 @@ func start(seed: int) -> void:
 	_rng.seed = seed
 	_patrons.clear()
 	_queue.clear()
-	_occupant_id = &""
-	_pending_investigator_id = &""
+	_occupant_id = ActorIds.NO_ACTOR
+	_pending_investigator_id = ActorIds.NO_ACTOR
 	_trapdoor_state = &"closed"
 	_trapdoor_remaining = 0.0
-	_trapdoor_eligible_occupant = &""
+	_trapdoor_eligible_occupant = ActorIds.NO_ACTOR
 	_active_intercept.clear()
 	_defeat = false
 	_recent_rolls.clear()
@@ -69,12 +69,12 @@ func restart(seed: int = _seed) -> void:
 
 
 func add_patron(
-	patron_id: StringName,
+	patron_id: int,
 	bladder: float,
 	max_drunk: bool = false,
-	companion_id: StringName = &""
+	companion_id: int = ActorIds.NO_ACTOR
 ) -> bool:
-	if patron_id.is_empty() or _patrons.has(patron_id):
+	if patron_id == ActorIds.NO_ACTOR or _patrons.has(patron_id):
 		return false
 	_patrons[patron_id] = {
 		"id": patron_id,
@@ -86,7 +86,7 @@ func add_patron(
 		"suspicion": 0.0,
 		"suspicion_cause": &"none",
 		"companion_id": companion_id,
-		"missing_target": &"",
+		"missing_target": ActorIds.NO_ACTOR,
 		"missing_seconds": 0.0,
 		"missing_20_applied": false,
 		"missing_30_applied": false,
@@ -99,7 +99,7 @@ func add_patron(
 	return true
 
 
-func bathroom_choice_probability(patron_id: StringName) -> float:
+func bathroom_choice_probability(patron_id: int) -> float:
 	if not _patrons.has(patron_id):
 		return 0.0
 	var bladder: float = _patrons[patron_id]["bladder"]
@@ -108,7 +108,7 @@ func bathroom_choice_probability(patron_id: StringName) -> float:
 	return clampf(1.0 + 89.0 * ((bladder - 50.0) / 50.0), 1.0, 90.0)
 
 
-func check_bathroom_choice(patron_id: StringName) -> bool:
+func check_bathroom_choice(patron_id: int) -> bool:
 	if not _is_bathroom_choice_eligible(patron_id):
 		return false
 	var chance := bathroom_choice_probability(patron_id)
@@ -123,7 +123,7 @@ func check_bathroom_choice(patron_id: StringName) -> bool:
 	return _request_bathroom(patron_id)
 
 
-func force_bathroom_intent(patron_id: StringName) -> bool:
+func force_bathroom_intent(patron_id: int) -> bool:
 	if not _is_bathroom_choice_eligible(patron_id):
 		return false
 	_record_event(&"bathroom_intent_forced", patron_id)
@@ -137,7 +137,7 @@ func activate_trapdoor() -> bool:
 	_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
 	_trapdoor_eligible_occupant = _occupant_id
 	_record_event(&"trapdoor_opened", _occupant_id)
-	if _occupant_id.is_empty():
+	if _occupant_id == ActorIds.NO_ACTOR:
 		return true
 	var patron: Dictionary = _patrons[_occupant_id]
 	if _is_standing_activity(patron["activity"]):
@@ -147,8 +147,8 @@ func activate_trapdoor() -> bool:
 	return true
 
 
-func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
-	if not _patrons.has(patron_id) or cultist_id.is_empty() or not _active_intercept.is_empty():
+func begin_intercept(patron_id: int, cultist_id: int) -> bool:
+	if not _patrons.has(patron_id) or cultist_id == ActorIds.NO_ACTOR or not _active_intercept.is_empty():
 		return false
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["lifecycle"] != &"escaping" or patron["activity"] != &"escaping":
@@ -169,8 +169,8 @@ func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
 func cancel_intercept() -> bool:
 	if _active_intercept.is_empty():
 		return false
-	var patron_id: StringName = _active_intercept["patron_id"]
-	var cultist_id: StringName = _active_intercept["cultist_id"]
+	var patron_id: int = _active_intercept["patron_id"]
+	var cultist_id: int = _active_intercept["cultist_id"]
 	_registry.release_actor(cultist_id)
 	_active_intercept.clear()
 	if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"escaping":
@@ -179,8 +179,8 @@ func cancel_intercept() -> bool:
 	return true
 
 
-func cancel_actor(actor_id: StringName) -> bool:
-	if actor_id.is_empty():
+func cancel_actor(actor_id: int) -> bool:
+	if actor_id == ActorIds.NO_ACTOR:
 		return false
 	if not _active_intercept.is_empty() and _active_intercept["cultist_id"] == actor_id:
 		return cancel_intercept()
@@ -195,7 +195,7 @@ func cancel_actor(actor_id: StringName) -> bool:
 		_set_cancelled(actor_id)
 		return true
 	if actor_id == _pending_investigator_id:
-		_pending_investigator_id = &""
+		_pending_investigator_id = ActorIds.NO_ACTOR
 		_registry.release_actor(actor_id)
 		_set_cancelled(actor_id)
 		return true
@@ -242,8 +242,8 @@ func snapshot() -> Dictionary:
 	}
 
 
-func _request_bathroom(patron_id: StringName) -> bool:
-	if _occupant_id.is_empty() and _pending_investigator_id.is_empty():
+func _request_bathroom(patron_id: int) -> bool:
+	if _occupant_id == ActorIds.NO_ACTOR and _pending_investigator_id == ActorIds.NO_ACTOR:
 		return _occupy_standard_patron(patron_id)
 	if _queue.size() < QUEUE_SLOTS.size():
 		var slot_id: StringName = QUEUE_SLOTS[_queue.size()]
@@ -259,7 +259,7 @@ func _request_bathroom(patron_id: StringName) -> bool:
 	return true
 
 
-func _occupy_standard_patron(patron_id: StringName) -> bool:
+func _occupy_standard_patron(patron_id: int) -> bool:
 	_registry.release_actor(patron_id)
 	if not _registry.request_slot(patron_id, BATHROOM_SLOT):
 		return false
@@ -272,11 +272,11 @@ func _occupy_standard_patron(patron_id: StringName) -> bool:
 	return true
 
 
-func _occupy_investigator(patron_id: StringName) -> bool:
+func _occupy_investigator(patron_id: int) -> bool:
 	_registry.release_actor(patron_id)
 	if not _registry.request_slot(patron_id, BATHROOM_SLOT):
 		return false
-	_pending_investigator_id = &""
+	_pending_investigator_id = ActorIds.NO_ACTOR
 	_occupant_id = patron_id
 	var patron: Dictionary = _patrons[patron_id]
 	patron["lifecycle"] = &"investigating"
@@ -287,7 +287,7 @@ func _occupy_investigator(patron_id: StringName) -> bool:
 
 
 func _advance_occupant(delta: float) -> void:
-	if _occupant_id.is_empty() or not _patrons.has(_occupant_id):
+	if _occupant_id == ActorIds.NO_ACTOR or not _patrons.has(_occupant_id):
 		return
 	var patron: Dictionary = _patrons[_occupant_id]
 	patron["phase_remaining"] = maxf(0.0, float(patron["phase_remaining"]) - delta)
@@ -315,7 +315,7 @@ func _advance_trapdoor(delta: float) -> void:
 	_trapdoor_remaining = maxf(0.0, _trapdoor_remaining - delta)
 	if (
 		_trapdoor_state == &"open"
-		and not _occupant_id.is_empty()
+		and _occupant_id != ActorIds.NO_ACTOR
 		and _occupant_id == _trapdoor_eligible_occupant
 		and _is_standing_activity(_patrons[_occupant_id]["activity"])
 	):
@@ -325,7 +325,7 @@ func _advance_trapdoor(delta: float) -> void:
 	if _trapdoor_state == &"open":
 		_trapdoor_state = &"cooldown"
 		_trapdoor_remaining = TRAPDOOR_COOLDOWN_SECONDS
-		_trapdoor_eligible_occupant = &""
+		_trapdoor_eligible_occupant = ActorIds.NO_ACTOR
 		_record_event(&"trapdoor_cooldown")
 	else:
 		_trapdoor_state = &"closed"
@@ -334,7 +334,7 @@ func _advance_trapdoor(delta: float) -> void:
 
 
 func _advance_deferred(delta: float) -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["activity"] != &"bathroom_deferred":
 			continue
@@ -345,9 +345,9 @@ func _advance_deferred(delta: float) -> void:
 
 
 func _advance_missing_companions(delta: float) -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
-		if StringName(patron["missing_target"]).is_empty() or patron["missing_40_applied"]:
+		if int(patron["missing_target"]) == ActorIds.NO_ACTOR or patron["missing_40_applied"]:
 			continue
 		patron["missing_seconds"] = float(patron["missing_seconds"]) + delta
 		var missing_seconds: float = patron["missing_seconds"]
@@ -373,8 +373,8 @@ func _advance_escape(delta: float) -> void:
 			0.0, float(_active_intercept["remaining"]) - delta
 		)
 		if _active_intercept["remaining"] <= 0.0001:
-			var intercepted_patron: StringName = _active_intercept["patron_id"]
-			var cultist_id: StringName = _active_intercept["cultist_id"]
+			var intercepted_patron: int = _active_intercept["patron_id"]
+			var cultist_id: int = _active_intercept["cultist_id"]
 			_registry.release_actor(cultist_id)
 			_active_intercept.clear()
 			if _patrons.has(intercepted_patron):
@@ -382,7 +382,7 @@ func _advance_escape(delta: float) -> void:
 			_record_event(&"intercept_completed", intercepted_patron)
 		return
 
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"escaping":
 			continue
@@ -403,10 +403,10 @@ func _advance_escape(delta: float) -> void:
 			_record_event(&"defeat", patron_id)
 
 
-func _request_investigation(patron_id: StringName) -> void:
+func _request_investigation(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	patron["lifecycle"] = &"investigating"
-	if _occupant_id.is_empty():
+	if _occupant_id == ActorIds.NO_ACTOR:
 		_occupy_investigator(patron_id)
 		return
 	_pending_investigator_id = patron_id
@@ -415,9 +415,9 @@ func _request_investigation(patron_id: StringName) -> void:
 	_record_event(&"investigation_waiting", patron_id)
 
 
-func _begin_escape(patron_id: StringName) -> void:
+func _begin_escape(patron_id: int) -> void:
 	_registry.release_actor(patron_id)
-	_occupant_id = &""
+	_occupant_id = ActorIds.NO_ACTOR
 	var patron: Dictionary = _patrons[patron_id]
 	patron["lifecycle"] = &"escaping"
 	patron["activity"] = &"shock"
@@ -430,16 +430,16 @@ func _begin_escape(patron_id: StringName) -> void:
 
 
 func _capture_occupant(cause: StringName) -> void:
-	if _occupant_id.is_empty():
+	if _occupant_id == ActorIds.NO_ACTOR:
 		return
 	var captured_id := _occupant_id
 	var patron: Dictionary = _patrons[captured_id]
 	patron["lifecycle"] = &"captured"
 	patron["activity"] = &"captured"
 	patron["phase_remaining"] = 0.0
-	patron["missing_target"] = &""
+	patron["missing_target"] = ActorIds.NO_ACTOR
 	_registry.release_actor(captured_id)
-	_occupant_id = &""
+	_occupant_id = ActorIds.NO_ACTOR
 	_record_event(&"capture", captured_id, {"cause": cause})
 	_promote_next_bathroom_user()
 
@@ -447,7 +447,7 @@ func _capture_occupant(cause: StringName) -> void:
 func _complete_bathroom_visit() -> void:
 	var completed_id := _occupant_id
 	_registry.release_actor(completed_id)
-	_occupant_id = &""
+	_occupant_id = ActorIds.NO_ACTOR
 	var patron: Dictionary = _patrons[completed_id]
 	patron["phase_remaining"] = 0.0
 	_clear_missing_companion_clock(completed_id)
@@ -460,9 +460,9 @@ func _complete_bathroom_visit() -> void:
 	_promote_next_bathroom_user()
 
 
-func _cancel_occupant(actor_id: StringName) -> void:
+func _cancel_occupant(actor_id: int) -> void:
 	_registry.release_actor(actor_id)
-	_occupant_id = &""
+	_occupant_id = ActorIds.NO_ACTOR
 	_set_cancelled(actor_id)
 	_clear_missing_companion_clock(actor_id)
 	_record_event(&"bathroom_cancelled", actor_id)
@@ -470,13 +470,13 @@ func _cancel_occupant(actor_id: StringName) -> void:
 
 
 func _promote_next_bathroom_user() -> void:
-	if not _pending_investigator_id.is_empty():
+	if _pending_investigator_id != ActorIds.NO_ACTOR:
 		var investigator_id := _pending_investigator_id
 		_occupy_investigator(investigator_id)
 		return
 	if _queue.is_empty():
 		return
-	var next_id: StringName = _queue.pop_front()
+	var next_id: int = _queue.pop_front()
 	_registry.release_actor(next_id)
 	_shift_queue_reservations()
 	_occupy_standard_patron(next_id)
@@ -489,9 +489,9 @@ func _shift_queue_reservations() -> void:
 		_registry.request_slot(_queue[index], QUEUE_SLOTS[index])
 
 
-func _start_missing_companion_clock(missing_patron_id: StringName) -> void:
-	var companion_id: StringName = _patrons[missing_patron_id]["companion_id"]
-	if companion_id.is_empty() or not _patrons.has(companion_id):
+func _start_missing_companion_clock(missing_patron_id: int) -> void:
+	var companion_id: int = _patrons[missing_patron_id]["companion_id"]
+	if companion_id == ActorIds.NO_ACTOR or not _patrons.has(companion_id):
 		return
 	var companion: Dictionary = _patrons[companion_id]
 	companion["missing_target"] = missing_patron_id
@@ -502,17 +502,17 @@ func _start_missing_companion_clock(missing_patron_id: StringName) -> void:
 	_record_event(&"companion_missing_started", companion_id, {"target_id": missing_patron_id})
 
 
-func _clear_missing_companion_clock(returned_patron_id: StringName) -> void:
-	for patron_id: StringName in _patrons:
+func _clear_missing_companion_clock(returned_patron_id: int) -> void:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["missing_target"] != returned_patron_id:
 			continue
-		patron["missing_target"] = &""
+		patron["missing_target"] = ActorIds.NO_ACTOR
 		patron["missing_seconds"] = 0.0
 		_record_event(&"companion_returned", patron_id, {"target_id": returned_patron_id})
 
 
-func _apply_seated_hard_evidence(patron_id: StringName) -> void:
+func _apply_seated_hard_evidence(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["max_drunk"]:
 		_apply_suspicion(patron_id, 25.0, &"soft")
@@ -524,13 +524,13 @@ func _apply_seated_hard_evidence(patron_id: StringName) -> void:
 		_record_event(&"hard_evidence", patron_id)
 
 
-func _apply_suspicion(patron_id: StringName, amount: float, cause: StringName) -> void:
+func _apply_suspicion(patron_id: int, amount: float, cause: StringName) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	patron["suspicion"] = minf(100.0, float(patron["suspicion"]) + amount)
 	patron["suspicion_cause"] = cause
 
 
-func _set_cancelled(actor_id: StringName) -> void:
+func _set_cancelled(actor_id: int) -> void:
 	if not _patrons.has(actor_id):
 		return
 	var patron: Dictionary = _patrons[actor_id]
@@ -540,7 +540,7 @@ func _set_cancelled(actor_id: StringName) -> void:
 	patron["escape_after_bathroom"] = false
 
 
-func _is_bathroom_choice_eligible(patron_id: StringName) -> bool:
+func _is_bathroom_choice_eligible(patron_id: int) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
@@ -554,9 +554,9 @@ func _is_standing_activity(activity: StringName) -> bool:
 func _ownership_is_clean() -> bool:
 	var registry_snapshot: Dictionary = _registry.snapshot()
 	return (
-		_occupant_id.is_empty()
+		_occupant_id == ActorIds.NO_ACTOR
 		and _queue.is_empty()
-		and _pending_investigator_id.is_empty()
+		and _pending_investigator_id == ActorIds.NO_ACTOR
 		and _active_intercept.is_empty()
 		and registry_snapshot["actor_slots"].is_empty()
 		and registry_snapshot["invariant_violations"].is_empty()
@@ -565,7 +565,7 @@ func _ownership_is_clean() -> bool:
 
 func _record_event(
 	event_name: StringName,
-	actor_id: StringName = &"",
+	actor_id: int = ActorIds.NO_ACTOR,
 	details: Dictionary = {}
 ) -> void:
 	_recent_events.append({

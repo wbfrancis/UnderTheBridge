@@ -2,9 +2,9 @@ extends Control
 
 const SERVICE_SESSION_SCRIPT := preload("res://scripts/simulation/service_slice_session.gd")
 const CULTIST_LABELS := {
-	&"cultist_01": "Silas",
-	&"cultist_02": "Ruth",
-	&"cultist_03": "Caleb",
+	1: "Silas",
+	2: "Ruth",
+	3: "Caleb",
 }
 const ACTION_LABELS := {
 	&"prepare_drink": "Prepare June's drink",
@@ -131,7 +131,7 @@ func _build_cultist_selector() -> Control:
 	label.add_theme_color_override("font_color", MUTED)
 	label.custom_minimum_size = Vector2(130, 0)
 	row.add_child(label)
-	for cultist_id: StringName in CULTIST_LABELS:
+	for cultist_id: int in CULTIST_LABELS:
 		var button := Button.new()
 		button.text = CULTIST_LABELS[cultist_id]
 		button.toggle_mode = true
@@ -263,9 +263,9 @@ func _command_button(label: String) -> Button:
 
 func _on_snapshot_changed(snapshot: Dictionary) -> void:
 	_clock_label.text = "SIMULATED TIME\n%05.1fs" % float(snapshot["simulated_seconds"])
-	var selected: StringName = snapshot["selected_cultist_id"]
+	var selected: int = snapshot["selected_cultist_id"]
 	_selected_label.text = CULTIST_LABELS[selected]
-	for cultist_id: StringName in _cultist_buttons:
+	for cultist_id: int in _cultist_buttons:
 		_cultist_buttons[cultist_id].button_pressed = cultist_id == selected
 
 	var order: Dictionary = snapshot["order"]
@@ -389,7 +389,7 @@ func _prepared_drink_text(drinks: Dictionary) -> String:
 	return "%s — %s" % [drink["id"], drink["state"]]
 
 
-func _on_cultist_selected(cultist_id: StringName) -> void:
+func _on_cultist_selected(cultist_id: int) -> void:
 	_session.select_cultist(cultist_id)
 
 
@@ -404,19 +404,19 @@ func _on_patron_leaves() -> void:
 func _apply_stage(stage: StringName) -> void:
 	match stage:
 		&"queued":
-			_session.select_cultist(&"cultist_02")
+			_session.select_cultist(2)
 			_session.queue_full_service()
 			_session.advance(2.0)
 		&"carried":
-			_session.select_cultist(&"cultist_02")
+			_session.select_cultist(2)
 			_session.queue_full_service()
 			_session.advance(6.25)
 		&"served":
-			_session.select_cultist(&"cultist_02")
+			_session.select_cultist(2)
 			_session.queue_full_service()
 			_session.advance(10.25)
 		&"failed":
-			_session.select_cultist(&"cultist_03")
+			_session.select_cultist(3)
 			_session.queue_full_service()
 			_session.patron_leaves()
 			_session.advance(2.0)
@@ -435,11 +435,11 @@ func _parse_arguments() -> void:
 func _write_report(path: String) -> void:
 	var happy = SERVICE_SESSION_SCRIPT.new()
 	happy.start()
-	happy.queue_full_service(&"cultist_02")
+	happy.queue_full_service(2)
 	happy.advance(10.25)
 	var stale = SERVICE_SESSION_SCRIPT.new()
 	stale.start()
-	stale.queue_full_service(&"cultist_03")
+	stale.queue_full_service(3)
 	stale.patron_leaves()
 	stale.advance(2.0)
 	var report := {

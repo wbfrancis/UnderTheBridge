@@ -32,7 +32,7 @@ func _render(view: Dictionary) -> void:
 
 func _cultist(status: String = "") -> Dictionary:
 	return {
-		"id": &"cultist_01",
+		"id": 1,
 		"name": "Vera",
 		"portrait": null,
 		"tint": Color.WHITE,
@@ -43,7 +43,7 @@ func _cultist(status: String = "") -> Dictionary:
 
 func _patron() -> Dictionary:
 	return {
-		"id": &"patron_june",
+		"id": 4,
 		"name": "June",
 		"portrait": null,
 		"tint": Color.WHITE,

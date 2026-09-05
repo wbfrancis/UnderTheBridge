@@ -13,7 +13,7 @@ extends CanvasLayer
 ## module already owns, so nothing needs a second projection system.
 
 ## Pressed by the player to move the camera to that actor.
-signal offscreen_indicator_pressed(actor_id: StringName)
+signal offscreen_indicator_pressed(actor_id: int)
 
 const BASE_SIZE := Vector2(34.0, 34.0)
 const LABEL_WIDTH := 86.0
@@ -98,7 +98,7 @@ func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 	var used := 0
 	var offscreen: Array[Dictionary] = []
 	for bubble: Dictionary in bubbles:
-		var actor_id: StringName = bubble["actor_id"]
+		var actor_id: int = bubble["actor_id"]
 		if not anchors.has(actor_id):
 			continue
 		var world: Vector3 = anchors[actor_id]
@@ -125,7 +125,7 @@ func refresh(bubbles: Array[Dictionary], anchors: Dictionary) -> void:
 
 ## The bottom-to-top fill fraction each Emote Progress bubble shows, or 0.0 for
 ## a bubble with no progress. Used by the rendered review checks.
-func fill_ratio(actor_id: StringName) -> float:
+func fill_ratio(actor_id: int) -> float:
 	return float(_fill_ratios.get(actor_id, 0.0))
 
 
@@ -140,7 +140,7 @@ func offscreen_indicators() -> Dictionary:
 
 
 ## Presses one Offscreen Indicator. Returns false when that actor has none.
-func press_offscreen_indicator(actor_id: StringName) -> bool:
+func press_offscreen_indicator(actor_id: int) -> bool:
 	if not _indicators.has(actor_id):
 		return false
 	offscreen_indicator_pressed.emit(actor_id)
@@ -162,7 +162,7 @@ func _refresh_indicators(
 	var bounds := _usable_bounds()
 	var used := 0
 	for bubble: Dictionary in offscreen:
-		var actor_id: StringName = bubble["actor_id"]
+		var actor_id: int = bubble["actor_id"]
 		if _indicators.has(actor_id) or bounds.size.x <= INDICATOR_SIZE.x:
 			continue
 		var direction := _screen_direction(anchors[actor_id])
@@ -247,7 +247,7 @@ func _paint_indicator(
 		bubble: Dictionary,
 		rect: Rect2,
 		label: String,
-		actor_id: StringName
+		actor_id: int
 ) -> void:
 	var button := _indicator(index)
 	button.position = rect.position
@@ -286,15 +286,15 @@ func _indicator(index: int) -> Button:
 		button.focus_mode = Control.FOCUS_NONE
 		button.clip_text = true
 		button.pressed.connect(func() -> void:
-			offscreen_indicator_pressed.emit(StringName(button.get_meta("actor_id", &"")))
+			offscreen_indicator_pressed.emit(int(button.get_meta("actor_id", ActorIds.NO_ACTOR)))
 		)
 		_indicator_slots.append(button)
 		add_child(button)
 	return _indicator_slots[index]
 
 
-func _humanize(actor_id: StringName) -> String:
-	return String(actor_id).split("_")[-1].capitalize()
+func _humanize(actor_id: int) -> String:
+	return str(actor_id).split("_")[-1].capitalize()
 
 
 func _bubble_size() -> Vector2:
@@ -307,7 +307,7 @@ func _bubble_size() -> Vector2:
 # Keeps the previous legal offset while conditions stay equivalent, so a bubble
 # does not jitter between two valid positions from frame to frame.
 func _solve_placement(
-		actor_id: StringName,
+		actor_id: int,
 		screen: Vector2,
 		size: Vector2,
 		bounds: Rect2,

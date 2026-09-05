@@ -6,25 +6,28 @@ extends GutTest
 # stage), then removes them only after the panels finish closing. A seated misfire
 # animates the panels but never moves the Patron.
 
-const SCENE := "res://scenes/prototypes/ticket16_presentation_review.tscn"
+const SCENE := "res://scenes/prototypes/main_test.tscn"
 const FLOOR_Y := 0.18
 const FALL_DEPTH := 2.6
 
 
 func _stage():
 	var presentation = load(SCENE).instantiate()
+	presentation.review_stage = "drink_cycle"
 	add_child_autofree(presentation)
 	await get_tree().process_frame
 	var frames := 0
 	while frames < 1_200 and not bool(presentation.get("_navigation_ready")):
 		await get_tree().physics_frame
 		frames += 1
+	# The first-run Controls Card holds the Night; dismiss it before driving time.
+	presentation._on_hud_intent(&"close_controls", {})
 	presentation._submit_playback(&"select_speed", {"value": 4.0})
 	await presentation._wait_for_patrons(2_400)
 	return presentation
 
 
-func _await_activity(presentation, patron_id: StringName, activity: StringName, budget: int) -> bool:
+func _await_activity(presentation, patron_id: int, activity: StringName, budget: int) -> bool:
 	var frames := 0
 	while frames < budget:
 		if presentation.get("_session").snapshot()["debug_patron_views"][patron_id]["activity"] == activity:
@@ -37,12 +40,12 @@ func _await_activity(presentation, patron_id: StringName, activity: StringName, 
 func test_standing_capture_opens_panels_sinks_occluded_then_removes_after_closure() -> void:
 	var presentation = await _stage()
 	var session = presentation.get("_session")
-	assert_true(session.debug_force_bathroom(&"patron_mara"))
-	assert_true(await _await_activity(presentation, &"patron_mara", &"mirror_check", 4_000),
+	assert_true(session.debug_force_bathroom(5))
+	assert_true(await _await_activity(presentation, 5, &"mirror_check", 4_000),
 		"Mara reaches a standing bathroom phase.")
 	assert_true(session.activate_trapdoor())
 
-	var node = presentation.get("_patron_nodes").get(&"patron_mara")
+	var node = presentation.get("_patron_nodes").get(5)
 	var saw_falling_visible := false
 	var saw_open_panels := false
 	var saw_locked := false
@@ -82,10 +85,10 @@ func test_standing_capture_opens_panels_sinks_occluded_then_removes_after_closur
 func test_seated_misfire_animates_the_panels_but_never_moves_the_patron() -> void:
 	var presentation = await _stage()
 	var session = presentation.get("_session")
-	assert_true(session.debug_force_bathroom(&"patron_mara"))
-	assert_true(await _await_activity(presentation, &"patron_mara", &"seated_bathroom_use", 6_000),
+	assert_true(session.debug_force_bathroom(5))
+	assert_true(await _await_activity(presentation, 5, &"seated_bathroom_use", 6_000),
 		"Mara reaches the seated toilet phase.")
-	var node = presentation.get("_patron_nodes").get(&"patron_mara")
+	var node = presentation.get("_patron_nodes").get(5)
 	var y_before: float = node.global_position.y
 	assert_true(session.activate_trapdoor())
 

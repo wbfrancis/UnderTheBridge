@@ -6,12 +6,12 @@ signal service_event_recorded(event: Dictionary)
 
 const ACTION_QUEUE_SCRIPT := preload("res://scripts/actions/cultist_action_queue.gd")
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
-const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
-const PATRON_ID := &"patron_june"
+const CULTIST_IDS: Array[int] = [1, 2, 3]
+const PATRON_ID := 4
 const STEP_SECONDS := 0.05
 
 var _simulated_seconds: float = 0.0
-var _selected_cultist_id: StringName = CULTIST_IDS[0]
+var _selected_cultist_id: int = CULTIST_IDS[0]
 var _cultist_queues: Dictionary = {}
 var _processed_queue_events: Dictionary = {}
 var _order_system = ORDER_SYSTEM_SCRIPT.new()
@@ -36,7 +36,7 @@ func start() -> void:
 	_prepared_drinks.clear()
 	_next_drink_number = 1
 	_service_events.clear()
-	_record_service_event(&"slice_started", &"")
+	_record_service_event(&"slice_started", ActorIds.NO_ACTOR)
 	_emit_snapshot()
 
 
@@ -44,7 +44,7 @@ func restart() -> void:
 	start()
 
 
-func select_cultist(cultist_id: StringName) -> bool:
+func select_cultist(cultist_id: int) -> bool:
 	if not _cultist_queues.has(cultist_id):
 		return false
 	_selected_cultist_id = cultist_id
@@ -53,7 +53,7 @@ func select_cultist(cultist_id: StringName) -> bool:
 	return true
 
 
-func queue_full_service(cultist_id: StringName = _selected_cultist_id) -> Array[int]:
+func queue_full_service(cultist_id: int = _selected_cultist_id) -> Array[int]:
 	if not _cultist_queues.has(cultist_id) or not _order_system.is_open(_order_id):
 		return []
 	var queue = _cultist_queues[cultist_id]
@@ -70,7 +70,7 @@ func queue_full_service(cultist_id: StringName = _selected_cultist_id) -> Array[
 	return action_ids
 
 
-func remove_pending_action(action_id: int, cultist_id: StringName = _selected_cultist_id) -> bool:
+func remove_pending_action(action_id: int, cultist_id: int = _selected_cultist_id) -> bool:
 	if not _cultist_queues.has(cultist_id):
 		return false
 	var removed: bool = _cultist_queues[cultist_id].remove_pending(action_id)
@@ -80,7 +80,7 @@ func remove_pending_action(action_id: int, cultist_id: StringName = _selected_cu
 	return removed
 
 
-func cancel_active_action(cultist_id: StringName = _selected_cultist_id) -> bool:
+func cancel_active_action(cultist_id: int = _selected_cultist_id) -> bool:
 	if not _cultist_queues.has(cultist_id):
 		return false
 	var cancelled: bool = _cultist_queues[cultist_id].cancel_active()
@@ -150,7 +150,7 @@ func _refresh_service_action_validity() -> void:
 				queue.set_target_valid(action["id"], target_is_valid)
 
 
-func _process_queue_events(cultist_id: StringName) -> void:
+func _process_queue_events(cultist_id: int) -> void:
 	var queue_snapshot: Dictionary = _cultist_queues[cultist_id].snapshot()
 	var queue_events: Array = queue_snapshot["recent_events"]
 	var processed: int = _processed_queue_events[cultist_id]
@@ -174,7 +174,7 @@ func _process_queue_events(cultist_id: StringName) -> void:
 	_processed_queue_events[cultist_id] = processed
 
 
-func _apply_completed_action(cultist_id: StringName, queue_event: Dictionary) -> void:
+func _apply_completed_action(cultist_id: int, queue_event: Dictionary) -> void:
 	match queue_event["name"]:
 		&"prepare_drink":
 			if not _order_system.is_open(_order_id):
@@ -186,7 +186,7 @@ func _apply_completed_action(cultist_id: StringName, queue_event: Dictionary) ->
 				"id": drink_id,
 				"order_id": _order_id,
 				"state": &"at_bar",
-				"carried_by": &"",
+				"carried_by": ActorIds.NO_ACTOR,
 			}
 			_record_service_event(&"drink_prepared", cultist_id, {"drink_id": drink_id})
 		&"pickup_drink":
@@ -203,7 +203,7 @@ func _apply_completed_action(cultist_id: StringName, queue_event: Dictionary) ->
 				_record_service_event(&"action_effect_failed", cultist_id, {"name": &"serve_order"})
 				return
 			_prepared_drinks[drink_id]["state"] = &"served"
-			_prepared_drinks[drink_id]["carried_by"] = &""
+			_prepared_drinks[drink_id]["carried_by"] = ActorIds.NO_ACTOR
 			var order: Dictionary = _order_system.order_snapshot(_order_id)
 			_record_service_event(
 				&"order_served",
@@ -222,7 +222,7 @@ func _drink_for_order_at_state(order_id: StringName, state: StringName) -> Strin
 	return &""
 
 
-func _carried_drink_for_order(order_id: StringName, cultist_id: StringName) -> StringName:
+func _carried_drink_for_order(order_id: StringName, cultist_id: int) -> StringName:
 	for drink_id: StringName in _prepared_drinks:
 		var drink: Dictionary = _prepared_drinks[drink_id]
 		if (
@@ -236,7 +236,7 @@ func _carried_drink_for_order(order_id: StringName, cultist_id: StringName) -> S
 
 func _record_service_event(
 	event_name: StringName,
-	actor_id: StringName,
+	actor_id: int,
 	details: Dictionary = {}
 ) -> void:
 	var event := {

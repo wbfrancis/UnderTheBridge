@@ -1,19 +1,19 @@
 extends Control
 
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
-const PATRON_IDS: Array[StringName] = [
-	&"patron_june",
-	&"patron_mara",
-	&"patron_elias",
-	&"patron_ruth",
-	&"patron_walter",
-	&"patron_nell",
-	&"patron_vincent",
-	&"patron_clara",
+const PATRON_IDS: Array[int] = [
+	4,
+	5,
+	6,
+	7,
+	8,
+	9,
+	10,
+	11,
 ]
 
 var _session = GAME_SESSION_SCRIPT.new()
-var _selected_patron_id: StringName = &"patron_june"
+var _selected_patron_id: int = 4
 var _capture_mode: bool = false
 var _phase_label: Label
 var _clock_label: Label
@@ -319,7 +319,7 @@ func _panel(content: Control, color: Color, inset: int) -> PanelContainer:
 	return panel
 
 
-func _select_patron(patron_id: StringName) -> void:
+func _select_patron(patron_id: int) -> void:
 	_selected_patron_id = patron_id
 	_refresh(_session.snapshot())
 
@@ -330,7 +330,7 @@ func _set_time_scale(scale: float) -> void:
 
 func _restart_night() -> void:
 	_session.restart_night(707)
-	_selected_patron_id = &"patron_june"
+	_selected_patron_id = 4
 
 
 func _refresh(state: Dictionary) -> void:
@@ -415,7 +415,7 @@ func _timeline_markup(events: Array) -> String:
 func _cultist_markup(state: Dictionary) -> String:
 	var lines: Array[String] = []
 	var number := 1
-	for cultist_id: StringName in state["cultists"]:
+	for cultist_id: int in state["cultists"]:
 		var cultist: Dictionary = state["cultists"][cultist_id]
 		var activity := "Safe service" if cultist["activity"] == &"safe_service" else "Idle"
 		var detail := ""
@@ -433,7 +433,7 @@ func _metrics_markup(state: Dictionary) -> String:
 		state["orders"]["revenue"],
 		state["orders"]["tips"],
 		state["captures"],
-		"None" if StringName(state["bathroom_owner"]).is_empty() else _actor_name(state["bathroom_owner"]),
+		"None" if int(state["bathroom_owner"]) == ActorIds.NO_ACTOR else _actor_name(state["bathroom_owner"]),
 		state["runtime"]["reservations"],
 	]
 
@@ -461,16 +461,11 @@ func _companion_names(companions: Array) -> String:
 	return ", ".join(names)
 
 
-func _actor_name(actor_id: StringName) -> String:
-	if actor_id == &"night":
-		return "Night"
-	if actor_id.begins_with("arrival_group_"):
-		return String(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
-	if actor_id.begins_with("patron_"):
-		return String(actor_id).trim_prefix("patron_").capitalize()
-	if actor_id.begins_with("cultist_"):
-		return "Cultist %d" % int(String(actor_id).trim_prefix("cultist_"))
-	return String(actor_id).capitalize()
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _format_duration(seconds: float) -> String:

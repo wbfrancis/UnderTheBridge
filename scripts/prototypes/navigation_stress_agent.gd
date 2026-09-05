@@ -1,14 +1,14 @@
 class_name NavigationStressAgent
 extends CharacterBody3D
 
-signal destination_reached(actor_id: StringName, slot_id: StringName)
-signal stuck(actor_id: StringName, slot_id: StringName)
+signal destination_reached(actor_id: int, slot_id: StringName)
+signal stuck(actor_id: int, slot_id: StringName)
 
 const ARRIVAL_DISTANCE := 0.38
 const REPATH_AFTER_SECONDS := 4.0
 const STUCK_AFTER_SECONDS := 15.0
 
-var actor_id: StringName
+var actor_id: int
 var current_slot_id: StringName = &""
 var navigation_agent: NavigationAgent3D
 var base_speed: float = 1.35
@@ -21,10 +21,10 @@ var _last_position: Vector3
 var _no_progress_seconds: float = 0.0
 
 
-func configure(id: StringName, color: Color, is_cultist: bool) -> void:
+func configure(id: int, color: Color, is_cultist: bool) -> void:
 	actor_id = id
-	name = String(id)
-	base_speed = 1.5 if is_cultist else 1.3
+	name = str(id)
+	base_speed = 2.25 if is_cultist else 1.3
 	collision_layer = 2
 	collision_mask = 3
 
@@ -52,7 +52,7 @@ func configure(id: StringName, color: Color, is_cultist: bool) -> void:
 	add_child(body)
 
 	var label := Label3D.new()
-	label.text = String(id).replace("patron_", "P").replace("cultist_", "C")
+	label.text = ("C" if is_cultist else "P") + str(id)
 	label.position = Vector3(0.0, 1.48, 0.0)
 	label.font_size = 32
 	label.outline_size = 8

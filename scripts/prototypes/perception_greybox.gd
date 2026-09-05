@@ -11,9 +11,11 @@ const PATRON_PERCEPTION_SCRIPT := preload("res://scripts/patrons/patron_percepti
 const MAIN_ROOM_PRESENTATION_SCRIPT := preload("res://scripts/presentation/main_room_presentation_prototype.gd")
 const NAVIGABLE_ACTOR_SCRIPT := preload("res://scripts/navigation/navigable_actor_3d.gd")
 const COMMAND_SYSTEM_SCRIPT := preload("res://scripts/actions/cultist_command_system.gd")
+const AVATAR_MOTION_SCRIPT := preload("res://scripts/presentation/avatar_motion_controller.gd")
 const NIGHT_PLAYBACK_SCRIPT := preload("res://scripts/presentation/night_playback.gd")
 const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
 const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
+const REVIEW_HARNESS_SCRIPT := preload("res://scripts/review/production_review_harness.gd")
 const BOTTOM_HUD_SCENE: PackedScene = preload("res://scenes/ui/bottom_hud.tscn")
 const NAVIGATION_MESH: NavigationMesh = preload(
 	"res://assets/navigation/speakeasy_navigation.tres"
@@ -21,19 +23,18 @@ const NAVIGATION_MESH: NavigationMesh = preload(
 const BARTENDER_TEXTURE: Texture2D = preload("res://assets/characters/prototype_visual/Bartender.png")
 const VISUAL_SPIKE_SOURCE := "res://assets/environment/prototype_visual/Speakeasy_VisualSpike.blend"
 const VISUAL_SPIKE_EXPECTED_SHA256 := "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
-const PATRON_IDS: Array[StringName] = [&"patron_june", &"patron_mara"]
-const ALL_PATRON_IDS: Array[StringName] = [
-	&"patron_june", &"patron_mara", &"patron_elias", &"patron_ruth",
-	&"patron_walter", &"patron_nell", &"patron_vincent", &"patron_clara",
+const PATRON_IDS: Array[int] = [4, 5]
+const ALL_PATRON_IDS: Array[int] = [
+	4, 5, 6, 7,
+	8, 9, 10, 11,
 ]
-const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
-const PLAYABLE_CULTIST_IDS: Array[StringName] = [&"cultist_01"]
-const CULTIST_NAMES := {
-	&"cultist_01": "Vera", &"cultist_02": "Iris", &"cultist_03": "Otto",
-}
+const CULTIST_IDS: Array[int] = [1, 2, 3]
+const PLAYABLE_CULTIST_IDS: Array[int] = [1, 2]
+const CULTIST_NAMES = ActorRoster.CULTIST_NAMES
 const SETTINGS_PATH := "user://settings.cfg"
 const CAMERA_FOCUS_SECONDS := 0.4
 const SCENARIOS := {
+	"night_start": "NIGHT START",
 	"drink_cycle": "DRINK CYCLE",
 	"full_cast": "FULL CAST",
 	"service_wing": "SERVICE WING",
@@ -45,6 +46,17 @@ const SCENARIOS := {
 	"companion": "COMPANION INFLUENCE",
 	"debug_trace": "DEBUG TRACE",
 }
+
+# The six approved causal capture methods, in the order the Outcome report shows
+# them. The keys are the simulation cause names; the values are the public labels.
+const CAPTURE_METHOD_LABELS: Array[Array] = [
+	[&"trapdoor", "Trapdoor"],
+	[&"drugged_drink", "Drugged Drink"],
+	[&"knockout", "Knockout"],
+	[&"overdrink", "Overdrink"],
+	[&"friendship_capture", "Friendship Capture"],
+	[&"rescue_persuasion", "Rescue Persuasion"],
+]
 
 # Camera emulates the visual spike: a long lens from the bar side looking down the
 # room's depth axis, so sim +x reads screen-right and every room stays in frame.
@@ -97,10 +109,16 @@ const SMART_OBJECTS := {
 		"pick_center": Vector3(0.0, 0.9, 0.15),
 		"pick_size": Vector3(12.0, 1.5, 1.5),
 	},
+	&"front_entrance": {
+		"label": "Front Entrance",
+		"approach": Vector3(-15.0, NAVIGATION_FLOOR_Y, 5.0),
+		"pick_center": Vector3(-15.2, 1.0, 5.0),
+		"pick_size": Vector3(1.2, 2.0, 3.4),
+	},
 	&"trapdoor_control": {
 		"label": "Trapdoor Control",
-		"approach": Vector3(18.0, NAVIGATION_FLOOR_Y, 4.6),
-		"pick_center": Vector3(18.0, 0.95, 3.6),
+		"approach": Vector3(7.2, NAVIGATION_FLOOR_Y, 1.62),
+		"pick_center": Vector3(7.2, 0.95, 0.15),
 		"pick_size": Vector3(1.6, 1.5, 0.9),
 	},
 	&"tunnel_intake": {
@@ -112,24 +130,24 @@ const SMART_OBJECTS := {
 }
 const SMART_OBJECT_COLOR := Color("c9a86a")
 const PATRON_COLORS := {
-	&"patron_june": Color("e3a57a"), &"patron_mara": Color("7fc7c4"),
-	&"patron_elias": Color("b79ad8"), &"patron_ruth": Color("d9c56f"),
-	&"patron_walter": Color("83a9d8"), &"patron_nell": Color("d8849d"),
-	&"patron_vincent": Color("94c77c"), &"patron_clara": Color("d69a63"),
+	4: Color("e3a57a"), 5: Color("7fc7c4"),
+	6: Color("b79ad8"), 7: Color("d9c56f"),
+	8: Color("83a9d8"), 9: Color("d8849d"),
+	10: Color("94c77c"), 11: Color("d69a63"),
 }
 const PATRON_HEIGHT_SCALE := {
-	&"patron_june": 0.94, &"patron_mara": 1.02, &"patron_elias": 1.08,
-	&"patron_ruth": 0.98, &"patron_walter": 1.12, &"patron_nell": 0.9,
-	&"patron_vincent": 1.04, &"patron_clara": 0.96,
+	4: 0.94, 5: 1.02, 6: 1.08,
+	7: 0.98, 8: 1.12, 9: 0.9,
+	10: 1.04, 11: 0.96,
 }
 const CULTIST_COLORS := {
-	&"cultist_01": Color("efe1ce"), &"cultist_02": Color("b9a0db"),
-	&"cultist_03": Color("8fc4af"),
+	1: Color("efe1ce"), 2: Color("b9a0db"),
+	3: Color("8fc4af"),
 }
 const CULTIST_POSITIONS := {
-	&"cultist_01": Vector3(-3.6, 0.0, 1.45),
-	&"cultist_02": Vector3(0.0, 0.0, 1.45),
-	&"cultist_03": Vector3(3.6, 0.0, 1.45),
+	1: Vector3(-3.6, 0.0, 1.45),
+	2: Vector3(3.6, 0.0, 1.45),
+	3: Vector3(3.6, 0.0, 1.45),
 }
 
 # The real perception rule values, read straight from the module so the drawn cone
@@ -170,6 +188,7 @@ const BAND_COLORS := {
 	"Calm": Color("8fbf9f"), "Uneasy": Color("d3be76"), "Suspicious": Color("df9d65"),
 	"Alarmed": Color("df745f"), "Maximum": Color("e65c70"),
 }
+const AVOIDANCE_SCRIPT := preload("res://scripts/navigation/character_avoidance_system.gd")
 
 var _session = GAME_SESSION_SCRIPT.new()
 @export var review_presentation: bool = false
@@ -188,8 +207,16 @@ var _next_patron_move_id := 1
 var _latest_state: Dictionary = {}
 var _cultist_nodes: Dictionary = {}
 var _commands = COMMAND_SYSTEM_SCRIPT.new()
+var _character_avoidance = AVOIDANCE_SCRIPT.new()
+var _review_harness = REVIEW_HARNESS_SCRIPT.new()
 var _playback = NIGHT_PLAYBACK_SCRIPT.new()
 var _smart_object_root: Node3D
+var _smart_object_plates: Dictionary = {}
+var _drink_root: Node3D
+var _drink_nodes: Dictionary = {}
+var _serve_target_drink_id: StringName = &""
+var _serve_target_cultist_id: int = ActorIds.NO_ACTOR
+var _serve_target_append := false
 var _trapdoor_root: Node3D
 var _trapdoor_left_hinge: Node3D
 var _trapdoor_right_hinge: Node3D
@@ -197,6 +224,9 @@ var _trapdoor_open_amount: float = 0.0
 var _context_menu: PanelContainer
 var _context_menu_rows: VBoxContainer
 var _context_menu_header: Label
+var _entrance_indicator: Button
+var _entrance_knock_player: AudioStreamPlayer
+var _last_knock_group_id: StringName = &""
 var _context_target: Dictionary = {}
 var _context_append := false
 var _refreshing := false
@@ -204,8 +234,13 @@ var _emotes = EMOTE_DIRECTOR_SCRIPT.new()
 var _emote_overlay: EmoteOverlay
 var _bottom_hud: BottomHud
 var _debug_panel: PanelContainer
-var _reduced_motion := false
 var _pause_menu_open := false
+# The first-run Controls Card. `_controls_seen` persists once dismissed, so the
+# blocking card appears once per installation; the Pause Menu can reopen it and
+# the Developer menu can re-arm it.
+var _controls_seen := false
+var _controls_visible := false
+var _controls_first_run := false
 var _hud_preview_outcome: StringName = &""
 var _hud_preview := ""
 var _feedback_serial := 0
@@ -218,10 +253,11 @@ var _focus_elapsed := 0.0
 var _emote_labels := false
 var _emote_ui_scale := 1.0
 var _emote_head_offset := 2.25
-var _selected_cultist_id: StringName = &"cultist_01"
-var _hovered_actor_id: StringName = &""
+var _selected_cultist_id: int = 1
+var _hovered_actor_id: int = ActorIds.NO_ACTOR
 var _hovered_is_cultist := false
-var _inspected_patron_id: StringName = &""
+var _hovered_drink_id: StringName = &""
+var _inspected_patron_id: int = ActorIds.NO_ACTOR
 var _actor_root: Node3D
 var _cultist_root: Node3D
 var _move_marker_root: Node3D
@@ -283,19 +319,19 @@ func _ready() -> void:
 	_movement_validation_scale = clampf(
 		float(_command_line_value("--movement-scale=", "4.0")), 1.0, 4.0
 	)
-	var identify_patron := StringName(_command_line_value("--identify-patron="))
-	if not identify_patron.is_empty():
-		_session.begin_conversation(&"cultist_01", identify_patron)
-		_session.end_conversation(&"cultist_01")
-	var inspect_patron := StringName(_command_line_value("--inspect-patron="))
-	if not inspect_patron.is_empty():
+	var identify_patron := int(_command_line_value("--identify-patron="))
+	if identify_patron != ActorIds.NO_ACTOR:
+		_session.begin_conversation(1, identify_patron)
+		_session.end_conversation(1)
+	var inspect_patron := int(_command_line_value("--inspect-patron="))
+	if inspect_patron != ActorIds.NO_ACTOR:
 		_inspected_patron_id = inspect_patron
 		_refresh(_session.snapshot())
 	_hud_preview = _command_line_value("--hud-preview=")
-	var hover_actor := StringName(_command_line_value("--hover-actor="))
-	if not hover_actor.is_empty():
+	var hover_actor := int(_command_line_value("--hover-actor="))
+	if hover_actor != ActorIds.NO_ACTOR:
 		_hovered_actor_id = hover_actor
-		_hovered_is_cultist = String(hover_actor).begins_with("cultist_")
+		_hovered_is_cultist = hover_actor in CULTIST_IDS
 		_hover_panel.position = Vector2(540.0, 210.0)
 		_refresh_character_panels(_session.snapshot())
 	if (
@@ -311,6 +347,8 @@ func _ready() -> void:
 	elif not report_path.is_empty():
 		_capture_mode = true
 		_write_validation_report.call_deferred(report_path)
+	if _presentation_prototype and not _capture_mode:
+		_arm_first_run_controls()
 	_bake_navigation_world.call_deferred()
 
 
@@ -318,7 +356,20 @@ func _process(delta: float) -> void:
 	# GameSession applies the selected Simulation Speed itself, so the adapter
 	# hands it plain real seconds. Pause is simply a 0x scale inside the session.
 	if not _capture_mode:
-		_session.advance(delta)
+		# The blocking Controls Card holds the Night until it is dismissed.
+		if not _controls_visible:
+			_commands.advance(delta * _session.current_time_scale())
+			_session.advance(delta)
+			_advance_step_aside(delta * _session.current_time_scale())
+	elif not _command_report_path.is_empty():
+		# Command validation uses the same scaled Action clock as interactive play.
+		_commands.advance(delta * _session.current_time_scale())
+		var active: Dictionary = _commands.snapshot()["cultists"][1]["active"]
+		if not active.is_empty() and active["command"] in [
+			&"knock_out", &"pick_up_body", &"intercept", &"lead_to_tunnel",
+			&"rescue_persuasion", &"prepare_drugged_drink",
+		]:
+			_session.advance(delta)
 	elif _capture_mode and _emote_play_scale > 0.0:
 		# The rendered Emote review runs the Night at the requested speed so the
 		# captured frame is a live one, not a frozen setup.
@@ -328,8 +379,7 @@ func _process(delta: float) -> void:
 		_advance_camera_focus(delta)
 		_update_camera_pan(delta)
 		if not is_equal_approx(_camera.fov, _camera_fov_target):
-			# Reduced motion cuts straight to the new zoom instead of easing into it.
-			var zoom_weight := 1.0 if _reduced_motion else 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
+			var zoom_weight := 1.0 - exp(-ZOOM_SMOOTHNESS * delta)
 			_camera.fov = lerpf(_camera.fov, _camera_fov_target, zoom_weight)
 
 
@@ -353,6 +403,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_close_context_menu()
 			_handle_character_left_click(event.position)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if not _serve_target_drink_id.is_empty():
+				_cancel_drink_targeting()
+				get_viewport().set_input_as_handled()
+				return
 			_handle_right_click(event.position, event.shift_pressed)
 		else:
 			var wheel_pan := _wheel_pan_delta(event)
@@ -362,7 +416,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					_queue_trackpad_pan(wheel_pan)
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_EQUAL:
+		if event.keycode == KEY_ESCAPE and not _serve_target_drink_id.is_empty():
+			_cancel_drink_targeting()
+		elif event.keycode == KEY_EQUAL:
 			_zoom_camera_smooth(-2.0)
 		elif event.keycode == KEY_MINUS:
 			_zoom_camera_smooth(2.0)
@@ -432,11 +488,18 @@ func _pick_at(screen_position: Vector2) -> Dictionary:
 			"is_cultist": false,
 			"position": SMART_OBJECTS[object_id]["approach"],
 		}
+	if collider.has_meta("drink_id"):
+		return {
+			"kind": COMMAND_SYSTEM_SCRIPT.TARGET_DRINK,
+			"id": StringName(collider.get_meta("drink_id")),
+			"is_cultist": false,
+			"position": (collider as Node3D).global_position,
+		}
 	if not collider.has_meta("actor_id") or not collider.has_meta("is_cultist"):
 		return {}
-	var actor_id := StringName(collider.get_meta("actor_id"))
+	var actor_id := int(collider.get_meta("actor_id"))
 	return {
-		"kind": COMMAND_SYSTEM_SCRIPT.TARGET_PATRON,
+		"kind": COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST if bool(collider.get_meta("is_cultist")) else COMMAND_SYSTEM_SCRIPT.TARGET_PATRON,
 		"id": actor_id,
 		"is_cultist": bool(collider.get_meta("is_cultist")),
 		"position": (collider as Node3D).global_position,
@@ -445,13 +508,18 @@ func _pick_at(screen_position: Vector2) -> Dictionary:
 
 func _character_at(screen_position: Vector2) -> Dictionary:
 	var hit := _pick_at(screen_position)
-	if hit.is_empty() or hit["kind"] != COMMAND_SYSTEM_SCRIPT.TARGET_PATRON:
+	if hit.is_empty() or hit["kind"] not in [COMMAND_SYSTEM_SCRIPT.TARGET_PATRON, COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST]:
 		return {}
 	return hit
 
 
 func _handle_character_left_click(screen_position: Vector2) -> void:
 	var character := _character_at(screen_position)
+	if not _serve_target_drink_id.is_empty():
+		if character.is_empty() or bool(character["is_cultist"]):
+			return
+		_issue_drink_service(character)
+		return
 	if character.is_empty():
 		return
 	if character["is_cultist"]:
@@ -463,9 +531,18 @@ func _handle_character_left_click(screen_position: Vector2) -> void:
 
 
 func _update_character_hover(screen_position: Vector2) -> void:
-	var character := _character_at(screen_position)
+	var hit := _pick_at(screen_position)
+	if not hit.is_empty() and StringName(hit.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_DRINK:
+		_hovered_actor_id = ActorIds.NO_ACTOR
+		_hovered_drink_id = StringName(hit["id"])
+		if _hover_panel != null:
+			_hover_panel.position = screen_position + Vector2(16.0, 18.0)
+		_refresh_character_panels(_session.snapshot())
+		return
+	_hovered_drink_id = &""
+	var character := hit if not hit.is_empty() and hit.get("kind", &"") in [COMMAND_SYSTEM_SCRIPT.TARGET_PATRON, COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST] else {}
 	if character.is_empty():
-		_hovered_actor_id = &""
+		_hovered_actor_id = ActorIds.NO_ACTOR
 		if _hover_panel != null:
 			_hover_panel.visible = false
 		return
@@ -476,12 +553,12 @@ func _update_character_hover(screen_position: Vector2) -> void:
 	_refresh_character_panels(_session.snapshot())
 
 
-func _select_cultist(cultist_id: StringName) -> void:
+func _select_cultist(cultist_id: int) -> void:
 	if not _cultist_nodes.has(cultist_id):
 		return
 	_selected_cultist_id = cultist_id
 	_close_context_menu()
-	for id: StringName in _cultist_nodes:
+	for id: int in _cultist_nodes:
 		var actor := _cultist_nodes[id] as NavigableActor3D
 		actor.set_selected(id == cultist_id)
 	_movement_feedback = "%s selected." % _cultist_display_name(cultist_id)
@@ -495,7 +572,7 @@ func _handle_right_click(screen_position: Vector2, append_to_queue: bool) -> voi
 	if not _ready_for_commands():
 		return
 	var hit := _pick_at(screen_position)
-	if not hit.is_empty() and not bool(hit["is_cultist"]):
+	if not hit.is_empty() and (not bool(hit["is_cultist"]) or hit["id"] != _selected_cultist_id):
 		_open_context_menu(screen_position, hit, append_to_queue)
 		return
 	if not hit.is_empty():
@@ -534,9 +611,9 @@ func _issue_command(command: StringName, target: Dictionary, append_to_queue: bo
 	# The adapter contributes one geometry fact: is the Selected Cultist already
 	# adjacent to a Patron target? The command seam decides what that means.
 	var context: Dictionary = {}
-	if StringName(target.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_PATRON:
-		context["is_adjacent"] = _cultist_adjacent_to_patron(
-			_selected_cultist_id, StringName(target["id"])
+	if StringName(target.get("kind", &"")) in [COMMAND_SYSTEM_SCRIPT.TARGET_PATRON, COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST]:
+		context["is_adjacent"] = _cultist_adjacent_to_actor(
+			_selected_cultist_id, target["id"]
 		)
 	var outcome: Dictionary = _commands.issue(
 		_selected_cultist_id, command, target, append_to_queue, context
@@ -549,13 +626,16 @@ func _issue_command(command: StringName, target: Dictionary, append_to_queue: bo
 
 # The live geometry fact the command seam asks for: whether the Cultist already
 # stands at the Patron's valid Approach Position within the arrival tolerance.
-func _cultist_adjacent_to_patron(cultist_id: StringName, patron_id: StringName) -> bool:
-	if not _cultist_nodes.has(cultist_id) or not _patron_nodes.has(patron_id):
+func _cultist_adjacent_to_actor(cultist_id: int, target_id: Variant) -> bool:
+	if not _cultist_nodes.has(cultist_id):
 		return false
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
-	var patron_position := (_patron_nodes[patron_id] as NavigableActor3D).global_position
-	patron_position.y = NAVIGATION_FLOOR_Y
-	var approach := _patron_approach_point(patron_position, actor.global_position)
+	var target_actor: NavigableActor3D = _patron_nodes.get(target_id, _cultist_nodes.get(target_id))
+	if target_actor == null:
+		return false
+	var target_position := target_actor.global_position
+	target_position.y = NAVIGATION_FLOOR_Y
+	var approach := _patron_approach_point(target_position, actor.global_position)
 	return actor.global_position.distance_to(approach) <= CULTIST_ADJACENCY_TOLERANCE
 
 
@@ -585,7 +665,11 @@ func _floor_target(destination: Vector3) -> Dictionary:
 # --- Context menu ------------------------------------------------------------
 
 func _open_context_menu(screen_position: Vector2, target: Dictionary, append_to_queue: bool) -> void:
-	var options: Array[Dictionary] = _commands.resolve_options(_selected_cultist_id, target)
+	var is_drink := StringName(target.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_DRINK
+	var options: Array[Dictionary] = (
+		_commands.resolve_drink_options(target["id"], _selected_cultist_id)
+		if is_drink else _commands.resolve_options(_selected_cultist_id, target)
+	)
 	if options.is_empty():
 		_close_context_menu()
 		_movement_feedback = "No command applies to that target."
@@ -595,9 +679,10 @@ func _open_context_menu(screen_position: Vector2, target: Dictionary, append_to_
 	_context_append = append_to_queue
 	for child in _context_menu_rows.get_children():
 		child.queue_free()
-	_context_menu_header.text = "%s  ·  %s" % [
-		options[0]["target_label"], "APPEND" if append_to_queue else "REPLACE",
-	]
+	_context_menu_header.text = (
+		"PREPARED DRINK"
+		if is_drink else "%s  ·  %s" % [options[0]["target_label"], "APPEND" if append_to_queue else "REPLACE"]
+	)
 	for option: Dictionary in options:
 		var button := Button.new()
 		button.text = option["label"] if bool(option["available"]) else "%s  (%s)" % [
@@ -618,7 +703,82 @@ func _on_context_option_pressed(command: StringName) -> void:
 	_close_context_menu()
 	if target.is_empty():
 		return
+	if command == &"serve_drink_to":
+		var cultist_id := _selected_cultist_id
+		if cultist_id == ActorIds.NO_ACTOR:
+			cultist_id = _nearest_available_cultist_to_bar()
+		if cultist_id == ActorIds.NO_ACTOR:
+			_movement_feedback = "No Cultist is available."
+			_refresh_hud(_session.snapshot())
+			return
+		var drink_id: StringName = target["id"]
+		if not _session.reserve_prepared_drink(drink_id, cultist_id):
+			_movement_feedback = "That drink is no longer available."
+			_refresh_hud(_session.snapshot())
+			return
+		_serve_target_drink_id = drink_id
+		_serve_target_cultist_id = cultist_id
+		_serve_target_append = Input.is_key_pressed(KEY_SHIFT)
+		_movement_feedback = "Choose a Patron. Right-click or press Escape to cancel."
+		_refresh_hud(_session.snapshot())
+		return
+	if command == &"dispose_drink":
+		_commands.cancel_drink_service(target["id"])
+		_session.dispose_prepared_drink(target["id"])
+		_movement_feedback = "Drink disposed."
+		_refresh_hud(_session.snapshot())
+		return
 	_issue_command(command, target, append)
+
+
+func _issue_drink_service(patron_target: Dictionary) -> void:
+	var cultist_id := _serve_target_cultist_id
+	if cultist_id == ActorIds.NO_ACTOR:
+		_movement_feedback = "No Cultist is available."
+		_cancel_drink_targeting(false)
+		return
+	patron_target["bar_position"] = SMART_OBJECTS[&"bar_work_position"]["approach"]
+	var result: Dictionary = _commands.issue_drink_service(
+		cultist_id, _serve_target_drink_id, patron_target, _serve_target_append
+	)
+	_movement_feedback = result["message"]
+	if not bool(result["accepted"]):
+		_session.release_prepared_drink(_serve_target_drink_id, cultist_id)
+	_clear_drink_targeting()
+	_sync_cultist_navigation(cultist_id)
+	_refresh_move_markers()
+	_refresh_hud(_session.snapshot())
+
+
+func _cancel_drink_targeting(show_message: bool = true) -> void:
+	if show_message:
+		_movement_feedback = "Drink service cancelled."
+	if not _serve_target_drink_id.is_empty() and not _serve_target_cultist_id == ActorIds.NO_ACTOR:
+		_session.release_prepared_drink(_serve_target_drink_id, _serve_target_cultist_id)
+	_clear_drink_targeting()
+	_refresh_hud(_session.snapshot())
+
+
+func _clear_drink_targeting() -> void:
+	_serve_target_drink_id = &""
+	_serve_target_cultist_id = ActorIds.NO_ACTOR
+	_serve_target_append = false
+
+
+func _nearest_available_cultist_to_bar() -> int:
+	var bar: Vector3 = SMART_OBJECTS[&"bar_work_position"]["approach"]
+	var best := ActorIds.NO_ACTOR
+	var best_distance := INF
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
+		if _session.cultist_is_incapacitated(cultist_id):
+			continue
+		if not _commands.active_request(cultist_id).is_empty() or _session.carries_prepared_drink(cultist_id):
+			continue
+		var distance := (_cultist_nodes[cultist_id] as Node3D).global_position.distance_to(bar)
+		if distance < best_distance:
+			best = cultist_id
+			best_distance = distance
+	return best
 
 
 # Opens one context menu for the rendered review pass so the captured frame
@@ -628,7 +788,7 @@ func _open_preview_context_menu() -> void:
 	if SMART_OBJECTS.has(_context_menu_preview):
 		target = _smart_target(_context_menu_preview)
 	else:
-		target = _actor_target(_context_menu_preview)
+		target = _actor_target(int(_context_menu_preview))
 	_open_context_menu(Vector2(520.0, 300.0), target, false)
 
 
@@ -641,7 +801,66 @@ func _close_context_menu() -> void:
 
 # --- Navigation plumbing -----------------------------------------------------
 
-func _sync_cultist_navigation(cultist_id: StringName) -> void:
+func _advance_step_aside(simulated_delta: float) -> void:
+	if simulated_delta <= 0.0 or not _navigation_ready:
+		return
+	var actors: Array[Dictionary] = []
+	var queues: Dictionary = _commands.snapshot()["cultists"]
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
+		var actor := _cultist_nodes.get(cultist_id) as NavigableActor3D
+		if actor == null:
+			continue
+		var active: Dictionary = queues[cultist_id]["active"]
+		var priority := AVOIDANCE_SCRIPT.PRIORITY_IDLE if active.is_empty() else AVOIDANCE_SCRIPT.PRIORITY_PLAYER
+		if _latest_state["cultists"][cultist_id]["activity"] == &"dragging":
+			priority = AVOIDANCE_SCRIPT.PRIORITY_BODY
+		actors.append({
+			"id": cultist_id, "position": actor.global_position,
+			"segment_end": actor.next_path_segment_end(),
+			"action_id": actor.active_action_id(),
+			"moving": actor.is_navigating() and active.get("command", &"") != &"step_aside",
+			"can_yield": active.is_empty() and not _session.is_cultist_busy(cultist_id),
+			"priority": priority,
+		})
+	for patron_id: int in _patron_nodes:
+		var actor := _patron_nodes[patron_id] as NavigableActor3D
+		var view: Dictionary = _latest_state["debug_patron_views"][patron_id]
+		if not actor.visible:
+			continue
+		var activity := StringName(view["activity"])
+		var priority := AVOIDANCE_SCRIPT.PRIORITY_IDLE
+		if actor.is_navigating():
+			priority = AVOIDANCE_SCRIPT.PRIORITY_PATRON
+		if activity in [&"escaping", &"investigation_search", &"shock"]:
+			priority = AVOIDANCE_SCRIPT.PRIORITY_DANGER
+		elif activity in [&"helper_carrying", &"being_dragged"]:
+			priority = AVOIDANCE_SCRIPT.PRIORITY_BODY
+		actors.append({
+			"id": patron_id, "position": actor.global_position,
+			"segment_end": actor.next_path_segment_end(),
+			"action_id": actor.active_action_id(),
+			"moving": actor.is_navigating() and view["navigation_destination"] != &"step_aside",
+			"can_yield": not actor.is_navigating() and view["lifecycle"] == &"active"
+				and activity in [&"socializing", &"awaiting_drink", &"waiting_at_entrance"],
+			"priority": priority,
+		})
+	for request: Dictionary in _character_avoidance.advance(simulated_delta, actors):
+		var actor_id := int(request["actor_id"])
+		var destination: Vector3 = request["position"]
+		var navigation_map := get_world_3d().navigation_map
+		var snapped := NavigationServer3D.map_get_closest_point(navigation_map, destination)
+		if snapped.distance_to(destination) > 0.35:
+			destination = request["alternate"]
+			snapped = NavigationServer3D.map_get_closest_point(navigation_map, destination)
+		if snapped.distance_to(destination) > 0.35:
+			continue
+		if _cultist_nodes.has(actor_id):
+			if bool(_commands.issue_step_aside(actor_id, snapped, request["incident_id"])["accepted"]):
+				_sync_cultist_navigation(actor_id)
+		elif _session.request_patron_step_aside(actor_id, snapped, request["incident_id"]):
+			_sync_patron_navigation(actor_id, _session.snapshot()["debug_patron_views"][actor_id])
+
+func _sync_cultist_navigation(cultist_id: int) -> void:
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 	var request: Dictionary = _commands.active_request(cultist_id)
 	if request.is_empty():
@@ -657,7 +876,7 @@ func _sync_cultist_navigation(cultist_id: StringName) -> void:
 	var approach := _approach_position(request, actor.global_position)
 	if actor.active_action_id() == action_id:
 		# A Patron target moves, so re-aim once their approach point drifts away.
-		if request["target_kind"] != COMMAND_SYSTEM_SCRIPT.TARGET_PATRON:
+		if request["target_kind"] not in [COMMAND_SYSTEM_SCRIPT.TARGET_PATRON, COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST]:
 			return
 		if actor.target_position().distance_to(approach) <= 0.6:
 			return
@@ -667,7 +886,7 @@ func _sync_cultist_navigation(cultist_id: StringName) -> void:
 # Reports the live proximity result for the active Patron Action and re-syncs
 # once the command seam responds, so a commit advances to the next Action and an
 # inserted Generated Move starts navigating in the same step.
-func _resolve_active_proximity(cultist_id: StringName, request: Dictionary) -> void:
+func _resolve_active_proximity(cultist_id: int, request: Dictionary) -> void:
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 	actor.cancel_navigation()
 	var approach := _approach_position(request, actor.global_position)
@@ -687,11 +906,12 @@ func _approach_position(request: Dictionary, from_position: Vector3) -> Vector3:
 	var navigation_map := get_world_3d().navigation_map
 	if NavigationServer3D.map_get_iteration_id(navigation_map) == 0:
 		return position
-	if request["target_kind"] != COMMAND_SYSTEM_SCRIPT.TARGET_PATRON:
+	if request["target_kind"] not in [COMMAND_SYSTEM_SCRIPT.TARGET_PATRON, COMMAND_SYSTEM_SCRIPT.TARGET_CULTIST]:
 		return NavigationServer3D.map_get_closest_point(navigation_map, position)
-	var patron_id := StringName(request["target_id"])
-	if _patron_nodes.has(patron_id):
-		position = (_patron_nodes[patron_id] as NavigableActor3D).global_position
+	var target_id := int(request["target_id"])
+	var target_actor: NavigableActor3D = _patron_nodes.get(target_id, _cultist_nodes.get(target_id))
+	if target_actor != null:
+		position = target_actor.global_position
 		position.y = NAVIGATION_FLOOR_Y
 	return _patron_approach_point(position, from_position)
 
@@ -726,7 +946,7 @@ func _patron_approach_point(patron_position: Vector3, from_position: Vector3) ->
 	return best
 
 
-func _on_cultist_destination_reached(cultist_id: StringName, action_id: int) -> void:
+func _on_cultist_destination_reached(cultist_id: int, action_id: int) -> void:
 	var outcome: Dictionary = _commands.notify_reached(cultist_id, action_id)
 	if not outcome.is_empty():
 		_apply_command_feedback(cultist_id)
@@ -735,7 +955,7 @@ func _on_cultist_destination_reached(cultist_id: StringName, action_id: int) -> 
 	_refresh_hud(_session.snapshot())
 
 
-func _on_cultist_navigation_stuck(cultist_id: StringName, action_id: int) -> void:
+func _on_cultist_navigation_stuck(cultist_id: int, action_id: int) -> void:
 	_commands.notify_failed(cultist_id, action_id, &"path_stuck")
 	_apply_command_feedback(cultist_id)
 	_sync_cultist_navigation(cultist_id)
@@ -743,7 +963,7 @@ func _on_cultist_navigation_stuck(cultist_id: StringName, action_id: int) -> voi
 	_refresh_hud(_session.snapshot())
 
 
-func _apply_command_feedback(cultist_id: StringName) -> void:
+func _apply_command_feedback(cultist_id: int) -> void:
 	if cultist_id != _selected_cultist_id:
 		return
 	var cultists: Dictionary = _commands.snapshot()["cultists"]
@@ -802,13 +1022,13 @@ func _advance_emotes(real_delta: float) -> void:
 
 func _emote_anchors() -> Dictionary:
 	var anchors: Dictionary = {}
-	for patron_id: StringName in _patron_nodes:
+	for patron_id: int in _patron_nodes:
 		var patron_pivot: Node3D = _patron_nodes[patron_id]
 		if patron_pivot.visible:
 			anchors[patron_id] = (
 				patron_pivot.global_position + Vector3(0.0, _emote_head_offset, 0.0)
 			)
-	for cultist_id: StringName in _cultist_nodes:
+	for cultist_id: int in _cultist_nodes:
 		var cultist_pivot: Node3D = _cultist_nodes[cultist_id]
 		anchors[cultist_id] = cultist_pivot.global_position + Vector3(0.0, _emote_head_offset, 0.0)
 	return anchors
@@ -834,11 +1054,11 @@ func _set_emote_accessibility(labels: bool, ui_scale: float) -> void:
 		_advance_emotes(0.0)
 
 
-func _cultist_display_name(cultist_id: StringName) -> String:
-	return CULTIST_NAMES.get(cultist_id, String(cultist_id).replace("cultist_", "Cultist "))
+func _cultist_display_name(cultist_id: int) -> String:
+	return CULTIST_NAMES.get(cultist_id, str(cultist_id).replace("cultist_", "Cultist "))
 
 
-func _actor_display_name(actor_id: StringName) -> String:
+func _actor_display_name(actor_id: int) -> String:
 	if _cultist_nodes.has(actor_id):
 		return _cultist_display_name(actor_id)
 	var view: Dictionary = _session.patron_view(actor_id, _selected_cultist_id)
@@ -849,8 +1069,8 @@ func _actor_display_name(actor_id: StringName) -> String:
 
 # Pressing an Offscreen Indicator moves the camera to that actor. Manual pan,
 # zoom, or another press replaces the move at once; it never bounces or
-# overshoots, and Reduced motion makes it a straight cut.
-func _focus_camera_on(actor_id: StringName) -> void:
+# overshoots.
+func _focus_camera_on(actor_id: int) -> void:
 	var node: Node3D = _cultist_nodes.get(actor_id, _patron_nodes.get(actor_id))
 	if node == null:
 		return
@@ -858,11 +1078,17 @@ func _focus_camera_on(actor_id: StringName) -> void:
 		node.global_position.x, _camera_target.y, node.global_position.z
 	)
 	_cancel_camera_focus()
-	if _reduced_motion:
-		_pan_camera(destination - _camera_target)
-		return
 	_focus_from = _camera_target
 	_focus_to = destination
+	_focus_elapsed = 0.0
+	_focus_active = true
+
+
+func _focus_camera_on_entrance() -> void:
+	_cancel_camera_focus()
+	_focus_from = _camera_target
+	var entrance: Vector3 = SMART_OBJECTS[&"front_entrance"]["approach"]
+	_focus_to = Vector3(entrance.x, _camera_target.y, entrance.z)
 	_focus_elapsed = 0.0
 	_focus_active = true
 
@@ -935,6 +1161,9 @@ func _build_environment() -> void:
 	_smart_object_root.name = "SmartObjects"
 	add_child(_smart_object_root)
 	_build_smart_objects()
+	_drink_root = Node3D.new()
+	_drink_root.name = "PreparedDrinks"
+	add_child(_drink_root)
 	if _presentation_prototype:
 		_build_trapdoor()
 	_body_root = Node3D.new()
@@ -977,8 +1206,18 @@ func _build_smart_objects() -> void:
 		collision.shape = shape
 		area.add_child(collision)
 		_smart_object_root.add_child(area)
+		if object_id == &"trapdoor_control":
+			var button := MeshInstance3D.new()
+			button.name = "TrapdoorControlButton"
+			var button_mesh := BoxMesh.new()
+			button_mesh.size = Vector3(0.52, 0.52, 0.16)
+			button.mesh = button_mesh
+			button.material_override = _flat_material(Color("b33b36"), 1.0)
+			button.position = definition["pick_center"]
+			_smart_object_root.add_child(button)
 
 		var plate := MeshInstance3D.new()
+		plate.name = "%sMarker" % object_id
 		var plate_mesh := CylinderMesh.new()
 		plate_mesh.top_radius = 0.42
 		plate_mesh.bottom_radius = 0.42
@@ -987,6 +1226,7 @@ func _build_smart_objects() -> void:
 		plate.mesh = plate_mesh
 		plate.position = (definition["approach"] as Vector3) + Vector3(0.0, 0.02, 0.0)
 		var label := Label3D.new()
+		label.name = "Name"
 		label.text = definition["label"]
 		label.position.y = 0.5
 		label.font_size = 24
@@ -996,6 +1236,93 @@ func _build_smart_objects() -> void:
 		label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		plate.add_child(label)
 		_smart_object_root.add_child(plate)
+		_smart_object_plates[object_id] = plate
+
+
+func _refresh_prepared_drinks(state: Dictionary) -> void:
+	if _drink_root == null:
+		return
+	var live: Dictionary = {}
+	var drinks: Array = state.get("prepared_drinks", {}).get("drinks", [])
+	for index in range(drinks.size()):
+		var drink: Dictionary = drinks[index]
+		var drink_id: StringName = drink["id"]
+		live[drink_id] = true
+		var node: Area3D = _drink_nodes.get(drink_id)
+		if node == null:
+			node = _build_prepared_drink_node(drink)
+			_drink_root.add_child(node)
+			_drink_nodes[drink_id] = node
+		node.position = Vector3(-1.15 + float(index) * 1.15, 1.22, 0.05)
+		var label := node.get_node("Label") as Label3D
+		label.text = "%s%s" % [
+			String(drink["type"]).capitalize(), "  ·  Drugged" if bool(drink["drugged"]) else "",
+		]
+		(node.get_node("DrugMarker") as Label3D).visible = bool(drink["drugged"])
+	for drink_id: StringName in _drink_nodes.keys():
+		if live.has(drink_id):
+			continue
+		(_drink_nodes[drink_id] as Node).queue_free()
+		_drink_nodes.erase(drink_id)
+
+
+func _build_prepared_drink_node(drink: Dictionary) -> Area3D:
+	var area := Area3D.new()
+	area.name = String(drink["id"])
+	area.collision_layer = 2
+	area.collision_mask = 0
+	area.monitoring = false
+	area.set_meta("drink_id", drink["id"])
+	var collision := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(0.8, 1.4, 0.8)
+	collision.shape = shape
+	collision.position.y = 0.35
+	area.add_child(collision)
+	var vessel := MeshInstance3D.new()
+	match StringName(drink["type"]):
+		&"wine":
+			var glass := CylinderMesh.new()
+			glass.top_radius = 0.25
+			glass.bottom_radius = 0.08
+			glass.height = 0.48
+			vessel.mesh = glass
+			vessel.position.y = 0.48
+		&"beer":
+			var mug := BoxMesh.new()
+			mug.size = Vector3(0.45, 0.68, 0.4)
+			vessel.mesh = mug
+			vessel.position.y = 0.35
+		&"liquor":
+			var tumbler := CylinderMesh.new()
+			tumbler.top_radius = 0.28
+			tumbler.bottom_radius = 0.24
+			tumbler.height = 0.38
+			vessel.mesh = tumbler
+			vessel.position.y = 0.2
+	vessel.material_override = _flat_material(Color("d9c56f"), 0.95)
+	area.add_child(vessel)
+	var label := Label3D.new()
+	label.name = "Label"
+	label.position = Vector3(0.0, 1.15, 0.0)
+	label.font_size = 28
+	label.pixel_size = 0.0045
+	label.outline_size = 10
+	label.modulate = Color("e6d7b8")
+	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	area.add_child(label)
+	var marker := Label3D.new()
+	marker.name = "DrugMarker"
+	marker.text = "|"
+	marker.position = Vector3(0.18, 0.86, 0.0)
+	marker.rotation.z = -0.35
+	marker.font_size = 42
+	marker.pixel_size = 0.005
+	marker.modulate = Color("a77be8")
+	marker.outline_size = 8
+	marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	area.add_child(marker)
+	return area
 
 
 # Two floor panels over a dark pit. The panels hinge open on the outer edges so a
@@ -1115,7 +1442,7 @@ func _bake_navigation_world() -> void:
 	_preview_hud_state(_hud_preview)
 	if _emote_play_scale >= 0.0:
 		_accepted_time_scale = 1.0 if _emote_play_scale > 0.0 else 0.0
-		for actor_id: StringName in _cultist_nodes:
+		for actor_id: int in _cultist_nodes:
 			(_cultist_nodes[actor_id] as NavigableActor3D).set_simulation_scale(AUTOMATED_RUN_SCALE)
 	_refresh_hud(_session.snapshot())
 	if not _movement_report_path.is_empty():
@@ -1143,7 +1470,7 @@ func _run_bathroom_review(report_path: String) -> void:
 	_set_camera_view(BATHROOM_CAMERA_POSITION, BATHROOM_CAMERA_TARGET)
 	get_window().size = Vector2i(1_280, 720)
 	await get_tree().process_frame
-	for actor_id: StringName in _patron_nodes:
+	for actor_id: int in _patron_nodes:
 		(_patron_nodes[actor_id] as NavigableActor3D).set_simulation_scale(AUTOMATED_RUN_SCALE)
 	await _play_until(func() -> bool: return true, 30)
 
@@ -1169,24 +1496,24 @@ func _run_bathroom_review(report_path: String) -> void:
 # A full visit: each station captured with its distinct Emote Progress fill.
 func _review_full_visit(artifact_dir: String) -> Array[Dictionary]:
 	var checks: Array[Dictionary] = []
-	_session.debug_force_bathroom(&"patron_mara")
-	checks.append(await _bathroom_phase_frame(artifact_dir, "mirror", &"patron_mara", &"mirror_check"))
-	checks.append(await _bathroom_phase_frame(artifact_dir, "toilet", &"patron_mara", &"seated_bathroom_use"))
+	_session.debug_force_bathroom(5)
+	checks.append(await _bathroom_phase_frame(artifact_dir, "mirror", 5, &"mirror_check"))
+	checks.append(await _bathroom_phase_frame(artifact_dir, "toilet", 5, &"seated_bathroom_use"))
 	await _save_frame(artifact_dir, "toilet_1024", Vector2i(1_024, 576))
 	await _save_frame(artifact_dir, "toilet_1920", Vector2i(1_920, 1_080))
 	get_window().size = Vector2i(1_280, 720)
-	checks.append(await _bathroom_phase_frame(artifact_dir, "handwashing", &"patron_mara", &"handwashing"))
+	checks.append(await _bathroom_phase_frame(artifact_dir, "handwashing", 5, &"handwashing"))
 	return checks
 
 
 # A standing capture: the panels open, the avatar sinks occluded, then removal.
 func _review_standing_capture(artifact_dir: String) -> Array[Dictionary]:
-	_session.debug_force_bathroom(&"patron_june")
+	_session.debug_force_bathroom(4)
 	var standing_phases: Array[StringName] = [
 		&"mirror_check", &"moving_to_toilet", &"moving_to_sink", &"handwashing",
 	]
 	var reached_standing := await _play_until(func() -> bool:
-		return _session.snapshot()["debug_patron_views"][&"patron_june"]["activity"] in standing_phases, 3_000)
+		return _session.snapshot()["debug_patron_views"][4]["activity"] in standing_phases, 3_000)
 	await _save_frame(artifact_dir, "before_activation", Vector2i(1_280, 720))
 	_session.activate_trapdoor()
 	var saw_falling := await _play_until(func() -> bool:
@@ -1194,7 +1521,7 @@ func _review_standing_capture(artifact_dir: String) -> Array[Dictionary]:
 	await _play_until(func() -> bool:
 		return float(_session.snapshot()["trapdoor"]["fall_ratio"]) > 0.5, 60)
 	await _save_frame(artifact_dir, "falling", Vector2i(1_280, 720))
-	var june_node := _patron_nodes[&"patron_june"] as NavigableActor3D
+	var june_node := _patron_nodes[4] as NavigableActor3D
 	var sank := june_node.global_position.y < NAVIGATION_FLOOR_Y - 0.2
 	var saw_closing := await _play_until(func() -> bool:
 		return _session.snapshot()["trapdoor"]["state"] == &"closing", 120)
@@ -1225,7 +1552,7 @@ func _play_until(condition: Callable, budget: int) -> bool:
 	return bool(condition.call())
 
 
-func _bathroom_phase_frame(dir: String, name: String, patron_id: StringName, phase: StringName) -> Dictionary:
+func _bathroom_phase_frame(dir: String, name: String, patron_id: int, phase: StringName) -> Dictionary:
 	var reached := await _play_until(func() -> bool:
 		return _session.snapshot()["debug_patron_views"][patron_id]["activity"] == phase, 3_000)
 	# Let the fill build a little so the captured frame reads as in-progress.
@@ -1248,7 +1575,7 @@ func _save_frame(dir: String, name: String, size: Vector2i) -> void:
 
 func _run_emote_validation(report_path: String) -> void:
 	var checks: Array[Dictionary] = []
-	for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
 		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(4.0)
 	_stage_emote_states()
 	# The authored cast must be spread across the room, not stacked at one point,
@@ -1281,7 +1608,7 @@ func _run_emote_validation(report_path: String) -> void:
 	_pan_camera(Vector3(-3.0, 0.0, -2.0))
 
 	# Departure, Capture, and Closing remove the actor and their bubble with it.
-	var escaping_id := &"patron_vincent"
+	var escaping_id := 10
 	var before_close := false
 	for bubble: Dictionary in _emotes.bubbles():
 		before_close = before_close or bubble["actor_id"] == escaping_id
@@ -1331,12 +1658,12 @@ func _run_emote_validation(report_path: String) -> void:
 # Forces one readable example of each urgent state so the frame under test
 # carries eleven actors and every catalog category at once.
 func _stage_emote_states() -> void:
-	_session.report_patron_stimulus(&"patron_vincent", &"drink_dosed_seen")
-	_session.debug_set_patron_drink_state(&"patron_walter", 3, 1, 0, 3)
-	_session.debug_force_finish_drink(&"patron_walter")
-	_session.debug_force_bathroom(&"patron_nell")
-	_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 3)
-	_session.begin_conversation(&"cultist_02", &"patron_mara")
+	_session.report_patron_stimulus(10, &"drink_dosed_seen")
+	_session.debug_set_patron_drink_state(8, 3, 1, 0, 3)
+	_session.debug_force_finish_drink(8)
+	_session.debug_force_bathroom(9)
+	_session.debug_set_patron_drink_state(4, 0, 5, 0, 3)
+	_session.begin_conversation(2, 5)
 	_session.advance(45.0)
 	_advance_emotes(0.0)
 
@@ -1351,13 +1678,13 @@ func _check_emote_frame(label: StringName) -> Dictionary:
 
 	var seen: Dictionary = {}
 	for bubble: Dictionary in bubbles:
-		var actor_id: StringName = bubble["actor_id"]
+		var actor_id: int = bubble["actor_id"]
 		if seen.has(actor_id):
 			failures.append("%s has more than one bubble" % actor_id)
 		seen[actor_id] = true
 
 	var rects: Array[Rect2] = []
-	for actor_id: StringName in placements:
+	for actor_id: int in placements:
 		var rect: Rect2 = placements[actor_id]
 		if not Rect2(Vector2.ZERO, viewport_size).encloses(rect):
 			failures.append("%s sits outside the viewport" % actor_id)
@@ -1377,7 +1704,7 @@ func _check_emote_frame(label: StringName) -> Dictionary:
 	if repeated.size() != placements.size():
 		failures.append("placement is not deterministic")
 	else:
-		for actor_id: StringName in placements:
+		for actor_id: int in placements:
 			if not repeated.has(actor_id) or repeated[actor_id] != placements[actor_id]:
 				failures.append("%s moved between identical frames" % actor_id)
 	return {
@@ -1402,53 +1729,53 @@ func _run_command_validation(report_path: String) -> void:
 		_refresh(_session.snapshot())
 		# The staged full cast has every Order served, so give one Patron a fresh
 		# Order to make the bar and service commands meaningful.
-		_session.debug_set_patron_drink_state(&"patron_june", 0, 5, 0, 3)
+		_session.debug_set_patron_drink_state(4, 0, 5, 0, 3)
 		_session.advance(45.0)
 		await _wait_for_patrons(1_800)
 
-		# Only Vera is playable, so every command runs serially through her rather
-		# than racing a second Cultist. The route is ordered center-right first so
+		# Keep this deterministic validation serial through Vera rather than racing
+		# Iris. The route is ordered center-right first so
 		# the Trapdoor gets a clean run-up into the bathroom before she crosses to
 		# the far-left Patrons; reservation still transfers and releases per command,
 		# which the trailing reserved_slots check verifies.
 		steps.append(await _validate_step(
-			&"floor_move", &"cultist_01", &"move", _floor_target(Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)),
+			&"floor_move", 1, &"move", _floor_target(Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)),
 			func() -> bool: return true
 		))
 
 		steps.append(await _validate_step(
-			&"trapdoor", &"cultist_01", &"activate_trapdoor", _smart_target(&"trapdoor_control"),
+			&"trapdoor", 1, &"activate_trapdoor", _smart_target(&"trapdoor_control"),
 			func() -> bool: return _session.snapshot()["trapdoor"]["state"] != &"closed"
 		))
 
 		steps.append(await _validate_step(
-			&"bar_command", &"cultist_01", &"prepare_drink", _smart_target(&"bar_work_position"),
-			func() -> bool: return _session.carries_prepared_drink(&"cultist_01")
+			&"bar_command", 1, &"make_wine", _smart_target(&"bar_work_position"),
+			func() -> bool: return not _session.snapshot()["prepared_drinks"]["drinks"].is_empty()
 		))
 
 		steps.append(await _validate_patron_chain(
-			&"cultist_01", &"patron_june",
-			func() -> bool: return _session.snapshot()["conversations"].has(&"cultist_01")
+			1, 4,
+			func() -> bool: return _session.snapshot()["conversations"].has(1)
 		))
 
-		_session.debug_set_patron_drink_state(&"patron_mara", 3, 1, 0, 3)
-		_session.debug_force_finish_drink(&"patron_mara")
+		_session.debug_set_patron_drink_state(5, 3, 1, 0, 3)
+		_session.debug_force_finish_drink(5)
 		_session.advance(0.2)
 		await _wait_for_patrons(900)
 		steps.append(await _validate_step(
-			&"body_pickup", &"cultist_01", &"pick_up_body", _actor_target(&"patron_mara"),
-			func() -> bool: return _session.snapshot()["drags"].has(&"patron_mara")
+			&"body_pickup", 1, &"pick_up_body", _actor_target(5),
+			func() -> bool: return _session.snapshot()["drags"].has(5)
 		))
 		steps.append(await _validate_step(
-			&"body_drop", &"cultist_01", &"drop_body", _floor_target(Vector3(-2.0, NAVIGATION_FLOOR_Y, 3.0)),
-			func() -> bool: return not _session.snapshot()["drags"].has(&"patron_mara")
+			&"body_drop", 1, &"drop_body", _floor_target(Vector3(-2.0, NAVIGATION_FLOOR_Y, 3.0)),
+			func() -> bool: return not _session.snapshot()["drags"].has(5)
 		))
 
 	var stuck_actors: Array[String] = []
-	for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
 		var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 		if actor.is_navigating() or not _commands.active_request(cultist_id).is_empty():
-			stuck_actors.append(String(cultist_id))
+			stuck_actors.append(str(cultist_id))
 	var reserved: Dictionary = _commands.snapshot()["reserved_slots"]
 	for step: Dictionary in steps:
 		passed = passed and bool(step["passed"])
@@ -1474,7 +1801,7 @@ func _run_command_validation(report_path: String) -> void:
 
 func _validate_step(
 		step: StringName,
-		cultist_id: StringName,
+		cultist_id: int,
 		command: StringName,
 		target: Dictionary,
 		verify: Callable
@@ -1483,7 +1810,7 @@ func _validate_step(
 	if not bool(issued["accepted"]):
 		return {"step": step, "passed": false, "detail": String(issued["message"])}
 	_sync_cultist_navigation(cultist_id)
-	var settled := await _wait_for_command(cultist_id, 2_400)
+	var settled := await _wait_for_command(cultist_id, 2_400, true)
 	var effect: bool = verify.call()
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 	return {
@@ -1498,7 +1825,7 @@ func _validate_step(
 # The check moves the live Patron node after navigation starts, so the Generated
 # Move must update its destination before the requested Action can complete.
 func _validate_patron_chain(
-		cultist_id: StringName, patron_id: StringName, verify: Callable
+		cultist_id: int, patron_id: int, verify: Callable
 ) -> Dictionary:
 	var issued: Dictionary = _commands.issue(
 		cultist_id, &"talk", _actor_target(patron_id), false, {"is_adjacent": false}
@@ -1529,8 +1856,17 @@ func _validate_patron_chain(
 	var moved_destination := cultist.target_position()
 	var tracked_live_position: bool = first_destination.distance_to(moved_destination) > 0.5
 
-	var settled := await _wait_for_command(cultist_id, 2_400)
+	var settled := await _wait_for_command(cultist_id, 2_400, false)
 	var effect: bool = verify.call()
+	if effect:
+		var current := cultist.global_position
+		_commands.issue(
+			cultist_id, &"move",
+			_floor_target(Vector3(current.x, NAVIGATION_FLOOR_Y, current.z)), false
+		)
+		_sync_cultist_navigation(cultist_id)
+		var replacement_settled := await _wait_for_command(cultist_id, 300, true)
+		settled = settled and replacement_settled
 	var reservation_released: bool = not _commands.snapshot()["reserved_slots"].has(cultist_id)
 	return {
 		"step": &"patron_action_chain",
@@ -1549,7 +1885,9 @@ func _validate_patron_chain(
 	}
 
 
-func _wait_for_command(cultist_id: StringName, frame_budget: int) -> bool:
+func _wait_for_command(
+		cultist_id: int, frame_budget: int, require_queue_empty: bool = true
+) -> bool:
 	# Wait until the command clears AND the Cultist node has physically settled.
 	# Running every validation command serially through one Cultist otherwise lets
 	# the next step read a transient position while the node finishes its last leg,
@@ -1557,7 +1895,11 @@ func _wait_for_command(cultist_id: StringName, frame_budget: int) -> bool:
 	var actor := _cultist_nodes.get(cultist_id) as NavigableActor3D
 	var frames := 0
 	while frames < frame_budget:
-		var command_idle := _commands.active_request(cultist_id).is_empty()
+		var command_idle: bool = (
+			_commands.snapshot()["cultists"][cultist_id]["active"].is_empty()
+			if require_queue_empty
+			else _commands.active_request(cultist_id).is_empty()
+		)
 		var node_still := actor == null or not actor.is_navigating()
 		if command_idle and node_still:
 			return true
@@ -1570,7 +1912,7 @@ func _wait_for_patrons(frame_budget: int) -> bool:
 	var frames := 0
 	while frames < frame_budget:
 		var settled := true
-		for patron_id: StringName in _patron_nodes:
+		for patron_id: int in _patron_nodes:
 			if (_patron_nodes[patron_id] as NavigableActor3D).is_navigating():
 				settled = false
 				break
@@ -1589,7 +1931,7 @@ func _smart_target(object_id: StringName) -> Dictionary:
 	}
 
 
-func _actor_target(patron_id: StringName) -> Dictionary:
+func _actor_target(patron_id: int) -> Dictionary:
 	var position := Vector3.ZERO
 	if _patron_nodes.has(patron_id):
 		position = (_patron_nodes[patron_id] as NavigableActor3D).global_position
@@ -1601,23 +1943,23 @@ func _actor_target(patron_id: StringName) -> Dictionary:
 
 
 func _run_movement_validation(report_path: String) -> void:
-	# Only Vera is playable, so movement validation drives the one visible Cultist
-	# through a two-leg queue instead of indexing Cultists that no longer exist.
+	# Movement validation drives Vera through a two-leg queue while Iris stays idle,
+	# so the report measures one route without cross-traffic.
 	var targets := {
-		&"cultist_01": [Vector3(-8.0, NAVIGATION_FLOOR_Y, 4.0), Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)],
+		1: [Vector3(-8.0, NAVIGATION_FLOOR_Y, 4.0), Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)],
 	}
 	var patron_targets := {
-		&"patron_june": Vector3(-12.0, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_mara": Vector3(-10.5, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_elias": Vector3(-6.0, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_ruth": Vector3(-4.5, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_walter": Vector3(4.5, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_nell": Vector3(6.0, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_vincent": Vector3(10.5, NAVIGATION_FLOOR_Y, 6.0),
-		&"patron_clara": Vector3(12.0, NAVIGATION_FLOOR_Y, 6.0),
+		4: Vector3(-12.0, NAVIGATION_FLOOR_Y, 6.0),
+		5: Vector3(-10.5, NAVIGATION_FLOOR_Y, 6.0),
+		6: Vector3(-6.0, NAVIGATION_FLOOR_Y, 6.0),
+		7: Vector3(-4.5, NAVIGATION_FLOOR_Y, 6.0),
+		8: Vector3(4.5, NAVIGATION_FLOOR_Y, 6.0),
+		9: Vector3(6.0, NAVIGATION_FLOOR_Y, 6.0),
+		10: Vector3(10.5, NAVIGATION_FLOOR_Y, 6.0),
+		11: Vector3(12.0, NAVIGATION_FLOOR_Y, 6.0),
 	}
 	if _navigation_ready:
-		for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+		for cultist_id: int in PLAYABLE_CULTIST_IDS:
 			var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 			actor.set_simulation_scale(_movement_validation_scale)
 			var destinations: Array = targets[cultist_id]
@@ -1626,17 +1968,17 @@ func _run_movement_validation(report_path: String) -> void:
 					cultist_id, &"move", _floor_target(destinations[index]), index > 0
 				)
 			_sync_cultist_navigation(cultist_id)
-		for patron_id: StringName in ALL_PATRON_IDS:
+		for patron_id: int in ALL_PATRON_IDS:
 			(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(
 				_movement_validation_scale
 			)
 		# Patrons arrive as authored pairs, so validate the same waves instead of
 		# forcing all eight through one seat approach in the same physics frame.
 		for group_start in range(0, ALL_PATRON_IDS.size(), 2):
-			var wave: Array[StringName] = [
+			var wave: Array[int] = [
 				ALL_PATRON_IDS[group_start], ALL_PATRON_IDS[group_start + 1],
 			]
-			for patron_id: StringName in wave:
+			for patron_id: int in wave:
 				var actor := _patron_nodes[patron_id] as NavigableActor3D
 				var target: Vector3 = patron_targets[patron_id]
 				_patron_visual_targets[patron_id] = target
@@ -1645,7 +1987,7 @@ func _run_movement_validation(report_path: String) -> void:
 			var wave_frames := 0
 			while wave_frames < 900:
 				var wave_complete := true
-				for patron_id: StringName in wave:
+				for patron_id: int in wave:
 					if (_patron_nodes[patron_id] as NavigableActor3D).is_navigating():
 						wave_complete = false
 						break
@@ -1657,12 +1999,12 @@ func _run_movement_validation(report_path: String) -> void:
 	var frame_count := 0
 	while _navigation_ready and frame_count < 900:
 		var all_complete := true
-		for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+		for cultist_id: int in PLAYABLE_CULTIST_IDS:
 			if not _commands.active_request(cultist_id).is_empty():
 				all_complete = false
 				break
 		if all_complete:
-			for patron_id: StringName in _patron_nodes:
+			for patron_id: int in _patron_nodes:
 				if (_patron_nodes[patron_id] as NavigableActor3D).is_navigating():
 					all_complete = false
 					break
@@ -1674,7 +2016,7 @@ func _run_movement_validation(report_path: String) -> void:
 	var final_positions := {}
 	var patron_positions := {}
 	var passed := _navigation_ready
-	for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
 		var actor := _cultist_nodes[cultist_id] as NavigableActor3D
 		var destinations: Array = targets[cultist_id]
 		var expected: Vector3 = destinations[-1]
@@ -1685,7 +2027,7 @@ func _run_movement_validation(report_path: String) -> void:
 			"repaths": actor.repath_count,
 		}
 		passed = passed and distance <= 0.55 and _commands.active_request(cultist_id).is_empty()
-	for patron_id: StringName in _patron_nodes:
+	for patron_id: int in _patron_nodes:
 		var actor := _patron_nodes[patron_id] as NavigableActor3D
 		var expected: Vector3 = _patron_visual_targets.get(patron_id, actor.global_position)
 		var distance := actor.global_position.distance_to(expected)
@@ -1702,7 +2044,7 @@ func _run_movement_validation(report_path: String) -> void:
 		"frames": frame_count,
 		"simulation_scale": _movement_validation_scale,
 		"actor_count": final_positions.size() + patron_positions.size(),
-		"selected_cultist": String(_selected_cultist_id),
+		"selected_cultist": str(_selected_cultist_id),
 		"cultists": final_positions,
 		"patrons": patron_positions,
 	}
@@ -1828,7 +2170,7 @@ func _ring_mesh(radius: float, thickness: float) -> ArrayMesh:
 
 # --- Actors, bodies, events --------------------------------------------------
 
-func _actor_pivot(patron_id: StringName) -> Node3D:
+func _actor_pivot(patron_id: int) -> Node3D:
 	if _patron_nodes.has(patron_id):
 		return _patron_nodes[patron_id]
 	var pivot := NAVIGABLE_ACTOR_SCRIPT.new() as NavigableActor3D
@@ -1840,23 +2182,16 @@ func _actor_pivot(patron_id: StringName) -> Node3D:
 		1.1 + float(entrance_index) * 1.1
 	)
 	pivot.set_simulation_scale(_world_simulation_scale())
-	if _presentation_prototype:
-		var sprite := _pixel_actor_sprite()
-		sprite.name = "Body"
-		var height_scale: float = PATRON_HEIGHT_SCALE.get(patron_id, 1.0)
-		sprite.scale = Vector3(0.88, height_scale, 1.0)
-		sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size * height_scale
-		pivot.add_child(sprite)
-		pivot.add_child(_actor_shadow())
-	else:
-		var body := MeshInstance3D.new()
-		var capsule := CapsuleMesh.new()
-		capsule.radius = 0.42
-		capsule.height = 1.7
-		body.mesh = capsule
-		body.position = Vector3(0.0, 0.9, 0.0)
-		body.name = "Body"
-		pivot.add_child(body)
+	var body := MeshInstance3D.new()
+	var capsule := CapsuleMesh.new()
+	capsule.radius = 0.42
+	capsule.height = 1.7 * float(PATRON_HEIGHT_SCALE.get(patron_id, 1.0))
+	body.mesh = capsule
+	body.position = Vector3(0.0, capsule.height * 0.5, 0.0)
+	body.name = "Body"
+	body.material_override = _flat_material(PATRON_COLORS.get(patron_id, Color.WHITE), 1.0)
+	_add_avatar_visual(pivot, patron_id, body)
+	pivot.add_child(_actor_shadow())
 	# The vision cone (its radius is the view range) and the Companion ring make
 	# the perception geometry judgeable by eye instead of implied by an arrow.
 	var cone := MeshInstance3D.new()
@@ -1915,7 +2250,15 @@ func _actor_shadow() -> MeshInstance3D:
 	return shadow
 
 
-func _cultist_pivot(cultist_id: StringName) -> Node3D:
+func _add_avatar_visual(actor: Node3D, actor_id: int, body: Node3D) -> void:
+	var visual := AVATAR_MOTION_SCRIPT.new() as AvatarMotionController
+	visual.configure(actor_id)
+	visual.set_simulation_scale(_world_simulation_scale())
+	actor.add_child(visual)
+	visual.add_child(body)
+
+
+func _cultist_pivot(cultist_id: int) -> Node3D:
 	if _cultist_nodes.has(cultist_id):
 		return _cultist_nodes[cultist_id]
 	var pivot := NAVIGABLE_ACTOR_SCRIPT.new() as NavigableActor3D
@@ -1926,7 +2269,7 @@ func _cultist_pivot(cultist_id: StringName) -> Node3D:
 	sprite.name = "Body"
 	sprite.position.y = BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
 	sprite.modulate = CULTIST_COLORS[cultist_id]
-	pivot.add_child(sprite)
+	_add_avatar_visual(pivot, cultist_id, sprite)
 	pivot.add_child(_actor_shadow())
 	var label := Label3D.new()
 	label.name = "Name"
@@ -1965,16 +2308,19 @@ func _refresh_scene(state: Dictionary) -> void:
 	_synchronize_actor_playback()
 	# Revalidation on every session change: a stale target fails and releases.
 	_commands.refresh()
-	var visible_patron_ids: Array[StringName] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
-	for patron_id: StringName in visible_patron_ids:
+	var visible_patron_ids: Array[int] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
+	for patron_id: int in visible_patron_ids:
 		var pivot := _actor_pivot(patron_id)
 		var debug: Dictionary = state["debug_patron_views"][patron_id]
 		var normal: Dictionary = state["normal_patron_views"][patron_id]
 		# A captured Patron is gone; a falling one is still present but sinking.
-		var active: bool = debug["lifecycle"] not in [&"not_arrived", &"captured"]
+		var active: bool = debug["lifecycle"] not in [&"not_arrived", &"captured", &"exited"]
 		pivot.visible = active
 		if not active:
+			(pivot as NavigableActor3D).cancel_navigation()
+			_set_body_collision(pivot as NavigableActor3D, false)
 			continue
+		var is_unconscious: bool = debug["lifecycle"] == &"unconscious"
 		var is_falling: bool = debug["activity"] == &"trapdoor_falling"
 		if is_falling:
 			# The Patron sinks a bounded depth into the pit and is occluded by the
@@ -1982,36 +2328,40 @@ func _refresh_scene(state: Dictionary) -> void:
 			(pivot as NavigableActor3D).cancel_navigation()
 			var fall_ratio: float = clampf(float(state["trapdoor"]["fall_ratio"]), 0.0, 1.0)
 			pivot.position.y = NAVIGATION_FLOOR_Y - fall_ratio * TRAPDOOR_FALL_DEPTH
+		elif debug["activity"] == &"being_dragged":
+			_sync_dragged_body(patron_id, state)
 		else:
+			_set_body_collision(pivot as NavigableActor3D, not is_unconscious and bool(normal.get("interactive", true)))
 			pivot.position.y = NAVIGATION_FLOOR_Y
 			var facing: Vector2 = debug["facing"]
-			_sync_patron_navigation(patron_id, debug)
+			var held_by_knockout: bool = (
+				not state["windup"].is_empty()
+				and state["windup"]["victim_id"] == patron_id
+			)
+			if held_by_knockout:
+				(pivot as NavigableActor3D).cancel_navigation()
+			else:
+				_sync_patron_navigation(patron_id, debug)
 			if not (pivot as NavigableActor3D).is_navigating():
 				pivot.look_at(pivot.position + Vector3(facing.x, 0.0, facing.y), Vector3.UP)
 		var band_color: Color = BAND_COLORS.get(normal["suspicion_band"], Color.WHITE)
-		var body := pivot.get_node("Body")
-		if _presentation_prototype:
-			var sprite := body as Sprite3D
-			var palette: Color = PATRON_COLORS.get(patron_id, Color.WHITE)
-			sprite.modulate = palette.lerp(band_color, 0.2)
-			var height_scale: float = PATRON_HEIGHT_SCALE.get(patron_id, 1.0)
-			var is_unconscious: bool = debug["lifecycle"] == &"unconscious"
-			# The seated toilet phase reads as a lowered, shortened figure; every
-			# other bathroom phase keeps the upright standing pose.
-			var is_seated: bool = debug["activity"] == &"seated_bathroom_use"
-			var standing_feet := BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size * height_scale
-			var pose_height := height_scale
-			var pose_feet := standing_feet
-			if is_unconscious:
-				pose_height = 0.38
-				pose_feet = 0.32
-			elif is_seated:
-				pose_height = height_scale * 0.72
-				pose_feet = standing_feet * 0.72
-			sprite.scale = Vector3(1.25 if is_unconscious else 0.88, pose_height, 1.0)
-			sprite.position.y = pose_feet
+		var body := pivot.get_node("VisualPivot/Body")
+		var patron_body := body as MeshInstance3D
+		var palette: Color = PATRON_COLORS.get(patron_id, Color.WHITE)
+		patron_body.material_override = _flat_material(palette.lerp(band_color, 0.2), 1.0)
+		var is_seated: bool = debug["activity"] == &"seated_bathroom_use"
+		if is_unconscious:
+			patron_body.rotation.z = -PI * 0.5
+			patron_body.position.y = 0.42
+			patron_body.scale = Vector3(1.0, 0.85, 1.0)
+		elif is_seated:
+			patron_body.rotation.z = 0.0
+			patron_body.position.y = 0.62
+			patron_body.scale = Vector3(1.0, 0.72, 1.0)
 		else:
-			(body as MeshInstance3D).material_override = _flat_material(band_color, 1.0)
+			patron_body.rotation.z = 0.0
+			patron_body.position.y = 0.85
+			patron_body.scale = Vector3.ONE
 		var cone := pivot.get_node("VisionCone") as MeshInstance3D
 		cone.material_override = _flat_material(band_color, 0.6)
 		cone.visible = _debug_visible
@@ -2020,11 +2370,24 @@ func _refresh_scene(state: Dictionary) -> void:
 		label.text = String(normal["name"])
 		label.visible = label.text != "???"
 		label.modulate = band_color
+		var visual := pivot.get_node("VisualPivot") as AvatarMotionController
+		var activity := StringName(debug["activity"])
+		var moving := (pivot as NavigableActor3D).is_navigating() or activity == &"being_dragged"
+		var resting := activity in [
+			&"awaiting_drink", &"bathroom_queued", &"waiting_investigation",
+			&"waiting_admission", &"step_aside_hold",
+		]
+		visual.set_context(
+			AvatarMotionController.GAIT_RUN if activity in [&"shock", &"escaping"] else AvatarMotionController.GAIT_WALK,
+			moving, not moving and not resting and not is_falling, is_unconscious or is_falling
+		)
 
-	for cultist_id: StringName in _cultist_nodes:
+	for cultist_id: int in _cultist_nodes:
 		_sync_cultist_navigation(cultist_id)
 	_advance_emotes(0.0)
 	_refresh_trapdoor(state)
+	_refresh_entrance(state)
+	_refresh_prepared_drinks(state)
 	_refresh_bodies()
 	_refresh_events(state)
 	_refresh_cultists(state)
@@ -2033,19 +2396,124 @@ func _refresh_scene(state: Dictionary) -> void:
 	_refresh_character_panels(state)
 
 
-func _sync_patron_navigation(patron_id: StringName, debug: Dictionary) -> void:
+func _sync_dragged_body(patron_id: int, state: Dictionary) -> void:
+	var body := _patron_nodes[patron_id] as NavigableActor3D
+	body.cancel_navigation()
+	_set_body_collision(body, false)
+	var drag: Dictionary = state["drags"].get(patron_id, {})
+	var cultist_id := int(drag.get("cultist_id", ActorIds.NO_ACTOR))
+	if not _cultist_nodes.has(cultist_id):
+		return
+	var cultist := _cultist_nodes[cultist_id] as NavigableActor3D
+	var behind := cultist.global_transform.basis.z
+	behind.y = 0.0
+	if behind.length_squared() < 0.001:
+		behind = Vector3(0.0, 0.0, 1.0)
+	var anchor := cultist.global_position + behind.normalized() * 0.75
+	anchor.y = NAVIGATION_FLOOR_Y
+	body.global_position = anchor
+	body.look_at(cultist.global_position, Vector3.UP)
+	body.rotation.z = 0.0
+	var intake: Vector3 = SMART_OBJECTS[&"tunnel_intake"]["approach"]
+	if cultist.global_position.distance_to(intake) <= 0.85:
+		_session.patron_destination_reached(patron_id)
+
+
+func _set_body_collision(actor: NavigableActor3D, enabled: bool) -> void:
+	actor.collision_layer = 2 if enabled else 0
+	actor.collision_mask = (3 if bool(actor.get_meta("is_cultist", false)) else 1) if enabled else 0
+	actor.navigation_agent.avoidance_enabled = enabled
+
+
+func _refresh_entrance(state: Dictionary) -> void:
+	if not _smart_object_plates.has(&"front_entrance"):
+		return
+	var plate := _smart_object_plates[&"front_entrance"] as MeshInstance3D
+	var waiting_group: Dictionary = {}
+	for group: Dictionary in state.get("arrival_groups", {}).values():
+		if bool(group.get("waiting", false)) and not bool(group.get("missed", false)):
+			waiting_group = group
+			break
+	var admission: Dictionary = state.get("admission", {})
+	var door_open: bool = not admission.is_empty() and admission.get("phase", &"") == &"holding"
+	var needs_attention: bool = not waiting_group.is_empty() and admission.is_empty()
+	var wait_remaining := float(waiting_group.get("wait_remaining", 30.0))
+	var pulse_speed := 7.0 if wait_remaining <= 10.0 else 3.0
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.001 * pulse_speed)
+	plate.visible = needs_attention or not admission.is_empty()
+	plate.scale = Vector3.ONE * (1.0 + (0.10 if needs_attention else 0.04) * pulse)
+	var label := plate.get_node("Name") as Label3D
+	label.text = "KNOCK · ADMIT GROUP" if needs_attention else ("DOOR OPEN" if door_open else "OPENING")
+	label.modulate = Color("f0c96b") if needs_attention else SMART_OBJECT_COLOR
+	var mesh := plate.mesh as CylinderMesh
+	mesh.material = _flat_material(
+		Color("d2a43c") if needs_attention else SMART_OBJECT_COLOR,
+		0.48 + (0.30 * pulse if needs_attention else 0.0)
+	)
+	if needs_attention:
+		var group_id: StringName = waiting_group.get("id", &"")
+		if group_id != _last_knock_group_id:
+			_last_knock_group_id = group_id
+			_entrance_knock_player.play()
+	else:
+		_last_knock_group_id = &""
+	if _entrance_indicator != null:
+		var world_position: Vector3 = SMART_OBJECTS[&"front_entrance"]["approach"]
+		var screen := _camera.unproject_position(world_position)
+		var viewport_size := get_viewport().get_visible_rect().size
+		var offscreen: bool = (
+			_camera.is_position_behind(world_position)
+			or screen.x < 0.0 or screen.y < 0.0
+			or screen.x > viewport_size.x or screen.y > viewport_size.y
+		)
+		_entrance_indicator.visible = needs_attention and offscreen
+		if _entrance_indicator.visible:
+			_entrance_indicator.position = Vector2(
+				8.0 if screen.x < viewport_size.x * 0.5 else viewport_size.x - 160.0,
+				clampf(screen.y, 40.0, viewport_size.y - 190.0)
+			)
+
+
+func _entrance_knock_stream() -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = 22050
+	stream.stereo = false
+	var sample_count := int(stream.mix_rate * 0.34)
+	var samples := PackedByteArray()
+	samples.resize(sample_count * 2)
+	for index in range(sample_count):
+		var time := float(index) / float(stream.mix_rate)
+		var value := 0.0
+		for start: float in [0.0, 0.17]:
+			var local := time - start
+			if local >= 0.0 and local < 0.075:
+				value += sin(local * TAU * 92.0) * exp(-local * 48.0)
+		samples.encode_s16(index * 2, int(clampf(value, -1.0, 1.0) * 12000.0))
+	stream.data = samples
+	return stream
+
+
+func _sync_patron_navigation(patron_id: int, debug: Dictionary) -> void:
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
+	var action: Dictionary = debug.get("behavior", {}).get("action_queue", {}).get("active", {})
+	if action.is_empty():
+		actor.cancel_navigation()
+		_patron_visual_targets.erase(patron_id)
+		return
+	var action_id := int(action["id"])
 	actor.set_speed_multiplier(_patron_speed_multiplier(debug["activity"]))
 	var target := _patron_target(debug)
 	var previous: Vector3 = _patron_visual_targets.get(patron_id, Vector3.INF)
-	if previous.is_equal_approx(target):
+	if previous.is_equal_approx(target) and (
+		actor.active_action_id() == action_id or bool(action["payload"].get("navigation_arrived", true))
+	):
 		return
 	_patron_visual_targets[patron_id] = target
 	if debug["navigation_destination"] in [&"seat", &"drink"]:
-		actor.navigate_path(_next_patron_move_id, _seat_approach_route(target))
+		actor.navigate_path(action_id, _seat_approach_route(target))
 	else:
-		actor.navigate(_next_patron_move_id, target)
-	_next_patron_move_id += 1
+		actor.navigate(action_id, target)
 
 
 func _seat_approach_route(target: Vector3) -> Array[Vector3]:
@@ -2056,11 +2524,22 @@ func _seat_approach_route(target: Vector3) -> Array[Vector3]:
 
 func _patron_target(debug: Dictionary) -> Vector3:
 	var destination: StringName = debug["navigation_destination"]
+	if destination == &"step_aside":
+		return debug["behavior"]["action_queue"]["active"]["payload"]["target"]["position"]
+	if destination == &"step_aside_hold":
+		return debug["behavior"]["hold_position"]
 	if destination in [&"seat", &"drink"] and SEAT_POSITIONS.has(debug["seat"]):
 		var seat: Vector2 = SEAT_POSITIONS[debug["seat"]]
 		return Vector3(seat.x, NAVIGATION_FLOOR_Y, seat.y)
 	match destination:
-		&"entrance", &"front_exit": return Vector3(-20.2, NAVIGATION_FLOOR_Y, 5.0)
+		&"entrance":
+			var entrance_index := maxi(0, ALL_PATRON_IDS.find(int(debug.get("id", ActorIds.NO_ACTOR))))
+			return Vector3(
+				-16.8 - float(entrance_index % 2) * 0.7,
+				NAVIGATION_FLOOR_Y,
+				4.45 + float(entrance_index % 2) * 1.1
+			)
+		&"front_exit": return Vector3(-20.2, NAVIGATION_FLOOR_Y, 5.0)
 		&"bathroom_line": return Vector3(15.5, NAVIGATION_FLOOR_Y, 6.0)
 		# Distinct bathroom stations, west of the toilet and sink fixtures so the
 		# walk stays on the navmesh: mirror at the visible back wall, toilet at the
@@ -2088,10 +2567,10 @@ func _patron_speed_multiplier(activity: StringName) -> float:
 	return 1.0
 
 
-func _on_patron_destination_reached(patron_id: StringName, _action_id: int) -> void:
+func _on_patron_destination_reached(patron_id: int, action_id: int) -> void:
 	if not _movement_report_path.is_empty():
 		return
-	_session.patron_destination_reached(patron_id)
+	_session.patron_destination_reached(patron_id, action_id)
 	if _latest_state.is_empty() or not _latest_state["debug_patron_views"].has(patron_id):
 		return
 	var debug: Dictionary = _latest_state["debug_patron_views"][patron_id]
@@ -2099,24 +2578,37 @@ func _on_patron_destination_reached(patron_id: StringName, _action_id: int) -> v
 		(_patron_nodes[patron_id] as Node3D).visible = false
 
 
-func _on_patron_navigation_stuck(patron_id: StringName, _action_id: int) -> void:
+func _on_patron_navigation_stuck(patron_id: int, action_id: int) -> void:
 	if not _patron_visual_targets.has(patron_id):
 		return
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
 	var target: Vector3 = _patron_visual_targets[patron_id]
 	var navigation_map := get_world_3d().navigation_map
 	var retry_target := NavigationServer3D.map_get_closest_point(navigation_map, target)
-	actor.navigate(_next_patron_move_id, retry_target)
-	_next_patron_move_id += 1
+	actor.navigate(action_id, retry_target)
 
 
 func _refresh_cultists(_state: Dictionary) -> void:
 	if not _presentation_prototype:
 		return
-	for cultist_id: StringName in PLAYABLE_CULTIST_IDS:
+	for cultist_id: int in PLAYABLE_CULTIST_IDS:
 		var pivot := _cultist_pivot(cultist_id)
+		var knocked_out: bool = _state["incapacitated_cultists"].has(cultist_id)
+		var actor := pivot as NavigableActor3D
+		if knocked_out:
+			actor.cancel_navigation()
+		_set_body_collision(actor, not knocked_out)
+		var sprite := pivot.get_node("VisualPivot/Body") as Sprite3D
+		sprite.rotation.z = -PI * 0.5 if knocked_out else 0.0
+		sprite.position.y = 0.42 if knocked_out else BARTENDER_FEET_FROM_CANVAS_CENTER_PIXELS * sprite.pixel_size
 		var label := pivot.get_node("Name") as Label3D
 		label.text = _cultist_display_name(cultist_id)
+		var visual := pivot.get_node("VisualPivot") as AvatarMotionController
+		var activity := StringName(_state["cultists"][cultist_id]["activity"])
+		visual.set_context(
+			AvatarMotionController.GAIT_WALK, actor.is_navigating(),
+			not actor.is_navigating() and activity != &"idle", knocked_out
+		)
 
 
 func _refresh_bodies() -> void:
@@ -2157,7 +2649,7 @@ func _render_visual(event: Dictionary, state: Dictionary) -> void:
 	var source: Vector2 = event["position"]
 	_event_root.add_child(_build_box(source, Vector3(0.5, 1.7, 0.5), 0.85, color))
 	_event_root.add_child(_marker_label(source, 2.1, "SEEN" if seen else "UNSEEN", color))
-	for patron_id: StringName in recipients:
+	for patron_id: int in recipients:
 		if not state["debug_patron_views"].has(patron_id):
 			continue
 		var target: Vector2 = state["debug_patron_views"][patron_id]["position"]
@@ -2174,7 +2666,7 @@ func _render_auditory(event: Dictionary, state: Dictionary) -> void:
 	var adjacency: Dictionary = PATRON_PERCEPTION_SCRIPT.ROOM_ADJACENCY
 	for reached_room: StringName in adjacency.get(source_room, []):
 		_event_root.add_child(_room_overlay(reached_room, SOUND_COLOR, 0.14, 0.14))
-	for patron_id: StringName in event["recipients"]:
+	for patron_id: int in event["recipients"]:
 		if not state["debug_patron_views"].has(patron_id):
 			continue
 		var at: Vector2 = state["debug_patron_views"][patron_id]["position"]
@@ -2236,56 +2728,65 @@ func _set_scenario(scenario_id: String) -> void:
 	_staged_bodies.clear()
 	_events.clear()
 	_session.restart_night(707)
-	if scenario_id == "full_cast":
+	if scenario_id == "night_start":
+		pass
+	elif scenario_id == "full_cast":
 		_stage_full_cast()
 	elif scenario_id == "drink_cycle":
-		_session.advance(95.0)
+		# This explicit checkpoint admits the first group so it opens with a real
+		# Order, while the normal Night still requires the player to answer every knock.
+		_session.advance(3.1)
+		_session.begin_admit_group(1)
+		_session.advance(15.0)
 	elif scenario_id == "front_exit":
-		_session.advance(421.0)
+		_stage_full_cast()
+		_session.advance(421.0 - float(_session.snapshot()["simulated_seconds"]))
 	elif scenario_id == "service_wing":
-		_session.advance(92.0)
+		_stage_first_group(92.0)
 	elif scenario_id == "cultist_states":
-		_session.advance(95.0)
+		_stage_first_group(95.0)
 	else:
 		_session.advance(100.0)
 	match scenario_id:
+		"night_start":
+			_scenario_trace = "A fresh 18-minute Night begins at 8:00 PM with no staged progress."
 		"drink_cycle":
-			_scenario_trace = "Mara has an open Order. Prepare a Drink at the bar, then serve it to complete the core service cycle."
+			_scenario_trace = "The first group is inside with an open Order. Prepare a Drink at the bar, then serve it to complete the core service cycle."
 		"full_cast":
-			_scenario_trace = "All three Cultists and all eight authored Patrons share the full-scale room. Distinct palettes, names, visible activities, and Suspicion bands come from one GameSession snapshot."
+			_scenario_trace = "Both playable Cultists and all eight authored Patrons share the full-scale room. Distinct palettes, names, visible activities, and Suspicion bands come from one GameSession snapshot."
 		"service_wing":
-			_session.debug_force_bathroom(&"patron_june")
+			_session.debug_force_bathroom(4)
 			_session.advance(2.1)
 			_scenario_trace = "The hallway preserves the proven east-side route. The bathroom shows its standing zone, seated fixture, and Trapdoor; the curtained Tunnel Intake remains a separate threshold."
 		"front_exit":
-			_session.report_patron_stimulus(&"patron_vincent", &"drink_dosed_seen")
+			_session.report_patron_stimulus(10, &"drink_dosed_seen")
 			_session.advance(2.2)
 			_scenario_trace = "The seven-metre front approach ends at the street doors. Vincent's visible Escape intention occupies the same front-exit coordinates used by GameSession."
 		"cultist_states":
-			_session.begin_knockout(&"cultist_01", &"patron_june")
-			_session.begin_conversation(&"cultist_02", &"patron_mara")
-			_session.prepare_drugged_drink(&"patron_mara", &"cultist_03")
+			_session.begin_knockout(1, 4)
+			_session.begin_conversation(2, 5)
+			_session.prepare_drugged_drink(5, 3)
 			_scenario_trace = "The public snapshot labels three simultaneous observable states: knockout wind-up, conversation, and Drugged Drink preparation."
 		"line_of_sight":
-			_record_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(0.0, 0.0))
-			_record_event(&"unexplained_collapse_seen", &"visual", &"main_hall", &"cultist_01", Vector2(-18.0, 6.0))
+			_record_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(0.0, 0.0))
+			_record_event(&"unexplained_collapse_seen", &"visual", &"main_hall", 1, Vector2(-18.0, 6.0))
 			_scenario_trace = "Drag at the bar is inside the facing cone: SEEN (+50). A collapse behind the pair falls outside the cone: UNSEEN, no line."
 		"room_hearing":
-			_record_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02", Vector2(0.0, 0.0))
-			_record_event(&"knockout_heard", &"auditory", &"bathroom", &"cultist_02", Vector2(18.0, 6.0))
+			_record_event(&"knockout_heard", &"auditory", &"main_hall", 2, Vector2(0.0, 0.0))
+			_record_event(&"knockout_heard", &"auditory", &"bathroom", 2, Vector2(18.0, 6.0))
 			_scenario_trace = "Main-hall knockout fills the hall and reaches the pair (+25). The bathroom knockout fills only bathroom + hallway and never reaches them."
 		"unattended_body":
-			_stage_body(&"body_a", &"hallway", Vector2(14.0, 6.0))
-			_stage_body(&"body_b", &"main_hall", Vector2(0.0, 8.0))
+			_stage_body(1001, &"hallway", Vector2(14.0, 6.0))
+			_stage_body(1002, &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "Two bodies past their grace add +5 each every 5 s to every active Patron. Press play to watch it climb."
 		"companion":
-			_session.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
+			_session.report_patron_stimulus(4, &"drink_dosed_seen")
 			_session.advance(10.0)
 			_scenario_trace = "June is pinned at Maximum. Press play: Mara drifts up to +5 every 10 s and settles at 100 → Escape."
 		"debug_trace":
-			_record_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02", Vector2(0.0, 0.0))
-			_stage_body(&"body_01", &"main_hall", Vector2(0.0, 8.0))
+			_record_event(&"knockout_heard", &"auditory", &"main_hall", 2, Vector2(0.0, 0.0))
+			_stage_body(1001, &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
 	_session.set_physical_patron_navigation_enabled(true)
@@ -2313,7 +2814,7 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"toggle_plain_pause", {})
 		"escape_lock":
 			_submit_playback(&"select_speed", {"value": 4.0})
-			_session.report_patron_stimulus(&"patron_clara", &"drink_dosed_seen")
+			_session.report_patron_stimulus(11, &"drink_dosed_seen")
 			_session.advance(0.2)
 			_playback.synchronize()
 			_refresh_hud(_session.snapshot())
@@ -2327,14 +2828,12 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"select_speed", {"value": 2.0})
 		"speed_4":
 			_submit_playback(&"select_speed", {"value": 4.0})
-		"reduced_motion":
-			_reduced_motion = true
-			_refresh_hud(_session.snapshot())
-			_bottom_hud.activate(&"settings_menu")
 		"offscreen":
 			_stage_emote_states()
 			_set_camera_view(SERVICE_CAMERA_POSITION, SERVICE_CAMERA_TARGET)
 			_advance_emotes(0.0)
+		"controls":
+			_open_controls(true)
 		"pause":
 			_open_pause_menu()
 		"pause_from_plain":
@@ -2342,11 +2841,11 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"toggle_plain_pause", {})
 			_open_pause_menu()
 		"queue":
-			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+			_issue_command(&"talk", _actor_target(4), false)
 			_issue_command(
 				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
 			)
-			_issue_command(&"prepare_drink", _smart_target(&"bar_work_position"), true)
+			_issue_command(&"make_wine", _smart_target(&"bar_work_position"), true)
 		"long_queue":
 			for index in range(10):
 				_issue_command(
@@ -2355,9 +2854,9 @@ func _preview_hud_state(state_id: String) -> void:
 					index > 0
 				)
 		"move_talk_chain":
-			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+			_issue_command(&"talk", _actor_target(4), false)
 		"chain_unrelated":
-			_issue_command(&"talk", _actor_target(&"patron_june"), false)
+			_issue_command(&"talk", _actor_target(4), false)
 			_issue_command(
 				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
 			)
@@ -2381,15 +2880,26 @@ func _is_automated_run() -> bool:
 
 func _stage_full_cast() -> void:
 	var configured: Dictionary = {}
-	for checkpoint in [91.1, 181.1, 301.1, 421.1]:
-		_session.advance(checkpoint - float(_session.snapshot()["simulated_seconds"]))
-		for patron_id: StringName in _session.snapshot()["debug_patron_views"]:
+	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
+		_session.advance(arrival - float(_session.snapshot()["simulated_seconds"]))
+		_session.begin_admit_group(1)
+		_session.advance(4.2)
+		_session.command_action_state(&"admit_group", 1, &"front_entrance")
+		for patron_id: int in _session.snapshot()["debug_patron_views"]:
 			var patron: Dictionary = _session.snapshot()["debug_patron_views"][patron_id]
 			if patron["lifecycle"] != &"active" or configured.has(patron_id):
 				continue
-			_session.serve_patron_order(patron_id, &"cultist_01")
 			_session.debug_set_patron_drink_state(patron_id, 0, 5, 0, 0)
 			configured[patron_id] = true
+
+
+func _stage_first_group(target_seconds: float) -> void:
+	_session.advance(3.1)
+	_session.begin_admit_group(1)
+	_session.advance(4.2)
+	_session.command_action_state(&"admit_group", 1, &"front_entrance")
+	if float(_session.snapshot()["simulated_seconds"]) < target_seconds:
+		_session.advance(target_seconds - float(_session.snapshot()["simulated_seconds"]))
 
 
 func _update_camera_for_scenario() -> void:
@@ -2415,12 +2925,12 @@ func _set_camera_view(position: Vector3, target: Vector3) -> void:
 	_camera.look_at(_camera_target, Vector3.UP)
 
 
-func _record_event(stimulus: StringName, channel: StringName, room: StringName, source_id: StringName, position: Vector2) -> void:
+func _record_event(stimulus: StringName, channel: StringName, room: StringName, source_id: Variant, position: Vector2) -> void:
 	var recipients: Array = _session.report_danger_event(stimulus, channel, room, source_id, position)
 	_events.append({"channel": channel, "room": room, "position": position, "recipients": recipients})
 
 
-func _stage_body(body_id: StringName, room: StringName, position: Vector2) -> void:
+func _stage_body(body_id: int, room: StringName, position: Vector2) -> void:
 	_session.add_unattended_body(body_id, room, position)
 	_staged_bodies.append({"id": body_id, "position": position})
 
@@ -2430,6 +2940,15 @@ func _stage_body(body_id: StringName, room: StringName, position: Vector2) -> vo
 func _build_hud() -> void:
 	var canvas := CanvasLayer.new()
 	add_child(canvas)
+	_entrance_indicator = Button.new()
+	_entrance_indicator.text = "KNOCK · FRONT DOOR"
+	_entrance_indicator.visible = false
+	_entrance_indicator.custom_minimum_size = Vector2(152.0, 32.0)
+	_entrance_indicator.pressed.connect(_focus_camera_on_entrance)
+	canvas.add_child(_entrance_indicator)
+	_entrance_knock_player = AudioStreamPlayer.new()
+	_entrance_knock_player.stream = _entrance_knock_stream()
+	add_child(_entrance_knock_player)
 
 	_hover_panel = PanelContainer.new()
 	_hover_panel.visible = false
@@ -2515,10 +3034,12 @@ func _world_simulation_scale() -> float:
 
 func _synchronize_actor_playback() -> void:
 	var scale := _world_simulation_scale()
-	for cultist_id: StringName in _cultist_nodes:
+	for cultist_id: int in _cultist_nodes:
 		(_cultist_nodes[cultist_id] as NavigableActor3D).set_simulation_scale(scale)
-	for patron_id: StringName in _patron_nodes:
+		(_cultist_nodes[cultist_id].get_node("VisualPivot") as AvatarMotionController).set_simulation_scale(scale)
+	for patron_id: int in _patron_nodes:
 		(_patron_nodes[patron_id] as NavigableActor3D).set_simulation_scale(scale)
+		(_patron_nodes[patron_id].get_node("VisualPivot") as AvatarMotionController).set_simulation_scale(scale)
 
 
 func _refresh_hud(state: Dictionary) -> void:
@@ -2550,6 +3071,10 @@ func _hud_view(state: Dictionary) -> Dictionary:
 	var displayed_captures := int(results["captures"])
 	if _hud_preview_outcome == &"victory":
 		displayed_captures = quota
+	var displayed_cause := _displayed_outcome_cause(results)
+	var displayed_methods := _capture_method_rows(results)
+	if _hud_preview_outcome == &"victory":
+		displayed_methods = _maximum_capture_method_rows()
 	return {
 		"selected_cultist": _selected_cultist_view(state),
 		"action_tiles": _action_tile_views(),
@@ -2558,10 +3083,21 @@ func _hud_view(state: Dictionary) -> Dictionary:
 		"outcome": {
 			"visible": bool(results["visible"]) or not _hud_preview_outcome.is_empty(),
 			"kind": _outcome_kind(state, results),
-			"cause": _outcome_cause(state, results),
+			"cause": _outcome_cause(displayed_cause),
+			"outcome_cause": displayed_cause,
 			"captures": displayed_captures,
 			"capture_quota": quota,
 			"progress_ratio": clampf(float(displayed_captures) / float(quota), 0.0, 1.0),
+			"capture_methods": displayed_methods,
+			"revenue": int(results["revenue"]),
+			"tips": int(results["tips"]),
+			"orders_served": int(results["orders_served"]),
+			"orders_cancelled": int(results["orders_cancelled"]),
+			"orders_missed": int(results["orders_missed"]),
+			"groups_missed_at_door": int(results.get("groups_missed_at_door", 0)),
+			"suspicion_band": String(results["peak_suspicion_band"]),
+			"interceptions": int(results["interceptions"]),
+			"unattended_body_seconds": float(results["unattended_body_seconds"]),
 		},
 		"developer": {
 			"visible": _debug_visible,
@@ -2571,7 +3107,10 @@ func _hud_view(state: Dictionary) -> Dictionary:
 		"settings": {
 			"emote_labels": _emote_labels,
 			"ui_scale": _emote_ui_scale,
-			"reduced_motion": _reduced_motion,
+		},
+		"controls": {
+			"visible": _controls_visible,
+			"dismiss_label": "Begin the Night" if _controls_first_run else "Close",
 		},
 		"feedback": {"text": _movement_feedback, "serial": _feedback_serial},
 		"pause_menu_open": bool(_playback.snapshot()["pause_menu_open"]),
@@ -2605,7 +3144,7 @@ func _selected_cultist_view(state: Dictionary) -> Dictionary:
 		return {}
 	var cultist: Dictionary = state["cultists"][_selected_cultist_id]
 	var status := ""
-	if not _inspected_patron_id.is_empty():
+	if _inspected_patron_id != ActorIds.NO_ACTOR:
 		var patron: Dictionary = _session.patron_view(
 			_inspected_patron_id, _selected_cultist_id
 		)
@@ -2636,6 +3175,9 @@ func _action_tile_views() -> Array[Dictionary]:
 
 
 func _action_tile_view(action: Dictionary, is_active: bool) -> Dictionary:
+	var action_progress: Variant = action.get("progress_ratio", null)
+	if action_progress == null and is_active:
+		action_progress = _active_navigation_ratio(int(action["id"]))
 	return {
 		"id": int(action["id"]),
 		"icon": action.get("icon", action["command"]),
@@ -2643,7 +3185,7 @@ func _action_tile_view(action: Dictionary, is_active: bool) -> Dictionary:
 		"target_label": action["target_label"],
 		"active": is_active,
 		"cancellable": bool(action["cancellable"]),
-		"progress_ratio": _active_navigation_ratio(int(action["id"])) if is_active else null,
+		"progress_ratio": action_progress if is_active else null,
 		"chain_id": int(action.get("chain_id", -1)),
 		"chain_index": int(action.get("chain_index", 0)),
 		"chain_size": int(action.get("chain_size", 1)),
@@ -2664,15 +3206,15 @@ func _active_navigation_ratio(action_id: int) -> Variant:
 
 
 func _inspected_patron_view(state: Dictionary) -> Dictionary:
-	if _inspected_patron_id.is_empty():
+	if _inspected_patron_id == ActorIds.NO_ACTOR:
 		return {}
 	if not _patron_is_present(state, _inspected_patron_id):
-		_inspected_patron_id = &""
+		_inspected_patron_id = ActorIds.NO_ACTOR
 		return {}
 	var view: Dictionary = _session.patron_view(_inspected_patron_id, _selected_cultist_id)
 	if view.is_empty():
 		return {}
-	return {
+	var result := {
 		"id": _inspected_patron_id,
 		"name": view["name"],
 		"portrait": BARTENDER_TEXTURE,
@@ -2682,14 +3224,22 @@ func _inspected_patron_view(state: Dictionary) -> Dictionary:
 		"suspicion_band": view["suspicion_band"],
 		"intoxication": view["intoxication"],
 		"order_state": _humanize(view["order_state"]),
+		"ordered_drink": String(view["ordered_drink"]).capitalize(),
 	}
+	if _debug_visible:
+		var debug: Dictionary = state["debug_patron_views"][_inspected_patron_id]
+		result["debug_action_queue"] = debug["behavior"]["action_queue"]
+		result["debug_planner_paused"] = debug["behavior"]["planner_paused"]
+	return result
 
 
 # Presence comes from the sanitized Emote view, so no player-facing decision
 # reads the debug views.
-func _patron_is_present(state: Dictionary, patron_id: StringName) -> bool:
+func _patron_is_present(state: Dictionary, patron_id: int) -> bool:
 	var emotes: Dictionary = state["emote_view"]
-	return emotes.has(patron_id) and bool(emotes[patron_id]["present"])
+	return emotes.has(patron_id) and bool(emotes[patron_id]["present"]) and bool(
+		state["normal_patron_views"].get(patron_id, {}).get("interactive", true)
+	)
 
 
 func _scenario_entries() -> Array[Dictionary]:
@@ -2711,12 +3261,45 @@ func _outcome_kind(_state: Dictionary, results: Dictionary) -> StringName:
 			return &"failed"
 
 
-func _outcome_cause(state: Dictionary, results: Dictionary) -> String:
-	if _outcome_kind(state, results) == &"exposed":
-		return "A Patron reached the street while at Maximum Suspicion. The speakeasy is exposed."
-	if _outcome_kind(state, results) == &"victory":
-		return "The Night closed with the Capture quota met and no alarm raised."
-	return "The Night closed short of the Capture quota."
+func _displayed_outcome_cause(results: Dictionary) -> StringName:
+	match _hud_preview_outcome:
+		&"victory":
+			return &"quota_met"
+		&"failed":
+			return &"quota_shortfall"
+		&"exposed":
+			return &"maximum_suspicion_escape"
+	return StringName(results.get("outcome_cause", &""))
+
+
+func _outcome_cause(cause: StringName) -> String:
+	match cause:
+		&"quota_met":
+			return "The Night closed with the Capture quota met and no alarm raised."
+		&"maximum_suspicion_escape":
+			return "A Patron reached the street while at Maximum Suspicion. The speakeasy is exposed."
+		&"quota_shortfall":
+			return "The Night closed short of the Capture quota."
+	return ""
+
+
+# Captures grouped by their causal method, in the canonical order, with the
+# zero-total methods dropped so the Outcome report shows only what happened.
+func _capture_method_rows(results: Dictionary) -> Array:
+	var counts: Dictionary = results.get("capture_methods", {})
+	var rows: Array = []
+	for entry: Array in CAPTURE_METHOD_LABELS:
+		var count := int(counts.get(entry[0], 0))
+		if count > 0:
+			rows.append({"label": entry[1], "count": count})
+	return rows
+
+
+func _maximum_capture_method_rows() -> Array:
+	var rows: Array = []
+	for entry: Array in CAPTURE_METHOD_LABELS:
+		rows.append({"label": entry[1], "count": 1})
+	return rows
 
 
 # --- Player intent -----------------------------------------------------------
@@ -2734,11 +3317,18 @@ func _on_hud_intent(kind: StringName, payload: Dictionary) -> void:
 		&"remove_pending_action":
 			_on_pending_removed(int(payload["action_id"]))
 		&"close_inspected_patron":
-			_inspected_patron_id = &""
+			_inspected_patron_id = ActorIds.NO_ACTOR
 			_refresh_hud(_session.snapshot())
 		&"open_pause_menu":
 			_close_context_menu()
 			_submit_playback(&"open_pause_menu", {})
+		&"open_controls":
+			_open_controls(false)
+		&"close_controls":
+			_close_controls()
+		&"reset_controls_card":
+			_reset_controls_card()
+			_refresh_hud(_session.snapshot())
 		&"dismiss_pause_menu":
 			_submit_playback(&"dismiss_pause_menu", {})
 		&"resume_night":
@@ -2754,16 +3344,29 @@ func _on_hud_intent(kind: StringName, payload: Dictionary) -> void:
 		&"set_debug_visible":
 			_debug_visible = bool(payload["enabled"])
 			_refresh(_session.snapshot())
+		&"debug_cancel_patron_action":
+			_session.debug_cancel_patron_action(
+				int(payload["patron_id"]), int(payload["action_id"]),
+				(_patron_nodes[int(payload["patron_id"])] as Node3D).global_position
+			)
+			_refresh(_session.snapshot())
+		&"debug_force_patron_action":
+			_session.debug_force_complete_patron_action(int(payload["patron_id"]))
+			_refresh(_session.snapshot())
+		&"debug_clear_patron_queue":
+			_session.debug_clear_patron_queue(int(payload["patron_id"]))
+			_refresh(_session.snapshot())
+		&"debug_pause_patron_planner":
+			_session.debug_set_patron_planner_paused(
+				int(payload["patron_id"]), bool(payload["paused"])
+			)
+			_refresh_hud(_session.snapshot())
 		&"set_emote_labels":
 			_set_emote_accessibility(bool(payload["enabled"]), _emote_ui_scale)
 			_save_settings()
 			_refresh_hud(_session.snapshot())
 		&"set_ui_scale":
 			_set_emote_accessibility(_emote_labels, float(payload["scale"]))
-			_save_settings()
-			_refresh_hud(_session.snapshot())
-		&"set_reduced_motion":
-			_reduced_motion = bool(payload["enabled"])
 			_save_settings()
 			_refresh_hud(_session.snapshot())
 
@@ -2816,6 +3419,38 @@ func _open_pause_menu() -> void:
 	_submit_playback(&"open_pause_menu", {})
 
 
+# Shows the first-run Controls Card before any Night time advances. It stays
+# armed until the player dismisses it, once per installation.
+func _arm_first_run_controls() -> void:
+	if _controls_seen:
+		return
+	_open_controls(true)
+
+
+func _open_controls(first_run: bool) -> void:
+	_controls_first_run = first_run
+	_controls_visible = true
+	_refresh_hud(_session.snapshot())
+
+
+# Closing the first-run card starts the held Night and records that the guide was
+# seen; reopening it from the Pause Menu leaves that record and the Night alone.
+func _close_controls() -> void:
+	if _controls_first_run and not _controls_seen:
+		_controls_seen = true
+		_save_settings()
+	_controls_visible = false
+	_controls_first_run = false
+	_refresh_hud(_session.snapshot())
+
+
+# Developer reset: re-arm the blocking card for the next Night start.
+func _reset_controls_card() -> void:
+	_controls_seen = false
+	_save_settings()
+	_movement_feedback = "Controls Card reset. It appears on the next Night start."
+
+
 # Cancelling the active tile cascades through its whole Action Chain, so a
 # Generated Move and its dependent Patron Action leave together.
 func _cancel_active_action(_action_id: int = -1) -> void:
@@ -2844,14 +3479,14 @@ func _load_settings() -> void:
 	_emote_ui_scale = clampf(
 		float(config.get_value("hud", "ui_scale", _emote_ui_scale)), 0.75, 1.5
 	)
-	_reduced_motion = bool(config.get_value("hud", "reduced_motion", _reduced_motion))
+	_controls_seen = bool(config.get_value("hud", "controls_seen", _controls_seen))
 
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("hud", "emote_labels", _emote_labels)
 	config.set_value("hud", "ui_scale", _emote_ui_scale)
-	config.set_value("hud", "reduced_motion", _reduced_motion)
+	config.set_value("hud", "controls_seen", _controls_seen)
 	config.save(SETTINGS_PATH)
 
 
@@ -2860,7 +3495,15 @@ func _save_settings() -> void:
 func _refresh_character_panels(state: Dictionary) -> void:
 	if _hover_panel == null:
 		return
-	if _hovered_actor_id.is_empty():
+	if not _hovered_drink_id.is_empty():
+		var drink: Dictionary = _session.prepared_drink(_hovered_drink_id)
+		if drink.is_empty():
+			_hover_panel.visible = false
+			return
+		_hover_label.text = _drink_summary_text(drink)
+		_hover_panel.visible = true
+		return
+	if _hovered_actor_id == ActorIds.NO_ACTOR:
 		_hover_panel.visible = false
 		return
 	if _hovered_is_cultist and state["cultists"].has(_hovered_actor_id):
@@ -2874,7 +3517,7 @@ func _refresh_character_panels(state: Dictionary) -> void:
 		_hover_panel.visible = false
 
 
-func _cultist_summary_text(cultist_id: StringName, state: Dictionary) -> String:
+func _cultist_summary_text(cultist_id: int, state: Dictionary) -> String:
 	var cultist: Dictionary = state["cultists"][cultist_id]
 	var queues: Dictionary = _commands.snapshot()["cultists"]
 	var queue_count: int = int(queues[cultist_id]["action_count"]) if queues.has(cultist_id) else 0
@@ -2883,11 +3526,20 @@ func _cultist_summary_text(cultist_id: StringName, state: Dictionary) -> String:
 	]
 
 
-func _patron_summary_text(patron_id: StringName, state: Dictionary) -> String:
+func _patron_summary_text(patron_id: int, state: Dictionary) -> String:
 	var view: Dictionary = _session.patron_view(patron_id, _selected_cultist_id)
+	var order_text := _humanize(view["order_state"])
+	if not String(view["ordered_drink"]).is_empty():
+		order_text += " · %s" % String(view["ordered_drink"]).capitalize()
 	return "[color=#e2a56e][b]%s[/b][/color]\n%s · %s\nMood  %s\nIntoxication  %s\nOrder  %s" % [
 		view["name"], view["visible_activity"], view["suspicion_band"],
-		_humanize(view["mood"]), view["intoxication"], _humanize(view["order_state"]),
+		_humanize(view["mood"]), view["intoxication"], order_text,
+	]
+
+
+func _drink_summary_text(drink: Dictionary) -> String:
+	return "[color=#d9c56f][b]%s[/b][/color]\nStatus  %s" % [
+		String(drink["type"]).capitalize(), "Drugged" if bool(drink["drugged"]) else "Prepared",
 	]
 
 
@@ -2899,9 +3551,9 @@ func _debug_trace_text(state: Dictionary) -> String:
 	text += "\n[color=#8fc4af][b]%s[/b][/color]  %s" % [
 		_cultist_display_name(_selected_cultist_id), _movement_feedback,
 	]
-	for patron_id: StringName in PATRON_IDS:
+	for patron_id: int in PATRON_IDS:
 		var debug: Dictionary = state["debug_patron_views"][patron_id]
-		var name := String(patron_id).trim_prefix("patron_").capitalize()
+		var name := str(patron_id).trim_prefix("patron_").capitalize()
 		text += "\n[color=#c9b6da]%s[/color]  %s  ·  %.0f/100  ·  %s" % [
 			name, _humanize(debug["room"]), debug["suspicion"], _humanize(debug["suspicion_cause"]),
 		]
@@ -2922,123 +3574,29 @@ func _humanize(value: Variant) -> String:
 
 
 func _command_line_value(prefix: String, fallback: String = "") -> String:
-	for argument in OS.get_cmdline_user_args():
-		if argument.begins_with(prefix):
-			return argument.trim_prefix(prefix)
-	return fallback
+	return _review_harness.value(prefix, fallback)
 
 
 func _command_line_flag(flag: String) -> bool:
-	return flag in OS.get_cmdline_user_args()
+	return _review_harness.flag(flag)
 
 
 func _capture_after_render(capture_path: String, wait_frames: int = 6) -> void:
-	if _emote_play_scale >= 0.0:
-		# Let the cast reach their seats first, then force the readable states so
-		# the captured frame carries live bubbles rather than a frozen setup.
-		await _wait_for_patrons(wait_frames)
-		_stage_emote_states()
-		for _settle in 60:
-			await get_tree().process_frame
-		await RenderingServer.frame_post_draw
-		var staged_path := ProjectSettings.globalize_path(capture_path)
-		DirAccess.make_dir_recursive_absolute(staged_path.get_base_dir())
-		var staged := get_viewport().get_texture().get_image().save_png(staged_path)
-		await get_tree().process_frame
-		get_tree().quit(staged)
-		return
-	for _frame in wait_frames:
-		await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-	var absolute_path := ProjectSettings.globalize_path(capture_path)
-	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
-	var result := get_viewport().get_texture().get_image().save_png(absolute_path)
-	await get_tree().process_frame
-	get_tree().quit(result)
+	await _review_harness.capture_after_render(
+		self, capture_path, wait_frames, _emote_play_scale
+	)
 
 
 func _write_validation_report(report_path: String) -> void:
-	await get_tree().process_frame
-	var validation_session = GAME_SESSION_SCRIPT.new()
-	validation_session.start_night(707)
-	validation_session.advance(421.0)
-	var full_cast: Dictionary = validation_session.snapshot()
-
-	var state_session = GAME_SESSION_SCRIPT.new()
-	state_session.start_night(707)
-	state_session.advance(95.0)
-	state_session.begin_knockout(&"cultist_01", &"patron_june")
-	state_session.begin_conversation(&"cultist_02", &"patron_mara")
-	state_session.prepare_drugged_drink(&"patron_mara", &"cultist_03")
-	var cultists: Dictionary = state_session.snapshot()["cultists"]
-
-	var scale_session = GAME_SESSION_SCRIPT.new()
-	scale_session.start_night(707)
-	var four_x_supported: bool = scale_session.set_time_scale(4.0)
-	scale_session.advance(1.0)
-	four_x_supported = four_x_supported and is_equal_approx(
-		float(scale_session.snapshot()["simulated_seconds"]), 4.0
-	)
-
-	var source_hash := FileAccess.get_sha256(VISUAL_SPIKE_SOURCE)
-	var main_floor := find_child("MainRoomFloor", true, false) as MeshInstance3D
-	var front_floor := find_child("FrontFloor", true, false) as MeshInstance3D
-	var checks := {
-		"visual_spike_source_unchanged": source_hash == VISUAL_SPIKE_EXPECTED_SHA256,
-		"all_five_spaces_present": (
-			find_child("MainRoomFloor", true, false) != null
-			and find_child("FrontFloor", true, false) != null
-			and find_child("HallwayFloor", true, false) != null
-			and find_child("BathroomFloor", true, false) != null
-			and find_child("IntakeThreshold", true, false) != null
-		),
-		"three_cultists_exposed": full_cast["cultists"].size() == 3,
-		"eight_patrons_exposed": full_cast["debug_patron_views"].size() == 8,
-		"eight_distinct_patron_palettes": PATRON_COLORS.size() == 8,
-		"active_cultist_states_readable": (
-			cultists[&"cultist_01"]["activity"] == &"knockout_windup"
-			and cultists[&"cultist_02"]["activity"] == &"conversing"
-			and cultists[&"cultist_03"]["activity"] == &"preparing_drugged_drink"
-		),
-		"four_x_simulation_supported": four_x_supported,
-		"entrance_is_left_of_main_hall": _floor_is_left_of(front_floor, main_floor),
-		"hallway_has_no_foreground_wall": find_child("HallwayNorthWall", true, false) == null,
-		"main_floor_tiles_are_square": _floor_tiles_are_square(main_floor),
-		"minus_and_equals_zoom_without_shift": _keyboard_zoom_keys_work(),
-		"trackpad_pans_in_all_directions": _trackpad_pans_in_all_directions(),
-		"command_trackpad_zoom_is_smooth": _command_trackpad_zoom_is_smooth(),
-		"camera_pan_is_fast_and_eased": _camera_pan_is_fast_and_eased(),
-		"service_area_has_no_loose_labels": _service_area_labels_are_correct(),
-		"service_and_front_buttons_use_consistent_camera": _service_and_front_buttons_use_consistent_camera(),
-	}
-	var report := {
-		"passed": not checks.values().has(false),
-		"slice": "ticket16_migrated_presentation",
-		"checks": checks,
-		"observed": {
-			"visual_spike_sha256": source_hash,
-			"cultist_count": full_cast["cultists"].size(),
-			"patron_count": full_cast["debug_patron_views"].size(),
-			"main_hall_metres": [27.0, 12.0],
-			"front_metres": [7.0, 14.0],
-			"hallway_metres": [4.0, 6.0],
-			"bathroom_metres": [4.0, 6.0],
-			"cultist_visible_height_metres": CULTIST_VISIBLE_HEIGHT_METRES,
-			"main_floor_tile_metres": _floor_tile_metres(main_floor),
-			"camera_pan_speed_metres_per_second": CAMERA_PAN_SPEED,
-			"camera_pan_acceleration_metres_per_second_squared": CAMERA_PAN_ACCELERATION,
-			"camera_pan_deceleration_metres_per_second_squared": CAMERA_PAN_DECELERATION,
-			"service_area_labels": _service_area_labels(),
-		},
-	}
-	var absolute_path := ProjectSettings.globalize_path(report_path)
-	DirAccess.make_dir_recursive_absolute(absolute_path.get_base_dir())
-	var file := FileAccess.open(absolute_path, FileAccess.WRITE)
-	if file == null:
-		get_tree().quit(1)
-		return
-	file.store_string(JSON.stringify(report, "  "))
-	get_tree().quit(0 if report["passed"] else 1)
+	await _review_harness.write_validation_report(self, report_path, {
+		"visual_spike_source": VISUAL_SPIKE_SOURCE,
+		"visual_spike_expected_sha256": VISUAL_SPIKE_EXPECTED_SHA256,
+		"patron_palette_count": PATRON_COLORS.size(),
+		"cultist_visible_height_metres": CULTIST_VISIBLE_HEIGHT_METRES,
+		"camera_pan_speed": CAMERA_PAN_SPEED,
+		"camera_pan_acceleration": CAMERA_PAN_ACCELERATION,
+		"camera_pan_deceleration": CAMERA_PAN_DECELERATION,
+	})
 
 
 func _floor_is_left_of(left_floor: MeshInstance3D, right_floor: MeshInstance3D) -> bool:

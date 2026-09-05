@@ -5,7 +5,7 @@ signal snapshot_changed(snapshot: Dictionary)
 
 const ORDINARY_VISIT_SESSION_SCRIPT := preload("res://scripts/simulation/ordinary_visit_session.gd")
 const SUPPORTED_TIME_SCALES: Array[float] = [0.0, 1.0, 2.0, 4.0]
-const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
+const CULTIST_IDS: Array[int] = ActorIds.CULTIST_IDS
 const PREPARATION_END_SECONDS := 60.0
 const CLOSING_START_SECONDS := 960.0
 const NIGHT_END_SECONDS := 1080.0
@@ -87,7 +87,7 @@ func time_control() -> Dictionary:
 
 
 func report_patron_stimulus(
-		patron_id: StringName,
+		patron_id: int,
 		stimulus: StringName,
 		observer_is_max_drunk: bool = false
 ) -> bool:
@@ -108,7 +108,7 @@ func report_danger_event(
 		stimulus: StringName,
 		channel: StringName,
 		source_room: StringName,
-		source_id: StringName = &"",
+		source_id: Variant = ActorIds.NO_ACTOR,
 		source_position := Vector2.ZERO
 ) -> Array:
 	var perceived: Array = _ordinary_visits.report_danger_event(
@@ -118,32 +118,32 @@ func report_danger_event(
 		_record(&"danger_event_perceived", {
 			"stimulus": stimulus,
 			"channel": channel,
-			"source": source_id if not source_id.is_empty() else source_room,
+			"source": source_id if source_id != ActorIds.NO_ACTOR else source_room,
 			"recipients": perceived,
 		})
 		_emit_snapshot()
 	return perceived
 
 
-func add_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+func add_unattended_body(body_id: int, room: StringName, position := Vector2.ZERO) -> void:
 	_ordinary_visits.add_unattended_body(body_id, room, position)
 	_record(&"unattended_body_added", {"body_id": body_id, "room": room})
 	_emit_snapshot()
 
 
-func set_unattended_body_state(body_id: StringName, state: StringName) -> void:
+func set_unattended_body_state(body_id: int, state: StringName) -> void:
 	_ordinary_visits.set_unattended_body_state(body_id, state)
 	_record(&"unattended_body_state_changed", {"body_id": body_id, "state": state})
 	_emit_snapshot()
 
 
-func drop_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+func drop_unattended_body(body_id: int, room: StringName, position := Vector2.ZERO) -> void:
 	_ordinary_visits.drop_unattended_body(body_id, room, position)
 	_record(&"unattended_body_dropped", {"body_id": body_id, "room": room})
 	_emit_snapshot()
 
 
-func remove_unattended_body(body_id: StringName) -> void:
+func remove_unattended_body(body_id: int) -> void:
 	_ordinary_visits.remove_unattended_body(body_id)
 	_record(&"unattended_body_removed", {"body_id": body_id})
 	_emit_snapshot()
@@ -160,7 +160,7 @@ func activate_trapdoor() -> bool:
 	return armed
 
 
-func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
+func begin_intercept(patron_id: int, cultist_id: int) -> bool:
 	var started: bool = _ordinary_visits.begin_intercept(patron_id, cultist_id)
 	if started:
 		_record(&"intercept_started", {"patron_id": patron_id, "cultist_id": cultist_id})
@@ -168,7 +168,7 @@ func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
 	return started
 
 
-func debug_force_bathroom(patron_id: StringName) -> bool:
+func debug_force_bathroom(patron_id: int) -> bool:
 	var forced: bool = _ordinary_visits.debug_force_bathroom(patron_id)
 	if forced:
 		_record(&"debug_bathroom_forced", {"patron_id": patron_id})
@@ -181,28 +181,28 @@ func character_actions():
 
 
 func request_patron_step_aside(
-	patron_id: StringName, position: Vector3, incident_id: StringName
+	patron_id: int, position: Vector3, incident_id: StringName
 ) -> bool:
 	return _ordinary_visits.request_patron_step_aside(patron_id, position, incident_id)
 
 
-func debug_cancel_patron_action(patron_id: StringName, action_id: int, current_position: Variant = null) -> bool:
+func debug_cancel_patron_action(patron_id: int, action_id: int, current_position: Variant = null) -> bool:
 	return _ordinary_visits.debug_cancel_patron_action(patron_id, action_id, current_position)
 
 
-func debug_force_complete_patron_action(patron_id: StringName) -> bool:
+func debug_force_complete_patron_action(patron_id: int) -> bool:
 	return _ordinary_visits.debug_force_complete_patron_action(patron_id)
 
 
-func debug_clear_patron_queue(patron_id: StringName) -> bool:
+func debug_clear_patron_queue(patron_id: int) -> bool:
 	return _ordinary_visits.debug_clear_patron_queue(patron_id)
 
 
-func debug_set_patron_planner_paused(patron_id: StringName, paused: bool) -> bool:
+func debug_set_patron_planner_paused(patron_id: int, paused: bool) -> bool:
 	return _ordinary_visits.debug_set_patron_planner_paused(patron_id, paused)
 
 
-func serve_patron_order(patron_id: StringName, cultist_id: StringName) -> bool:
+func serve_patron_order(patron_id: int, cultist_id: int) -> bool:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return false
 	var served: bool = _ordinary_visits.serve_patron_order(patron_id)
@@ -215,7 +215,7 @@ func serve_patron_order(patron_id: StringName, cultist_id: StringName) -> bool:
 	return served
 
 
-func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = false) -> Dictionary:
+func offer_drink(patron_id: int, cultist_id: int, drugged: bool = false) -> Dictionary:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return {"accepted": false, "reason": &"invalid_cultist", "roll": -1.0}
 	var result: Dictionary = _ordinary_visits.offer_drink(patron_id, cultist_id, drugged)
@@ -224,7 +224,7 @@ func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = 
 
 
 func debug_set_patron_drink_state(
-	patron_id: StringName,
+	patron_id: int,
 	intoxication: int,
 	overdrink_limit: int,
 	excess_drinks: int = 0,
@@ -235,11 +235,11 @@ func debug_set_patron_drink_state(
 	)
 
 
-func debug_change_patron_satisfaction(patron_id: StringName, amount: float) -> bool:
+func debug_change_patron_satisfaction(patron_id: int, amount: float) -> bool:
 	return _ordinary_visits.debug_change_patron_satisfaction(patron_id, amount)
 
 
-func debug_force_finish_drink(patron_id: StringName) -> bool:
+func debug_force_finish_drink(patron_id: int) -> bool:
 	return _ordinary_visits.debug_force_finish_drink(patron_id)
 
 
@@ -247,18 +247,18 @@ func set_physical_patron_navigation_enabled(enabled: bool) -> void:
 	_ordinary_visits.set_physical_navigation_enabled(enabled)
 
 
-func patron_destination_reached(patron_id: StringName, action_id: int = -1) -> bool:
+func patron_destination_reached(patron_id: int, action_id: int = -1) -> bool:
 	var reached := _ordinary_visits.patron_destination_reached(patron_id, action_id)
 	if reached:
 		_emit_snapshot()
 	return reached
 
 
-func patron_view(patron_id: StringName, selected_cultist_id: StringName) -> Dictionary:
+func patron_view(patron_id: int, selected_cultist_id: int) -> Dictionary:
 	return _ordinary_visits.normal_patron_view(patron_id, selected_cultist_id)
 
 
-func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
+func prepare_drugged_drink(patron_id: int, cultist_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var prepared: bool = _ordinary_visits.prepare_drugged_drink(patron_id, cultist_id)
@@ -268,7 +268,7 @@ func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> boo
 	return prepared
 
 
-func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
+func attempt_rescue_persuasion(cultist_id: int) -> bool:
 	var chance := _ordinary_visits.rescue_persuasion_chance(cultist_id)
 	var attempted: bool = _ordinary_visits.attempt_rescue_persuasion(cultist_id)
 	if attempted:
@@ -277,11 +277,11 @@ func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
 	return attempted
 
 
-func rescue_persuasion_chance(cultist_id: StringName) -> float:
+func rescue_persuasion_chance(cultist_id: int) -> float:
 	return _ordinary_visits.rescue_persuasion_chance(cultist_id)
 
 
-func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
+func begin_knockout(cultist_id: int, victim_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var started: bool = _ordinary_visits.begin_knockout(cultist_id, victim_id)
@@ -291,7 +291,7 @@ func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
 	return started
 
 
-func cancel_knockout(cultist_id: StringName) -> bool:
+func cancel_knockout(cultist_id: int) -> bool:
 	var cancelled: bool = _ordinary_visits.cancel_knockout(cultist_id)
 	if cancelled:
 		_record(&"knockout_windup_cancelled", {"cultist_id": cultist_id})
@@ -299,19 +299,19 @@ func cancel_knockout(cultist_id: StringName) -> bool:
 	return cancelled
 
 
-func knockout_chance(victim_id: StringName) -> float:
+func knockout_chance(victim_id: int) -> float:
 	return _ordinary_visits.knockout_chance(victim_id)
 
 
-func cultist_is_incapacitated(cultist_id: StringName) -> bool:
+func cultist_is_incapacitated(cultist_id: int) -> bool:
 	return _ordinary_visits.cultist_is_incapacitated(cultist_id)
 
 
-func cultist_incapacitated_remaining(cultist_id: StringName) -> float:
+func cultist_incapacitated_remaining(cultist_id: int) -> float:
 	return _ordinary_visits.cultist_incapacitated_remaining(cultist_id)
 
 
-func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
+func begin_stir(helper_id: int, target_id: Variant) -> bool:
 	if _phase == &"results":
 		return false
 	var started := _ordinary_visits.begin_stir(helper_id, target_id)
@@ -321,7 +321,7 @@ func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
 	return started
 
 
-func cancel_stir(helper_id: StringName) -> bool:
+func cancel_stir(helper_id: int) -> bool:
 	var cancelled := _ordinary_visits.cancel_stir(helper_id)
 	if cancelled:
 		_record(&"stir_cancelled", {"cultist_id": helper_id})
@@ -330,12 +330,12 @@ func cancel_stir(helper_id: StringName) -> bool:
 
 
 func command_action_state(
-		command: StringName, cultist_id: StringName, target_id: StringName
+		command: StringName, cultist_id: int, target_id: Variant
 ) -> StringName:
 	return _ordinary_visits.command_action_state(command, cultist_id, target_id)
 
 
-func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
+func pick_up_body(cultist_id: int, victim_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var picked: bool = _ordinary_visits.pick_up_body(cultist_id, victim_id)
@@ -345,7 +345,7 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 	return picked
 
 
-func drop_body(cultist_id: StringName) -> bool:
+func drop_body(cultist_id: int) -> bool:
 	var dropped: bool = _ordinary_visits.drop_body(cultist_id)
 	if dropped:
 		_record(&"body_dropped", {"cultist_id": cultist_id})
@@ -353,11 +353,11 @@ func drop_body(cultist_id: StringName) -> bool:
 	return dropped
 
 
-func is_cultist_busy(cultist_id: StringName) -> bool:
+func is_cultist_busy(cultist_id: int) -> bool:
 	return _ordinary_visits.is_cultist_busy(cultist_id)
 
 
-func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
+func offer_cigarette(cultist_id: int, patron_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var offered: bool = _ordinary_visits.offer_cigarette(cultist_id, patron_id)
@@ -367,7 +367,7 @@ func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
 	return offered
 
 
-func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
+func begin_conversation(cultist_id: int, patron_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var started: bool = _ordinary_visits.begin_conversation(cultist_id, patron_id)
@@ -377,7 +377,7 @@ func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
 	return started
 
 
-func end_conversation(cultist_id: StringName) -> bool:
+func end_conversation(cultist_id: int) -> bool:
 	var ended: bool = _ordinary_visits.end_conversation(cultist_id)
 	if ended:
 		_record(&"conversation_ended", {"cultist_id": cultist_id})
@@ -385,7 +385,7 @@ func end_conversation(cultist_id: StringName) -> bool:
 	return ended
 
 
-func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> bool:
+func begin_friendship_capture(cultist_id: int, patron_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var started: bool = _ordinary_visits.begin_friendship_capture(cultist_id, patron_id)
@@ -395,15 +395,15 @@ func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> 
 	return started
 
 
-func friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+func friendship_value(patron_id: int, cultist_id: int) -> float:
 	return _ordinary_visits.friendship_value(patron_id, cultist_id)
 
 
-func friendship_band(patron_id: StringName, cultist_id: StringName) -> String:
+func friendship_band(patron_id: int, cultist_id: int) -> String:
 	return _ordinary_visits.friendship_band(patron_id, cultist_id)
 
 
-func stay_behind_chance(patron_id: StringName) -> float:
+func stay_behind_chance(patron_id: int) -> float:
 	return _ordinary_visits.stay_behind_chance(patron_id)
 
 
@@ -416,7 +416,7 @@ func stay_behind_chance(patron_id: StringName) -> float:
 func emote_view(cultist_commands: Dictionary = {}) -> Dictionary:
 	var visit: Dictionary = _ordinary_visits.snapshot()
 	var rows: Dictionary = {}
-	for patron_id: StringName in visit["debug_views"]:
+	for patron_id: int in visit["debug_views"]:
 		var row: Dictionary = _ordinary_visits.patron_emote_row(patron_id)
 		if not row.is_empty():
 			rows[patron_id] = row
@@ -450,8 +450,8 @@ func emote_view(cultist_commands: Dictionary = {}) -> Dictionary:
 
 func command_availability(
 		command: StringName,
-		cultist_id: StringName,
-		target_id: StringName
+		cultist_id: int,
+		target_id: Variant
 ) -> Dictionary:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return {"visible": false, "available": false, "reason": &"night_over", "detail": ""}
@@ -459,14 +459,14 @@ func command_availability(
 
 
 func serve_drink_availability(
-		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+		patron_id: int, cultist_id: int, drink_id: StringName
 ) -> Dictionary:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return {"visible": false, "available": false, "reason": &"night_over", "detail": ""}
 	return _ordinary_visits.serve_drink_availability(patron_id, cultist_id, drink_id)
 
 
-func prepare_drink(cultist_id: StringName) -> bool:
+func prepare_drink(cultist_id: int) -> bool:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return false
 	var prepared: bool = _ordinary_visits.prepare_drink(cultist_id)
@@ -476,7 +476,7 @@ func prepare_drink(cultist_id: StringName) -> bool:
 	return prepared
 
 
-func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
+func make_drink(drink_type: StringName, cultist_id: int) -> bool:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return false
 	var made: bool = _ordinary_visits.make_drink(drink_type, cultist_id)
@@ -486,7 +486,7 @@ func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
 	return made
 
 
-func reserve_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func reserve_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _ordinary_visits.reserve_prepared_drink(drink_id, cultist_id)
 
 
@@ -494,11 +494,11 @@ func prepared_drink(drink_id: StringName) -> Dictionary:
 	return _ordinary_visits.prepared_drink(drink_id)
 
 
-func pick_up_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func pick_up_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _ordinary_visits.pick_up_prepared_drink(drink_id, cultist_id)
 
 
-func release_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func release_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _ordinary_visits.release_prepared_drink(drink_id, cultist_id)
 
 
@@ -506,39 +506,39 @@ func dispose_prepared_drink(drink_id: StringName) -> Dictionary:
 	return _ordinary_visits.dispose_prepared_drink(drink_id)
 
 
-func drug_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func drug_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _ordinary_visits.drug_prepared_drink(drink_id, cultist_id)
 
 
 func serve_prepared_drink(
-		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+		patron_id: int, cultist_id: int, drink_id: StringName
 ) -> Dictionary:
 	if _phase == &"results" or cultist_id not in CULTIST_IDS:
 		return {"served": false, "accepted": false, "reason": &"invalid_cultist"}
 	return _ordinary_visits.serve_prepared_drink(patron_id, cultist_id, drink_id)
 
 
-func begin_admit_group(cultist_id: StringName) -> bool:
+func begin_admit_group(cultist_id: int) -> bool:
 	return _ordinary_visits.begin_admit_group(cultist_id, _ordinary_visits.waiting_group_id())
 
 
-func cancel_admit_group(cultist_id: StringName) -> bool:
+func cancel_admit_group(cultist_id: int) -> bool:
 	return _ordinary_visits.cancel_admit_group(cultist_id)
 
 
-func begin_ask_to_leave(cultist_id: StringName, patron_id: StringName) -> bool:
+func begin_ask_to_leave(cultist_id: int, patron_id: int) -> bool:
 	return _ordinary_visits.begin_ask_to_leave(cultist_id, patron_id)
 
 
-func cancel_ask_to_leave(cultist_id: StringName) -> bool:
+func cancel_ask_to_leave(cultist_id: int) -> bool:
 	return _ordinary_visits.cancel_ask_to_leave(cultist_id)
 
 
-func carries_prepared_drink(cultist_id: StringName) -> bool:
+func carries_prepared_drink(cultist_id: int) -> bool:
 	return _ordinary_visits.carries_prepared_drink(cultist_id)
 
 
-func prepare_drugged_drink_for_next_order(cultist_id: StringName) -> bool:
+func prepare_drugged_drink_for_next_order(cultist_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var prepared: bool = _ordinary_visits.prepare_drugged_drink_for_next_order(cultist_id)
@@ -548,7 +548,7 @@ func prepare_drugged_drink_for_next_order(cultist_id: StringName) -> bool:
 	return prepared
 
 
-func end_cultist_engagement(cultist_id: StringName) -> bool:
+func end_cultist_engagement(cultist_id: int) -> bool:
 	var ended: bool = _ordinary_visits.end_cultist_engagement(cultist_id)
 	if ended:
 		_record(&"conversation_ended", {"cultist_id": cultist_id})
@@ -556,7 +556,7 @@ func end_cultist_engagement(cultist_id: StringName) -> bool:
 	return ended
 
 
-func conversation_is_active(cultist_id: StringName, patron_id: StringName) -> bool:
+func conversation_is_active(cultist_id: int, patron_id: int) -> bool:
 	return _ordinary_visits.conversation_is_active(cultist_id, patron_id)
 
 
@@ -711,7 +711,7 @@ func _patron_summary(visit: Dictionary) -> Dictionary:
 	var arrived_count := 0
 	var active_count := 0
 	var departure_count := 0
-	for patron_id: StringName in visit["debug_views"]:
+	for patron_id: int in visit["debug_views"]:
 		var lifecycle: StringName = visit["debug_views"][patron_id]["lifecycle"]
 		if lifecycle != &"not_arrived":
 			arrived_count += 1
@@ -763,7 +763,7 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 			"last_target_id": &"",
 		}
 	for event: Dictionary in visit["safe_autonomy"]["events"]:
-		var cultist_id: StringName = event["cultist_id"]
+		var cultist_id: int = event["cultist_id"]
 		if not summaries.has(cultist_id):
 			continue
 		summaries[cultist_id]["activity"] = (
@@ -782,24 +782,24 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 		_set_active_cultist_summary(
 			summaries, windup["cultist_id"], &"knockout_windup", windup["victim_id"]
 		)
-	for target_id: StringName in visit["incapacitated_cultists"]:
+	for target_id: Variant in visit["incapacitated_cultists"]:
 		_set_active_cultist_summary(summaries, target_id, &"knocked_out", &"")
-	for target_id: StringName in visit["stirs"]:
+	for target_id: Variant in visit["stirs"]:
 		_set_active_cultist_summary(
 			summaries, visit["stirs"][target_id]["helper_id"], &"stirring", target_id
 		)
-	for victim_id: StringName in visit["drags"]:
+	for victim_id: int in visit["drags"]:
 		var drag: Dictionary = visit["drags"][victim_id]
 		var activity: StringName = &"body_pickup" if drag["phase"] == &"pickup" else &"dragging"
 		_set_active_cultist_summary(summaries, drag["cultist_id"], activity, victim_id)
-	for cultist_id: StringName in visit["conversations"]:
+	for cultist_id: int in visit["conversations"]:
 		_set_active_cultist_summary(
 			summaries, cultist_id, &"conversing", visit["conversations"][cultist_id]
 		)
-	for patron_id: StringName in visit["follows"]:
+	for patron_id: int in visit["follows"]:
 		var follow: Dictionary = visit["follows"][patron_id]
 		_set_active_cultist_summary(summaries, follow["cultist_id"], &"leading", patron_id)
-	for victim_id: StringName in visit["collapses"]:
+	for victim_id: int in visit["collapses"]:
 		var collapse: Dictionary = visit["collapses"][victim_id]
 		if collapse["phase"] == &"persuading":
 			_set_active_cultist_summary(
@@ -818,9 +818,9 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 
 func _set_active_cultist_summary(
 		summaries: Dictionary,
-		cultist_id: StringName,
+		cultist_id: int,
 		activity: StringName,
-		target_id: StringName
+		target_id: Variant
 ) -> void:
 	if not summaries.has(cultist_id):
 		return
@@ -855,9 +855,9 @@ func _results(orders: Dictionary, patrons: Dictionary, captures: int, visit: Dic
 func _reservation_count(visit: Dictionary) -> int:
 	var count := 0
 	for seat_id: StringName in visit["seat_owners"]:
-		if not StringName(visit["seat_owners"][seat_id]).is_empty():
+		if int(visit["seat_owners"][seat_id]) != ActorIds.NO_ACTOR:
 			count += 1
-	if not StringName(visit["bathroom_owner"]).is_empty():
+	if int(visit["bathroom_owner"]) != ActorIds.NO_ACTOR:
 		count += 1
 	return count
 

@@ -37,7 +37,7 @@ func visual_recipients(
 		perceivers: Array
 ) -> Array:
 	var cone_limit := cos(deg_to_rad(VIEW_CONE_HALF_ANGLE_DEGREES))
-	var recipients: Array[StringName] = []
+	var recipients: Array[int] = []
 	for perceiver: Dictionary in perceivers:
 		if perceiver["room"] != source_room:
 			continue
@@ -57,7 +57,7 @@ func visual_recipients(
 # perceivers: Array of {id, room, position, facing}. Returns the ids that hear a
 # sound emitted in source_room through the room-hearing relationship.
 func auditory_recipients(source_room: StringName, perceivers: Array) -> Array:
-	var recipients: Array[StringName] = []
+	var recipients: Array[int] = []
 	for perceiver: Dictionary in perceivers:
 		if hears(perceiver["room"], source_room):
 			recipients.append(perceiver["id"])
@@ -76,20 +76,20 @@ func hears(listener_room: StringName, source_room: StringName) -> bool:
 # BODY_PRESSURE_INTERVAL_SECONDS. Bodies stack. Pressure pauses while a body is
 # supported or dragged; dropping it starts a fresh grace period.
 
-func add_body(body_id: StringName, room: StringName, position: Vector2) -> void:
+func add_body(body_id: int, room: StringName, position: Vector2) -> void:
 	_bodies[body_id] = _fresh_body(room, position)
 
 
-func set_body_state(body_id: StringName, state: StringName) -> void:
+func set_body_state(body_id: int, state: StringName) -> void:
 	if _bodies.has(body_id):
 		_bodies[body_id]["state"] = state
 
 
-func drop_body(body_id: StringName, room: StringName, position: Vector2) -> void:
+func drop_body(body_id: int, room: StringName, position: Vector2) -> void:
 	_bodies[body_id] = _fresh_body(room, position)
 
 
-func remove_body(body_id: StringName) -> void:
+func remove_body(body_id: int) -> void:
 	_bodies.erase(body_id)
 
 
@@ -97,7 +97,7 @@ func remove_body(body_id: StringName) -> void:
 # every body in the unattended state, whether or not its grace has elapsed.
 func unattended_body_count() -> int:
 	var count := 0
-	for body_id: StringName in _bodies:
+	for body_id: int in _bodies:
 		if _bodies[body_id]["state"] == &"unattended":
 			count += 1
 	return count
@@ -107,8 +107,8 @@ func unattended_body_count() -> int:
 # that produced a pressure tick this step; the caller applies one +5 stimulus to
 # every active Patron per returned id (so N stacked bodies appear N times).
 func advance_bodies(delta: float) -> Array:
-	var ticks: Array[StringName] = []
-	for body_id: StringName in _bodies:
+	var ticks: Array[int] = []
+	for body_id: int in _bodies:
 		var body: Dictionary = _bodies[body_id]
 		if body["state"] != &"unattended":
 			continue

@@ -12,14 +12,17 @@ var _revenue: int = 0
 var _tips: int = 0
 
 
-func create_order(patron_id: StringName, requested_at: float) -> StringName:
-	if patron_id.is_empty():
+func create_order(
+		patron_id: int, requested_at: float, drink_type: StringName = &"wine"
+) -> StringName:
+	if patron_id == ActorIds.NO_ACTOR:
 		return &""
 	var order_id := StringName("order_%03d" % _next_order_number)
 	_next_order_number += 1
 	_orders[order_id] = {
 		"id": order_id,
 		"patron_id": patron_id,
+		"drink_type": drink_type,
 		"state": &"open",
 		"requested_at": maxf(requested_at, 0.0),
 		"terminal_at": -1.0,

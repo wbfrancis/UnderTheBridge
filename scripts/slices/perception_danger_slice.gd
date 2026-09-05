@@ -1,7 +1,7 @@
 extends Control
 
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
-const PATRON_IDS: Array[StringName] = [&"patron_june", &"patron_mara"]
+const PATRON_IDS: Array[int] = [4, 5]
 const SCENARIOS := {
 	"line_of_sight": "LINE OF SIGHT",
 	"room_hearing": "ROOM HEARING",
@@ -11,7 +11,7 @@ const SCENARIOS := {
 }
 
 var _session = GAME_SESSION_SCRIPT.new()
-var _selected_patron_id: StringName = &"patron_june"
+var _selected_patron_id: int = 4
 var _scenario: String = "line_of_sight"
 var _scenario_trace: String = ""
 var _debug_visible: bool = false
@@ -271,46 +271,46 @@ func _set_scenario(scenario_id: String) -> void:
 	_scenario = scenario_id
 	_session.restart_night(707)
 	_session.advance(100.0)
-	_selected_patron_id = &"patron_june"
+	_selected_patron_id = 4
 	_debug_visible = scenario_id != "line_of_sight"
 	match scenario_id:
 		"line_of_sight":
-			_session.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(0.0, 0.0))
-			_session.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(-18.0, 6.0))
+			_session.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(0.0, 0.0))
+			_session.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(-18.0, 6.0))
 			_scenario_trace = "Drag at the bar (front, in cone): June & Mara see it, +50.\nDrag behind them (outside the cone): unseen, no change."
 		"room_hearing":
-			_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
-			_session.report_danger_event(&"knockout_heard", &"auditory", &"bathroom", &"cultist_02")
+			_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", 2)
+			_session.report_danger_event(&"knockout_heard", &"auditory", &"bathroom", 2)
 			_scenario_trace = "Knockout in the main hall: both hear it, +25.\nKnockout in the bathroom (not adjacent): unheard."
 		"unattended_body":
-			_session.add_unattended_body(&"body_01", &"hallway", Vector2(14.0, 6.0))
+			_session.add_unattended_body(1001, &"hallway", Vector2(14.0, 6.0))
 			_session.advance(3.0)
-			var before_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var before_tick: float = _debug_for(4)["suspicion"]
 			_session.advance(5.0)
-			var first_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var first_tick: float = _debug_for(4)["suspicion"]
 			_session.advance(5.0)
-			var second_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var second_tick: float = _debug_for(4)["suspicion"]
 			_scenario_trace = "Grace 3.0 s: %.0f (no pressure yet)\n+5.0 s: %.0f (first +5)\n+5.0 s: %.0f (global to every active Patron)" % [before_tick, first_tick, second_tick]
 		"companion":
-			_selected_patron_id = &"patron_mara"
-			_session.report_patron_stimulus(&"patron_june", &"missing_companion_20")
-			_session.report_patron_stimulus(&"patron_june", &"missing_companion_30")
+			_selected_patron_id = 5
+			_session.report_patron_stimulus(4, &"missing_companion_20")
+			_session.report_patron_stimulus(4, &"missing_companion_30")
 			_session.advance(10.0)
-			var step_one: float = _debug_for(&"patron_mara")["suspicion"]
+			var step_one: float = _debug_for(5)["suspicion"]
 			_session.advance(200.0)
-			var settled: Dictionary = _debug_for(&"patron_mara")
+			var settled: Dictionary = _debug_for(5)
 			_scenario_trace = "June pinned at 50 (stable, non-recoverable).\nMara after 10 s: %.0f (up to +5 toward the target)\nMara settled: %.0f (drift stops on equality)" % [
 				step_one, settled["suspicion"],
 			]
 		"debug_trace":
-			_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
-			_session.add_unattended_body(&"body_01", &"main_hall", Vector2(0.0, 8.0))
+			_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", 2)
+			_session.add_unattended_body(1001, &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "The debug view names each perception: source, recipient, resulting cause, and the time it landed."
 	_refresh(_session.snapshot())
 
 
-func _select_patron(patron_id: StringName) -> void:
+func _select_patron(patron_id: int) -> void:
 	_selected_patron_id = patron_id
 	_refresh(_session.snapshot())
 
@@ -363,7 +363,7 @@ func _debug_markup(debug: Dictionary) -> String:
 	return lines
 
 
-func _debug_for(patron_id: StringName) -> Dictionary:
+func _debug_for(patron_id: int) -> Dictionary:
 	return _session.snapshot()["debug_patron_views"][patron_id]
 
 
@@ -377,11 +377,14 @@ func _band_color(band: String) -> Color:
 
 
 func _humanize(value: Variant) -> String:
-	return String(value).replace("_", " ").capitalize()
+	return str(value).replace("_", " ").capitalize()
 
 
-func _actor_name(actor_id: StringName) -> String:
-	return String(actor_id).trim_prefix("patron_").capitalize()
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _companion_names(companions: Array) -> String:
@@ -423,62 +426,62 @@ func _validation_report() -> Dictionary:
 	var sight = GAME_SESSION_SCRIPT.new()
 	sight.start_night(707)
 	sight.advance(100.0)
-	var seen: Array = sight.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(0.0, 0.0))
-	var behind: Array = sight.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", &"cultist_01", Vector2(-18.0, 6.0))
-	var cross: Array = sight.report_danger_event(&"drink_dosed_seen", &"visual", &"bathroom", &"cultist_01", Vector2(0.0, 0.0))
+	var seen: Array = sight.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(0.0, 0.0))
+	var behind: Array = sight.report_danger_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(-18.0, 6.0))
+	var cross: Array = sight.report_danger_event(&"drink_dosed_seen", &"visual", &"bathroom", 1, Vector2(0.0, 0.0))
 
 	# Room hearing: same room heard, non-adjacent room unheard.
 	var hearing = GAME_SESSION_SCRIPT.new()
 	hearing.start_night(707)
 	hearing.advance(100.0)
-	var heard: Array = hearing.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
-	var unheard: Array = hearing.report_danger_event(&"knockout_heard", &"auditory", &"bathroom", &"cultist_02")
+	var heard: Array = hearing.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", 2)
+	var unheard: Array = hearing.report_danger_event(&"knockout_heard", &"auditory", &"bathroom", 2)
 
 	# Unattended Body: grace, then global +5 per interval per body; pause on support.
 	var body = GAME_SESSION_SCRIPT.new()
 	body.start_night(707)
 	body.advance(100.0)
-	body.add_unattended_body(&"body_a", &"hallway", Vector2(14.0, 6.0))
-	body.add_unattended_body(&"body_b", &"main_hall", Vector2(0.0, 8.0))
+	body.add_unattended_body(1001, &"hallway", Vector2(14.0, 6.0))
+	body.add_unattended_body(1002, &"main_hall", Vector2(0.0, 8.0))
 	body.advance(3.0)
-	var body_grace: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var body_grace: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
 	body.advance(5.0)
-	var body_first: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
-	var body_mara: float = body.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"]
-	body.set_unattended_body_state(&"body_a", &"supported")
+	var body_first: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
+	var body_mara: float = body.snapshot()["debug_patron_views"][5]["suspicion"]
+	body.set_unattended_body_state(1001, &"supported")
 	body.advance(5.0)
-	var body_supported: float = body.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var body_supported: float = body.snapshot()["debug_patron_views"][4]["suspicion"]
 
 	# Companion influence: drift up toward a stable sub-maximum neighbour, stopping on
 	# equality. (Reaching 100 sends a Patron to Escape, which the capture-chain slice covers.)
 	var companion = GAME_SESSION_SCRIPT.new()
 	companion.start_night(707)
 	companion.advance(100.0)
-	companion.report_patron_stimulus(&"patron_june", &"missing_companion_20")
-	companion.report_patron_stimulus(&"patron_june", &"missing_companion_30")
+	companion.report_patron_stimulus(4, &"missing_companion_20")
+	companion.report_patron_stimulus(4, &"missing_companion_30")
 	companion.advance(10.0)
-	var companion_first: float = companion.snapshot()["debug_patron_views"][&"patron_mara"]["suspicion"]
+	var companion_first: float = companion.snapshot()["debug_patron_views"][5]["suspicion"]
 	companion.advance(200.0)
-	var companion_debug: Dictionary = companion.snapshot()["debug_patron_views"][&"patron_mara"]
+	var companion_debug: Dictionary = companion.snapshot()["debug_patron_views"][5]
 
 	# Debug trace: names source, recipient, resulting cause, and timing.
 	var trace_session = GAME_SESSION_SCRIPT.new()
 	trace_session.start_night(707)
 	trace_session.advance(100.0)
-	trace_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"cultist_02")
-	var trace_debug: Dictionary = trace_session.snapshot()["debug_patron_views"][&"patron_june"]
-	var trace_normal: Dictionary = trace_session.snapshot()["normal_patron_views"][&"patron_june"]
+	trace_session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", 2)
+	var trace_debug: Dictionary = trace_session.snapshot()["debug_patron_views"][4]
+	var trace_normal: Dictionary = trace_session.snapshot()["normal_patron_views"][4]
 	var trace_entry: Dictionary = trace_debug["recent_perceptions"][-1] if not trace_debug["recent_perceptions"].is_empty() else {}
 
 	var checks := {
-		"visual_requires_facing_and_same_room": (&"patron_june" in seen) and behind.is_empty() and cross.is_empty(),
-		"sound_uses_room_relationship": (&"patron_june" in heard) and unheard.is_empty(),
+		"visual_requires_facing_and_same_room": (4 in seen) and behind.is_empty() and cross.is_empty(),
+		"sound_uses_room_relationship": (4 in heard) and unheard.is_empty(),
 		"body_pressure_after_grace_is_global": body_grace == 0.0 and body_first == 10.0 and body_mara == 10.0,
 		"body_pressure_pauses_when_supported": body_supported == 15.0,
 		"companion_drifts_up_and_settles": companion_first == 5.0 and companion_debug["suspicion"] == 50.0 and companion_debug["suspicion_cause"] == &"companion_influence",
 		"debug_trace_is_complete": not trace_entry.is_empty()
-			and trace_entry["source"] == &"cultist_02"
-			and trace_entry["recipient"] == &"patron_june"
+			and trace_entry["source"] == 2
+			and trace_entry["recipient"] == 4
 			and trace_entry["cause"] == &"general_danger"
 			and trace_entry.has("at")
 			and not trace_normal.has("recent_perceptions"),

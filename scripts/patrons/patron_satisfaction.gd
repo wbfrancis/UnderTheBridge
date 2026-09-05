@@ -32,8 +32,8 @@ func change(amount: float, cause: StringName) -> float:
 	return applied
 
 
-func complete_talk(cultist_id: StringName) -> bool:
-	if cultist_id.is_empty() or _rewarded_talk_partners.has(cultist_id):
+func complete_talk(cultist_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or _rewarded_talk_partners.has(cultist_id):
 		return false
 	_rewarded_talk_partners[cultist_id] = true
 	change(5.0, &"first_talk")

@@ -21,9 +21,9 @@ func test_bands_and_tip_multipliers_cover_the_full_range() -> void:
 
 func test_each_cultist_can_award_the_first_talk_bonus_once() -> void:
 	var satisfaction = SATISFACTION_SCRIPT.new()
-	assert_true(satisfaction.complete_talk(&"cultist_01"))
-	assert_false(satisfaction.complete_talk(&"cultist_01"))
-	assert_true(satisfaction.complete_talk(&"cultist_02"))
+	assert_true(satisfaction.complete_talk(1))
+	assert_false(satisfaction.complete_talk(1))
+	assert_true(satisfaction.complete_talk(2))
 	assert_eq(satisfaction.value(), 85.0)
 
 

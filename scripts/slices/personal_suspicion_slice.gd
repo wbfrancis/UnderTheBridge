@@ -1,7 +1,7 @@
 extends Control
 
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
-const PATRON_IDS: Array[StringName] = [&"patron_june", &"patron_mara", &"patron_elias"]
+const PATRON_IDS: Array[int] = [4, 5, 6]
 const SCENARIOS := {
 	"independent": "INDEPENDENT BANDS",
 	"soft_recovery": "SOFT RECOVERY",
@@ -11,7 +11,7 @@ const SCENARIOS := {
 }
 
 var _session = GAME_SESSION_SCRIPT.new()
-var _selected_patron_id: StringName = &"patron_june"
+var _selected_patron_id: int = 4
 var _scenario: String = "independent"
 var _scenario_trace: String = ""
 var _debug_visible: bool = false
@@ -299,41 +299,41 @@ func _set_scenario(scenario_id: String) -> void:
 	_scenario = scenario_id
 	_session.restart_night(707)
 	_session.advance(190.0)
-	_selected_patron_id = &"patron_june"
+	_selected_patron_id = 4
 	_debug_visible = scenario_id != "independent"
 	match scenario_id:
 		"independent":
-			_session.report_patron_stimulus(&"patron_june", &"cancelled_order")
-			_session.report_patron_stimulus(&"patron_june", &"cancelled_order")
+			_session.report_patron_stimulus(4, &"cancelled_order")
+			_session.report_patron_stimulus(4, &"cancelled_order")
 			_scenario_trace = "June: 0 + 15 + 15 = Uneasy\nMara: no observation = Calm\nElias: no observation = Calm"
 		"soft_recovery":
-			_session.report_patron_stimulus(&"patron_june", &"cancelled_order")
-			_session.report_patron_stimulus(&"patron_june", &"cancelled_order")
+			_session.report_patron_stimulus(4, &"cancelled_order")
+			_session.report_patron_stimulus(4, &"cancelled_order")
 			_session.advance(29.9)
-			var before_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var before_tick: float = _debug_for(4)["suspicion"]
 			_session.advance(0.1)
-			var first_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var first_tick: float = _debug_for(4)["suspicion"]
 			_session.advance(10.0)
-			var second_tick: float = _debug_for(&"patron_june")["suspicion"]
+			var second_tick: float = _debug_for(4)["suspicion"]
 			_scenario_trace = "Quiet 29.9s: %.0f (no early recovery)\nQuiet 30.0s: %.0f (first −5)\nQuiet 40.0s: %.0f (next −5)" % [before_tick, first_tick, second_tick]
 		"hard_evidence":
-			_selected_patron_id = &"patron_mara"
-			_session.report_patron_stimulus(&"patron_mara", &"drink_dosed_seen")
+			_selected_patron_id = 5
+			_session.report_patron_stimulus(5, &"drink_dosed_seen")
 			_session.advance(120.0)
 			_scenario_trace = "Mara sees a dosed drink → Hard Evidence\nSuspicion sets to Maximum immediately\n120 quiet seconds later: still 100 → Escape"
 		"max_drunk":
-			_session.report_patron_stimulus(&"patron_june", &"knockout_witnessed", true)
+			_session.report_patron_stimulus(4, &"knockout_witnessed", true)
 			_session.advance(30.0)
-			_session.report_patron_stimulus(&"patron_june", &"trapdoor_capture_witnessed", true)
+			_session.report_patron_stimulus(4, &"trapdoor_capture_witnessed", true)
 			_scenario_trace = "Max Drunk sees Hard Evidence: +25\n30 quiet seconds: −5\nSees different Hard Evidence: +25\nTwo downgrades total → recoverable 45"
 		"maximum_selection":
-			_session.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
-			_session.report_patron_stimulus(&"patron_mara", &"missing_companion_40")
+			_session.report_patron_stimulus(4, &"drink_dosed_seen")
+			_session.report_patron_stimulus(5, &"missing_companion_40")
 			_scenario_trace = "June: Hard Evidence → Maximum → Escape\nMara: Missing Companion at 40s → Maximum → Investigation\nMaximum response follows the classified cause"
 	_refresh(_session.snapshot())
 
 
-func _select_patron(patron_id: StringName) -> void:
+func _select_patron(patron_id: int) -> void:
 	_selected_patron_id = patron_id
 	_refresh(_session.snapshot())
 
@@ -393,7 +393,7 @@ func _debug_markup(debug: Dictionary) -> String:
 	]
 
 
-func _debug_for(patron_id: StringName) -> Dictionary:
+func _debug_for(patron_id: int) -> Dictionary:
 	return _session.snapshot()["debug_patron_views"][patron_id]
 
 
@@ -407,11 +407,14 @@ func _band_color(band: String) -> Color:
 
 
 func _humanize(value: Variant) -> String:
-	return String(value).replace("_", " ").capitalize()
+	return str(value).replace("_", " ").capitalize()
 
 
-func _actor_name(actor_id: StringName) -> String:
-	return String(actor_id).trim_prefix("patron_").capitalize()
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _companion_names(companions: Array) -> String:
@@ -452,50 +455,50 @@ func _validation_report() -> Dictionary:
 	var independent = GAME_SESSION_SCRIPT.new()
 	independent.start_night(707)
 	independent.advance(190.0)
-	independent.report_patron_stimulus(&"patron_june", &"cancelled_order")
-	independent.report_patron_stimulus(&"patron_june", &"cancelled_order")
+	independent.report_patron_stimulus(4, &"cancelled_order")
+	independent.report_patron_stimulus(4, &"cancelled_order")
 	var independent_state: Dictionary = independent.snapshot()
 
 	var recovery = GAME_SESSION_SCRIPT.new()
 	recovery.start_night(707)
 	recovery.advance(190.0)
-	recovery.report_patron_stimulus(&"patron_june", &"cancelled_order")
-	recovery.report_patron_stimulus(&"patron_june", &"cancelled_order")
+	recovery.report_patron_stimulus(4, &"cancelled_order")
+	recovery.report_patron_stimulus(4, &"cancelled_order")
 	recovery.advance(29.9)
-	var recovery_before: float = recovery.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var recovery_before: float = recovery.snapshot()["debug_patron_views"][4]["suspicion"]
 	recovery.advance(0.1)
-	var recovery_first: float = recovery.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var recovery_first: float = recovery.snapshot()["debug_patron_views"][4]["suspicion"]
 	recovery.advance(10.0)
-	var recovery_second: float = recovery.snapshot()["debug_patron_views"][&"patron_june"]["suspicion"]
+	var recovery_second: float = recovery.snapshot()["debug_patron_views"][4]["suspicion"]
 
 	var hard = GAME_SESSION_SCRIPT.new()
 	hard.start_night(707)
 	hard.advance(190.0)
-	hard.report_patron_stimulus(&"patron_mara", &"drink_dosed_seen")
+	hard.report_patron_stimulus(5, &"drink_dosed_seen")
 	hard.advance(120.0)
-	var hard_debug: Dictionary = hard.snapshot()["debug_patron_views"][&"patron_mara"]
+	var hard_debug: Dictionary = hard.snapshot()["debug_patron_views"][5]
 
 	var drunk = GAME_SESSION_SCRIPT.new()
 	drunk.start_night(707)
 	drunk.advance(190.0)
-	drunk.report_patron_stimulus(&"patron_june", &"knockout_witnessed", true)
+	drunk.report_patron_stimulus(4, &"knockout_witnessed", true)
 	drunk.advance(30.0)
-	drunk.report_patron_stimulus(&"patron_june", &"trapdoor_capture_witnessed", true)
-	var drunk_debug: Dictionary = drunk.snapshot()["debug_patron_views"][&"patron_june"]
+	drunk.report_patron_stimulus(4, &"trapdoor_capture_witnessed", true)
+	var drunk_debug: Dictionary = drunk.snapshot()["debug_patron_views"][4]
 
 	var selection = GAME_SESSION_SCRIPT.new()
 	selection.start_night(707)
 	selection.advance(190.0)
-	selection.report_patron_stimulus(&"patron_june", &"drink_dosed_seen")
-	selection.report_patron_stimulus(&"patron_mara", &"missing_companion_40")
+	selection.report_patron_stimulus(4, &"drink_dosed_seen")
+	selection.report_patron_stimulus(5, &"missing_companion_40")
 	var selection_debug: Dictionary = selection.snapshot()["debug_patron_views"]
 	var checks := {
-		"independent_bands": independent_state["normal_patron_views"][&"patron_june"]["suspicion_band"] == "Uneasy" and independent_state["normal_patron_views"][&"patron_mara"]["suspicion_band"] == "Calm",
-		"normal_hides_exact_value": not independent_state["normal_patron_views"][&"patron_june"].has("suspicion"),
+		"independent_bands": independent_state["normal_patron_views"][4]["suspicion_band"] == "Uneasy" and independent_state["normal_patron_views"][5]["suspicion_band"] == "Calm",
+		"normal_hides_exact_value": not independent_state["normal_patron_views"][4].has("suspicion"),
 		"approved_soft_recovery": recovery_before == 30.0 and recovery_first == 25.0 and recovery_second == 20.0,
 		"hard_evidence_permanent": hard_debug["suspicion"] == 100.0 and not hard_debug["suspicion_recoverable"],
 		"max_drunk_downgrades_each_event": drunk_debug["suspicion"] == 45.0 and drunk_debug["hard_evidence_downgrade_count"] == 2,
-		"maximum_response_selection": selection_debug[&"patron_june"]["suspicion_maximum_response"] == &"escape" and selection_debug[&"patron_mara"]["suspicion_maximum_response"] == &"investigation",
+		"maximum_response_selection": selection_debug[4]["suspicion_maximum_response"] == &"escape" and selection_debug[5]["suspicion_maximum_response"] == &"investigation",
 	}
 	return {
 		"passed": not checks.values().has(false),

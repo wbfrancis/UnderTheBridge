@@ -98,9 +98,9 @@ func reset() -> void:
 ## `real_delta` is real seconds, so 4x play never shortens a transient. While
 ## `paused` is true the transient timers freeze and the scene stays inspectable.
 func update(emote_view: Dictionary, real_delta: float, paused: bool) -> void:
-	for actor_id: StringName in emote_view:
+	for actor_id: int in emote_view:
 		_update_actor(actor_id, emote_view[actor_id])
-	for actor_id: StringName in _actors.keys():
+	for actor_id: int in _actors.keys():
 		if not emote_view.has(actor_id):
 			_actors.erase(actor_id)
 			_previous.erase(actor_id)
@@ -111,13 +111,13 @@ func update(emote_view: Dictionary, real_delta: float, paused: bool) -> void:
 ## The bubble each visible actor shows, ordered by priority then actor id.
 func bubbles() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for actor_id: StringName in _actors:
+	for actor_id: int in _actors:
 		var description := _bubble_for(actor_id)
 		if not description.is_empty():
 			result.append(description)
 	result.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
 		if int(left["priority"]) == int(right["priority"]):
-			return String(left["actor_id"]) < String(right["actor_id"])
+			return int(left["actor_id"]) < int(right["actor_id"])
 		return int(left["priority"]) > int(right["priority"])
 	)
 	return result
@@ -125,7 +125,7 @@ func bubbles() -> Array[Dictionary]:
 
 func snapshot() -> Dictionary:
 	var pending: Dictionary = {}
-	for actor_id: StringName in _actors:
+	for actor_id: int in _actors:
 		pending[actor_id] = _actors[actor_id]["pending"].map(
 			func(entry: Dictionary) -> StringName: return entry["kind"]
 		)
@@ -134,7 +134,7 @@ func snapshot() -> Dictionary:
 
 # --- Diffing -----------------------------------------------------------------
 
-func _update_actor(actor_id: StringName, row: Dictionary) -> void:
+func _update_actor(actor_id: int, row: Dictionary) -> void:
 	var present := bool(row["present"])
 	if not _actors.has(actor_id):
 		_actors[actor_id] = {
@@ -184,7 +184,7 @@ func _event_changes(actor: Dictionary, events: Array) -> Array[StringName]:
 
 ## Turns public band movement into public transients. The band label is what the
 ## player already reads in the Hover Summary; the number behind it stays hidden.
-func _band_changes(actor_id: StringName, public: Dictionary) -> Array[StringName]:
+func _band_changes(actor_id: int, public: Dictionary) -> Array[StringName]:
 	var changes: Array[StringName] = []
 	var before: Dictionary = _previous.get(actor_id, {})
 	_previous[actor_id] = public.duplicate(true)
@@ -249,7 +249,7 @@ func _queue_transient(actor: Dictionary, kind: StringName) -> void:
 
 
 func _advance_transients(real_delta: float) -> void:
-	for actor_id: StringName in _actors:
+	for actor_id: int in _actors:
 		var actor: Dictionary = _actors[actor_id]
 		if actor["active"].is_empty():
 			_promote(actor)
@@ -279,7 +279,7 @@ func _promote(actor: Dictionary) -> void:
 
 # --- Selection ----------------------------------------------------------------
 
-func _bubble_for(actor_id: StringName) -> Dictionary:
+func _bubble_for(actor_id: int) -> Dictionary:
 	var actor: Dictionary = _actors[actor_id]
 	if not bool(actor["present"]):
 		return {}

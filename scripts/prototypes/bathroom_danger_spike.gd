@@ -97,26 +97,26 @@ func _show_stage(stage: StringName) -> void:
 
 func _setup_standing_capture() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(&"Mara", 100.0, false, &"Elias")
-	_scenario.add_patron(&"Elias", 0.0, false, &"Mara")
-	_scenario.force_bathroom_intent(&"Mara")
+	_scenario.add_patron(5, 100.0, false, 6)
+	_scenario.add_patron(6, 0.0, false, 5)
+	_scenario.force_bathroom_intent(5)
 	_scenario.activate_trapdoor()
 
 
 func _setup_seated_misfire() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(&"Mara", 0.0)
-	_scenario.add_patron(&"June", 100.0)
-	_scenario.force_bathroom_intent(&"June")
+	_scenario.add_patron(5, 0.0)
+	_scenario.add_patron(4, 100.0)
+	_scenario.force_bathroom_intent(4)
 	_scenario.advance(2.05)
 	_scenario.activate_trapdoor()
 
 
 func _setup_investigation() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(&"Mara", 100.0, false, &"Elias")
-	_scenario.add_patron(&"Elias", 0.0, false, &"Mara")
-	_scenario.force_bathroom_intent(&"Mara")
+	_scenario.add_patron(5, 100.0, false, 6)
+	_scenario.add_patron(6, 0.0, false, 5)
+	_scenario.force_bathroom_intent(5)
 	_scenario.activate_trapdoor()
 	_scenario.advance(40.05)
 
@@ -124,7 +124,7 @@ func _setup_investigation() -> void:
 func _setup_intercept() -> void:
 	_setup_investigation()
 	_scenario.advance(7.1)
-	_scenario.begin_intercept(&"Elias", &"Cultist 1")
+	_scenario.begin_intercept(6, 1)
 
 
 func _setup_defeat() -> void:
@@ -145,7 +145,7 @@ func _draw_timeline() -> void:
 	draw_rect(rect, PANEL, true)
 	draw_string(_font, Vector2(48, 113), "MISSING COMPANION ESCALATION", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
 	var snapshot: Dictionary = _scenario.snapshot()
-	var companion: Dictionary = snapshot["patrons"].get(&"Elias", {})
+	var companion: Dictionary = snapshot["patrons"].get(6, {})
 	var seconds := float(companion.get("missing_seconds", 0.0))
 	var rows: Array[Dictionary] = [
 		{"y": 156.0, "time": "0s", "title": "Companion enters bathroom", "done": seconds > 0.0 or _stage != &"restart"},
@@ -189,14 +189,14 @@ func _draw_floor_plan() -> void:
 func _draw_actors() -> void:
 	var snapshot: Dictionary = _scenario.snapshot()
 	var patrons: Dictionary = snapshot["patrons"]
-	for patron_id: StringName in patrons:
+	for patron_id: int in patrons:
 		var patron: Dictionary = patrons[patron_id]
 		var activity: StringName = patron["activity"]
 		var position := Vector2(820, 330)
 		var color := BLUE
-		if patron_id == &"Elias":
+		if patron_id == 6:
 			color = PURPLE
-		elif patron_id == &"June":
+		elif patron_id == 4:
 			color = AMBER
 		match activity:
 			&"standing_entry", &"seated_use", &"standing_exit", &"investigation_search":
@@ -250,7 +250,7 @@ func _draw_state_panel() -> void:
 	var registry: Dictionary = snapshot["registry"]
 	draw_string(_font, Vector2(988, 395), "Reservations", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, MUTED)
 	var reservation_y := 420.0
-	for actor_id: StringName in registry["actor_slots"]:
+	for actor_id: int in registry["actor_slots"]:
 		draw_string(_font, Vector2(988, reservation_y), "%s → %s" % [actor_id, registry["actor_slots"][actor_id]], HORIZONTAL_ALIGNMENT_LEFT, 244, 11, AMBER)
 		reservation_y += 18.0
 

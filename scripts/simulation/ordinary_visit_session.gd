@@ -155,7 +155,7 @@ const DISPATCH_EXCLUDED_ACTIVITIES: Array[StringName] = [
 	&"handwashing",
 	&"standing_bathroom_exit",
 ]
-const CULTIST_IDS: Array[StringName] = [&"cultist_01", &"cultist_02", &"cultist_03"]
+const CULTIST_IDS: Array[int] = ActorIds.CULTIST_IDS
 const CAPTURE_ACTIONS: Array[StringName] = [
 	&"activate_trapdoor",
 	&"prepare_drugged_drink",
@@ -164,82 +164,8 @@ const CAPTURE_ACTIONS: Array[StringName] = [
 	&"friendship_capture",
 	&"rescue_persuasion",
 ]
-const FULL_NIGHT_GROUP_DEFINITIONS: Array[Dictionary] = [
-	{
-		"id": &"arrival_group_pair_01",
-		"label": "June + Mara",
-		"arrival_at": 3.0,
-		"patrons": [&"patron_june", &"patron_mara"],
-	},
-	{
-		"id": &"arrival_group_solo_01",
-		"label": "Elias",
-		"arrival_at": 93.0,
-		"patrons": [&"patron_elias"],
-	},
-	{
-		"id": &"arrival_group_trio_01",
-		"label": "Ruth + Walter + Nell",
-		"arrival_at": 213.0,
-		"patrons": [&"patron_ruth", &"patron_walter", &"patron_nell"],
-	},
-	{
-		"id": &"arrival_group_pair_02",
-		"label": "Vincent + Clara",
-		"arrival_at": 333.0,
-		"patrons": [&"patron_vincent", &"patron_clara"],
-	},
-]
-const FULL_NIGHT_PATRON_DEFINITIONS: Array[Dictionary] = [
-	{
-		"id": &"patron_june", "name": "June", "group_id": &"arrival_group_pair_01",
-		"seed_key": &"patron_june",
-		"companions": [&"patron_mara"], "bladder_gain": 75.0, "service_delay": 9.0,
-		"victim_value": "Ordinary", "victim_risk": "Low",
-	},
-	{
-		"id": &"patron_mara", "name": "Mara", "group_id": &"arrival_group_pair_01",
-		"seed_key": &"patron_mara",
-		"companions": [&"patron_june"], "bladder_gain": 45.0, "service_delay": 13.0,
-		"victim_value": "Ordinary", "victim_risk": "Low",
-	},
-	{
-		"id": &"patron_elias", "name": "Elias", "group_id": &"arrival_group_solo_01",
-		"seed_key": &"patron_elias",
-		"companions": [], "bladder_gain": 60.0, "service_delay": 10.0,
-		"victim_value": "Promising", "victim_risk": "Low", "friendship_capturable": true,
-	},
-	{
-		"id": &"patron_ruth", "name": "Ruth", "group_id": &"arrival_group_trio_01",
-		"seed_key": &"patron_ruth",
-		"companions": [&"patron_walter", &"patron_nell"], "bladder_gain": 55.0,
-		"service_delay": 9.0, "victim_value": "Ordinary", "victim_risk": "Medium",
-	},
-	{
-		"id": &"patron_walter", "name": "Walter", "group_id": &"arrival_group_trio_01",
-		"seed_key": &"patron_walter",
-		"companions": [&"patron_ruth", &"patron_nell"], "bladder_gain": 70.0,
-		"service_delay": 12.0, "victim_value": "Ordinary", "victim_risk": "Medium",
-	},
-	{
-		"id": &"patron_nell", "name": "Nell", "group_id": &"arrival_group_trio_01",
-		"seed_key": &"patron_nell",
-		"companions": [&"patron_ruth", &"patron_walter"], "bladder_gain": 40.0,
-		"service_delay": 15.0, "victim_value": "Ordinary", "victim_risk": "Medium",
-	},
-	{
-		"id": &"patron_vincent", "name": "Vincent", "group_id": &"arrival_group_pair_02",
-		"seed_key": &"patron_vincent",
-		"companions": [&"patron_clara"], "bladder_gain": 65.0, "service_delay": 11.0,
-		"victim_value": "Ordinary", "victim_risk": "Low",
-	},
-	{
-		"id": &"patron_clara", "name": "Clara", "group_id": &"arrival_group_pair_02",
-		"seed_key": &"patron_clara",
-		"companions": [&"patron_vincent"], "bladder_gain": 50.0, "service_delay": 14.0,
-		"victim_value": "Ordinary", "victim_risk": "Low",
-	},
-]
+const FULL_NIGHT_GROUP_DEFINITIONS = ActorRoster.FULL_NIGHT_GROUP_DEFINITIONS
+const FULL_NIGHT_PATRON_DEFINITIONS = ActorRoster.FULL_NIGHT_PATRON_DEFINITIONS
 
 var _seed: int = 0
 var _rng := RandomNumberGenerator.new()
@@ -264,8 +190,8 @@ var _perception = PATRON_PERCEPTION_SCRIPT.new()
 var _perception_log: Dictionary = {}
 var _trapdoor_state: StringName = &"closed"
 var _trapdoor_remaining: float = 0.0
-var _trapdoor_eligible_occupant: StringName = &""
-var _trapdoor_falling_patron: StringName = &""
+var _trapdoor_eligible_occupant: int = ActorIds.NO_ACTOR
+var _trapdoor_falling_patron: int = ActorIds.NO_ACTOR
 var _trapdoor_fall_ratio: float = 0.0
 var _captures: Array[Dictionary] = []
 var _active_intercept: Dictionary = {}
@@ -305,7 +231,7 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 	_seat_owners.clear()
 	var seat_count := 8 if full_night else 2
 	for index in range(seat_count):
-		_seat_owners[StringName("seat_%02d" % (index + 1))] = &""
+		_seat_owners[StringName("seat_%02d" % (index + 1))] = ActorIds.NO_ACTOR
 	_interaction_registry = INTERACTION_REGISTRY_SCRIPT.new()
 	_interaction_registry.register_slot(BATHROOM_SLOT, &"bathroom")
 	_interaction_registry.register_slot(BATHROOM_LINE_SLOT, &"bathroom_line")
@@ -321,10 +247,10 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_initialize_legacy_pair()
 	_patron_actions.clear()
 	_character_actions = CHARACTER_ACTION_SYSTEM_SCRIPT.new()
-	for cultist_id: StringName in [&"cultist_01", &"cultist_02", &"cultist_03"]:
+	for cultist_id: int in [1, 2, 3]:
 		_character_actions.register_actor(cultist_id, &"cultist")
 	_satisfaction.clear()
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var initial_activity: StringName = _patrons[patron_id]["activity"]
 		var initial_destination: StringName = _patrons[patron_id]["navigation_destination"]
 		_patrons[patron_id].erase("activity")
@@ -337,14 +263,14 @@ func start(seed: int = 707, full_night: bool = false) -> void:
 		_patron_actions[patron_id].submit(initial_activity, initial_destination)
 		_satisfaction[patron_id] = PATRON_SATISFACTION_SCRIPT.new()
 	_suspicion_states.clear()
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		_suspicion_states[patron_id] = PATRON_SUSPICION_SCRIPT.new()
 	_perception = PATRON_PERCEPTION_SCRIPT.new()
 	_perception_log.clear()
 	_trapdoor_state = &"closed"
 	_trapdoor_remaining = 0.0
-	_trapdoor_eligible_occupant = &""
-	_trapdoor_falling_patron = &""
+	_trapdoor_eligible_occupant = ActorIds.NO_ACTOR
+	_trapdoor_falling_patron = ActorIds.NO_ACTOR
 	_trapdoor_fall_ratio = 0.0
 	_captures.clear()
 	_active_intercept.clear()
@@ -379,7 +305,7 @@ func advance(simulated_seconds: float) -> void:
 		_advance_waiting_groups(step)
 		_advance_admission(step)
 		_advance_ask_to_leave(step)
-		for patron_id: StringName in _patrons:
+		for patron_id: int in _patrons:
 			_advance_patron(patron_id, step)
 		_advance_trapdoor(step)
 		_advance_missing_companions(step)
@@ -405,7 +331,7 @@ func advance(simulated_seconds: float) -> void:
 
 
 func _track_peak_suspicion() -> void:
-	for patron_id: StringName in _suspicion_states:
+	for patron_id: int in _suspicion_states:
 		_peak_suspicion = maxf(_peak_suspicion, float(_suspicion_states[patron_id].snapshot()["score"]))
 
 
@@ -421,7 +347,7 @@ func begin_closing() -> void:
 
 func finish_night() -> void:
 	_closing = true
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] == &"leaving":
 			patron["lifecycle"] = &"exited"
@@ -445,11 +371,11 @@ func restart(seed: int = _seed, full_night: bool = _full_night) -> void:
 func set_physical_navigation_enabled(enabled: bool) -> void:
 	_physical_navigation_enabled = enabled
 	if not enabled:
-		for patron_id: StringName in _patron_actions:
+		for patron_id: int in _patron_actions:
 			_patron_actions[patron_id].report_navigation_arrival()
 
 
-func patron_destination_reached(patron_id: StringName, action_id: int = -1) -> bool:
+func patron_destination_reached(patron_id: int, action_id: int = -1) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	if action_id >= 0 and int(_character_actions.active_request(patron_id).get("id", -1)) != action_id:
@@ -466,7 +392,7 @@ func patron_destination_reached(patron_id: StringName, action_id: int = -1) -> b
 
 
 func request_patron_step_aside(
-	patron_id: StringName, position: Vector3, incident_id: StringName
+	patron_id: int, position: Vector3, incident_id: StringName
 ) -> bool:
 	if not _patron_actions.has(patron_id):
 		return false
@@ -474,7 +400,7 @@ func request_patron_step_aside(
 
 
 func apply_suspicion_stimulus(
-		patron_id: StringName,
+		patron_id: int,
 		stimulus: StringName,
 		observer_is_max_drunk: bool = false
 ) -> bool:
@@ -500,7 +426,7 @@ func report_danger_event(
 		stimulus: StringName,
 		channel: StringName,
 		source_room: StringName,
-		source_id: StringName = &"",
+		source_id: Variant = ActorIds.NO_ACTOR,
 		source_position := Vector2.ZERO
 ) -> Array:
 	var perceivers := _active_perceivers()
@@ -512,36 +438,36 @@ func report_danger_event(
 			recipients = _perception.auditory_recipients(source_room, perceivers)
 		_:
 			recipients = []
-	var effective_source: StringName = source_id if not source_id.is_empty() else source_room
-	var perceived: Array[StringName] = []
-	for patron_id: StringName in recipients:
+	var effective_source: Variant = source_id if source_id != ActorIds.NO_ACTOR else source_room
+	var perceived: Array[int] = []
+	for patron_id: int in recipients:
 		if _route_stimulus(patron_id, stimulus, channel, effective_source):
 			perceived.append(patron_id)
 	_emit_snapshot()
 	return perceived
 
 
-func add_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+func add_unattended_body(body_id: int, room: StringName, position := Vector2.ZERO) -> void:
 	_perception.add_body(body_id, room, position)
 
 
-func set_unattended_body_state(body_id: StringName, state: StringName) -> void:
+func set_unattended_body_state(body_id: int, state: StringName) -> void:
 	_perception.set_body_state(body_id, state)
 
 
-func drop_unattended_body(body_id: StringName, room: StringName, position := Vector2.ZERO) -> void:
+func drop_unattended_body(body_id: int, room: StringName, position := Vector2.ZERO) -> void:
 	_perception.drop_body(body_id, room, position)
 
 
-func remove_unattended_body(body_id: StringName) -> void:
+func remove_unattended_body(body_id: int) -> void:
 	_perception.remove_body(body_id)
 
 
 func _apply_body_pressure(step: float) -> void:
 	_unattended_body_seconds += step * float(_perception.unattended_body_count())
 	var ticks: Array = _perception.advance_bodies(step)
-	for body_id: StringName in ticks:
-		for patron_id: StringName in _patrons:
+	for body_id: int in ticks:
+		for patron_id: int in _patrons:
 			if _patrons[patron_id]["lifecycle"] != &"active":
 				continue
 			_route_stimulus(patron_id, &"unattended_body_pressure", &"unattended_body", body_id)
@@ -557,13 +483,13 @@ func _run_companion_round() -> void:
 	# Read every Suspicion before applying, so a round resolves from one shared
 	# snapshot and the drift order does not bias the result.
 	var scores: Dictionary = {}
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		if _patrons[patron_id]["lifecycle"] == &"active":
 			scores[patron_id] = _suspicion_states[patron_id].snapshot()["score"]
-	for patron_id: StringName in scores:
+	for patron_id: int in scores:
 		var patron: Dictionary = _patrons[patron_id]
 		var candidates: Array = []
-		for companion_id: StringName in patron["companions"]:
+		for companion_id: int in patron["companions"]:
 			if not scores.has(companion_id):
 				continue
 			var companion: Dictionary = _patrons[companion_id]
@@ -589,10 +515,10 @@ func _run_companion_round() -> void:
 
 
 func _route_stimulus(
-		patron_id: StringName,
+		patron_id: int,
 		stimulus: StringName,
 		channel: StringName,
-		source_id: StringName
+		source_id: Variant
 ) -> bool:
 	var patron: Dictionary = _patrons[patron_id]
 	var observer_is_max_drunk := int(patron["intoxication"]) >= 3
@@ -611,8 +537,8 @@ func _route_stimulus(
 
 
 func _log_perception(
-		patron_id: StringName,
-		source_id: StringName,
+		patron_id: int,
+		source_id: Variant,
 		channel: StringName,
 		stimulus: StringName,
 		cause: StringName
@@ -634,7 +560,7 @@ func _log_perception(
 
 func _active_perceivers() -> Array:
 	var perceivers: Array = []
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"active":
 			continue
@@ -674,8 +600,8 @@ func _patron_facing(patron: Dictionary) -> Vector2:
 
 
 func normal_patron_view(
-		patron_id: StringName,
-		selected_cultist_id: StringName = &"cultist_01"
+		patron_id: int,
+		selected_cultist_id: int = 1
 ) -> Dictionary:
 	if not _patrons.has(patron_id):
 		return {}
@@ -728,7 +654,7 @@ func _urgent_intention(patron: Dictionary) -> StringName:
 # The sanitized projection the Emote system reads. It carries only what the
 # player may already see: identity, presence, one public state, public band
 # labels, and public change events. No exact value or internal timer crosses it.
-func patron_emote_row(patron_id: StringName) -> Dictionary:
+func patron_emote_row(patron_id: int) -> Dictionary:
 	if not _patrons.has(patron_id):
 		return {}
 	var patron: Dictionary = _patrons[patron_id]
@@ -762,10 +688,10 @@ func patron_emote_row(patron_id: StringName) -> Dictionary:
 	return row
 
 
-func _patron_public_emote_events(patron_id: StringName) -> Array[Dictionary]:
+func _patron_public_emote_events(patron_id: int) -> Array[Dictionary]:
 	for index in range(_events.size() - 1, -1, -1):
 		var event: Dictionary = _events[index]
-		if event["actor_id"] != patron_id:
+		if not is_same(event["actor_id"], patron_id):
 			continue
 		if event["event"] == &"drink_service_result":
 			return [{
@@ -819,9 +745,9 @@ func _public_emote_state(patron: Dictionary, view: Dictionary) -> StringName:
 	return &"none"
 
 
-func conversing_cultists() -> Array[StringName]:
-	var result: Array[StringName] = []
-	for cultist_id: StringName in _conversations:
+func conversing_cultists() -> Array[int]:
+	var result: Array[int] = []
+	for cultist_id: int in _conversations:
 		result.append(cultist_id)
 	return result
 
@@ -851,16 +777,16 @@ func capture_methods() -> Dictionary:
 # available. Surfaced so the HUD can display the committed chance before the roll.
 func current_rescue_odds() -> float:
 	var victim_id := _active_collapse_with_helper()
-	if victim_id.is_empty():
+	if victim_id == ActorIds.NO_ACTOR:
 		return -1.0
-	return rescue_persuasion_chance(_collapses[victim_id]["acting_cultist"] if not StringName(_collapses[victim_id]["acting_cultist"]).is_empty() else &"cultist_01")
+	return rescue_persuasion_chance(_collapses[victim_id]["acting_cultist"] if int(_collapses[victim_id]["acting_cultist"]) != ActorIds.NO_ACTOR else 1)
 
 
 func character_actions():
 	return _character_actions
 
 
-func debug_cancel_patron_action(patron_id: StringName, action_id: int, current_position: Variant = null) -> bool:
+func debug_cancel_patron_action(patron_id: int, action_id: int, current_position: Variant = null) -> bool:
 	if not _patron_actions.has(patron_id):
 		return false
 	var active: Dictionary = _character_actions.active_request(patron_id)
@@ -871,14 +797,14 @@ func debug_cancel_patron_action(patron_id: StringName, action_id: int, current_p
 	return cancelled
 
 
-func debug_force_complete_patron_action(patron_id: StringName) -> bool:
+func debug_force_complete_patron_action(patron_id: int) -> bool:
 	if not _patron_actions.has(patron_id) or not _patron_actions[patron_id].force_ready():
 		return false
 	var activity := _activity(_patrons[patron_id])
 	if activity in [&"shock", &"escaping"]:
 		_patrons[patron_id]["escape_remaining"] = 0.0
-	for victim_id: StringName in _collapses:
-		if _collapses[victim_id].get("helper_id", &"") == patron_id:
+	for victim_id: int in _collapses:
+		if _collapses[victim_id].get("helper_id", ActorIds.NO_ACTOR) == patron_id:
 			_collapses[victim_id]["remaining"] = 0.0
 	_advance_patron(patron_id, 0.0)
 	_advance_investigations(0.0)
@@ -887,7 +813,7 @@ func debug_force_complete_patron_action(patron_id: StringName) -> bool:
 	return true
 
 
-func debug_clear_patron_queue(patron_id: StringName) -> bool:
+func debug_clear_patron_queue(patron_id: int) -> bool:
 	if not _patron_actions.has(patron_id):
 		return false
 	var active: Dictionary = _character_actions.active_request(patron_id)
@@ -900,26 +826,26 @@ func debug_clear_patron_queue(patron_id: StringName) -> bool:
 	return cleared
 
 
-func _cleanup_debug_patron_action(patron_id: StringName) -> void:
+func _cleanup_debug_patron_action(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	var order_id := StringName(patron["order_id"])
 	if _order_system.is_open(order_id):
 		_order_system.cancel_order(order_id, _simulated_seconds, &"debug_cancelled")
-	for cultist_id: StringName in _conversations.keys():
+	for cultist_id: int in _conversations.keys():
 		if _conversations[cultist_id] == patron_id:
 			_conversations.erase(cultist_id)
 	if not _ask_to_leave.is_empty() and _ask_to_leave["patron_id"] == patron_id:
 		_ask_to_leave["state"] = &"failed"
 
 
-func debug_set_patron_planner_paused(patron_id: StringName, paused: bool) -> bool:
+func debug_set_patron_planner_paused(patron_id: int, paused: bool) -> bool:
 	if not _patron_actions.has(patron_id):
 		return false
 	_patron_actions[patron_id].set_planner_paused(paused)
 	return true
 
 
-func debug_patron_view(patron_id: StringName) -> Dictionary:
+func debug_patron_view(patron_id: int) -> Dictionary:
 	if not _patrons.has(patron_id):
 		return {}
 	var patron: Dictionary = _patrons[patron_id]
@@ -981,7 +907,7 @@ func debug_patron_view(patron_id: StringName) -> Dictionary:
 func snapshot() -> Dictionary:
 	var normal_views: Dictionary = {}
 	var debug_views: Dictionary = {}
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		normal_views[patron_id] = normal_patron_view(patron_id)
 		debug_views[patron_id] = debug_patron_view(patron_id)
 	return {
@@ -1037,9 +963,9 @@ func snapshot() -> Dictionary:
 	}
 
 
-func _escaping_patron_ids() -> Array[StringName]:
-	var ids: Array[StringName] = []
-	for patron_id: StringName in _patrons:
+func _escaping_patron_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for patron_id: int in _patrons:
 		if _patrons[patron_id]["lifecycle"] == &"escaping":
 			ids.append(patron_id)
 	return ids
@@ -1053,12 +979,12 @@ static func bathroom_probability(bladder: float) -> float:
 
 func _initialize_legacy_pair() -> void:
 	_patrons = {
-		&"patron_june": _new_patron(
-			&"patron_june", "June", GROUP_ID, [&"patron_mara"], 75.0, 9.0, &"active",
+		4: _new_patron(
+			4, "June", GROUP_ID, [5], 75.0, 9.0, &"active",
 			"Ordinary", "Low", false, &"patron_june"
 		),
-		&"patron_mara": _new_patron(
-			&"patron_mara", "Mara", GROUP_ID, [&"patron_june"], 45.0, 13.0, &"active",
+		5: _new_patron(
+			5, "Mara", GROUP_ID, [4], 45.0, 13.0, &"active",
 			"Ordinary", "Low", false, &"patron_mara"
 		),
 	}
@@ -1066,7 +992,7 @@ func _initialize_legacy_pair() -> void:
 		"id": GROUP_ID,
 		"label": "June + Mara",
 		"arrival_at": 0.0,
-		"patrons": [&"patron_june", &"patron_mara"],
+		"patrons": [4, 5],
 		"arrived": true,
 		"waiting": false,
 		"wait_remaining": 0.0,
@@ -1082,7 +1008,7 @@ func _initialize_legacy_pair() -> void:
 
 func _initialize_full_night_cast() -> void:
 	for definition in FULL_NIGHT_PATRON_DEFINITIONS:
-		var patron_id: StringName = definition["id"]
+		var patron_id: int = definition["id"]
 		_patrons[patron_id] = _new_patron(
 			patron_id,
 			definition["name"],
@@ -1094,7 +1020,7 @@ func _initialize_full_night_cast() -> void:
 			definition["victim_value"],
 			definition["victim_risk"],
 			definition.get("friendship_capturable", false),
-			definition.get("seed_key", patron_id)
+			definition["seed_key"]
 		)
 	for definition in FULL_NIGHT_GROUP_DEFINITIONS:
 		var group_id: StringName = definition["id"]
@@ -1115,7 +1041,7 @@ func _initialize_full_night_cast() -> void:
 
 
 func _new_patron(
-		id: StringName,
+		id: int,
 		display_name: String,
 		group_id: StringName,
 		companions: Array,
@@ -1169,11 +1095,11 @@ func _new_patron(
 		"navigation_arrived": true,
 		"departure_timeout": -1.0,
 		"identified": false,
-		"friendship": {&"cultist_01": 0.0, &"cultist_02": 0.0, &"cultist_03": 0.0},
+		"friendship": {1: 0.0, 2: 0.0, 3: 0.0},
 		"friendship_capturable": friendship_capturable,
 		"victim_value": victim_value,
 		"victim_risk": victim_risk,
-		"missing_target": &"",
+		"missing_target": ActorIds.NO_ACTOR,
 		"missing_seconds": 0.0,
 		"missing_20_applied": false,
 		"missing_30_applied": false,
@@ -1184,8 +1110,8 @@ func _new_patron(
 		"dosed_pending": false,
 		"drug_countdown": -1.0,
 		"drug_drowsy_reported": false,
-		"helper_id": &"",
-		"helping_victim": &"",
+		"helper_id": ActorIds.NO_ACTOR,
+		"helping_victim": ActorIds.NO_ACTOR,
 		"stay_rolled": false,
 		"stayed_behind": false,
 	}
@@ -1201,7 +1127,7 @@ func _activate_due_groups() -> void:
 		group["waiting"] = true
 		group["wait_remaining"] = GROUP_WAIT_SECONDS
 		_groups[group_id] = group
-		for patron_id: StringName in group["patrons"]:
+		for patron_id: int in group["patrons"]:
 			var patron: Dictionary = _patrons[patron_id]
 			patron["lifecycle"] = &"waiting_at_entrance"
 			_set_activity(patron, &"waiting_at_entrance", &"entrance")
@@ -1222,7 +1148,7 @@ func _advance_waiting_groups(step: float) -> void:
 			group["missed"] = true
 			group["departed"] = true
 			_groups_missed_at_door += 1
-			for patron_id: StringName in group["patrons"]:
+			for patron_id: int in group["patrons"]:
 				var patron: Dictionary = _patrons[patron_id]
 				patron["missed_admission"] = true
 				patron["lifecycle"] = &"leaving" if _physical_navigation_enabled else &"exited"
@@ -1234,8 +1160,8 @@ func _advance_waiting_groups(step: float) -> void:
 		_groups[group_id] = group
 
 
-func begin_admit_group(cultist_id: StringName, group_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _admission.is_empty() or not _groups.has(group_id):
+func begin_admit_group(cultist_id: int, group_id: StringName) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _admission.is_empty() or not _groups.has(group_id):
 		return false
 	var group: Dictionary = _groups[group_id]
 	if not group.get("waiting", false) or group.get("missed", false):
@@ -1248,7 +1174,7 @@ func begin_admit_group(cultist_id: StringName, group_id: StringName) -> bool:
 	return true
 
 
-func cancel_admit_group(cultist_id: StringName) -> bool:
+func cancel_admit_group(cultist_id: int) -> bool:
 	if _admission.is_empty() or _admission["cultist_id"] != cultist_id or _admission["phase"] != &"opening":
 		return false
 	_admission.clear()
@@ -1272,7 +1198,7 @@ func _advance_admission(step: float) -> void:
 	_groups[group_id] = group
 	_admission["phase"] = &"holding"
 	_admission["remaining"] = 0.0
-	for patron_id: StringName in group["patrons"]:
+	for patron_id: int in group["patrons"]:
 		var patron: Dictionary = _patrons[patron_id]
 		patron["lifecycle"] = &"active"
 		_set_activity(patron, &"entering", &"seat")
@@ -1284,13 +1210,13 @@ func _admission_complete() -> bool:
 	if _admission.is_empty() or _admission["phase"] != &"holding":
 		return false
 	var group: Dictionary = _groups[_admission["group_id"]]
-	for patron_id: StringName in group["patrons"]:
+	for patron_id: int in group["patrons"]:
 		if _activity(_patrons[patron_id]) == &"entering":
 			return false
 	return true
 
 
-func _advance_patron(patron_id: StringName, delta: float) -> void:
+func _advance_patron(patron_id: int, delta: float) -> void:
 	if not _windup.is_empty() and _windup["victim_id"] == patron_id:
 		return
 	var patron: Dictionary = _patrons[patron_id]
@@ -1333,7 +1259,7 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 			):
 				_start_order(patron_id, patron)
 		&"bathroom_queued":
-			if _bathroom_occupant().is_empty() and not _trapdoor_locked():
+			if _bathroom_occupant() == ActorIds.NO_ACTOR and not _trapdoor_locked():
 				_interaction_registry.release_actor(patron_id)
 				if _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 					_begin_bathroom_visit(patron_id, patron)
@@ -1376,9 +1302,9 @@ func _advance_patron(patron_id: StringName, delta: float) -> void:
 	_patrons[patron_id] = patron
 
 
-func _assign_seat(patron_id: StringName, patron: Dictionary) -> void:
+func _assign_seat(patron_id: int, patron: Dictionary) -> void:
 	var seat_id: StringName = patron["seat"]
-	if seat_id.is_empty() or _seat_owners.get(seat_id, &"") != patron_id:
+	if seat_id.is_empty() or _seat_owners.get(seat_id, ActorIds.NO_ACTOR) != patron_id:
 		return
 	if _patron_can_order(patron):
 		_start_order(patron_id, patron)
@@ -1397,7 +1323,7 @@ func _patron_can_order(patron: Dictionary) -> bool:
 	)
 
 
-func _start_order(patron_id: StringName, patron: Dictionary) -> void:
+func _start_order(patron_id: int, patron: Dictionary) -> void:
 	_set_activity(patron, &"awaiting_drink", &"seat")
 	var requested_type: StringName = PREPARED_DRINK_SYSTEM_SCRIPT.DRINK_TYPES[
 		_patron_rngs[patron_id].randi_range(0, PREPARED_DRINK_SYSTEM_SCRIPT.DRINK_TYPES.size() - 1)
@@ -1416,7 +1342,7 @@ func _patron_order_type(patron: Dictionary) -> StringName:
 	return StringName(_order_system.order_snapshot(order_id).get("drink_type", &"none"))
 
 
-func _advance_open_order(patron_id: StringName, patron: Dictionary) -> void:
+func _advance_open_order(patron_id: int, patron: Dictionary) -> void:
 	var order_id: StringName = patron["order_id"]
 	if order_id.is_empty() or not _order_system.is_open(order_id):
 		return
@@ -1449,12 +1375,12 @@ func _reserve_group_seats(group_id: StringName) -> bool:
 	var members: Array = group["patrons"]
 	var available: Array[StringName] = []
 	for seat_id: StringName in _seat_owners:
-		if StringName(_seat_owners[seat_id]).is_empty():
+		if int(_seat_owners[seat_id]) == ActorIds.NO_ACTOR:
 			available.append(seat_id)
 	if available.size() < members.size():
 		return false
 	for index in range(members.size()):
-		var patron_id: StringName = members[index]
+		var patron_id: int = members[index]
 		var seat_id: StringName = available[index]
 		_seat_owners[seat_id] = patron_id
 		_patrons[patron_id]["seat"] = seat_id
@@ -1466,7 +1392,7 @@ func _update_group_seated_at(group_id: StringName) -> void:
 	var group: Dictionary = _groups[group_id]
 	if float(group["seated_at"]) >= 0.0:
 		return
-	for member_id: StringName in group["patrons"]:
+	for member_id: int in group["patrons"]:
 		if StringName(_patrons[member_id]["seat"]).is_empty():
 			return
 	group["seated_at"] = _simulated_seconds
@@ -1485,13 +1411,13 @@ func waiting_group_id() -> StringName:
 	return &""
 
 
-func ask_to_leave_availability(patron_id: StringName) -> Dictionary:
+func ask_to_leave_availability(patron_id: int) -> Dictionary:
 	if not _patrons.has(patron_id) or _patrons[patron_id]["lifecycle"] != &"active":
 		return _command_state(false, false, &"patron_unavailable")
 	var group: Dictionary = _groups[_patrons[patron_id]["group_id"]]
 	if bool(group.get("asked_to_leave", false)):
 		return _command_state(false, false, &"patron_unavailable")
-	for member_id: StringName in group["patrons"]:
+	for member_id: int in group["patrons"]:
 		var lifecycle: StringName = _patrons[member_id]["lifecycle"]
 		if lifecycle == &"unconscious":
 			return _command_state(true, false, &"unconscious_group_member")
@@ -1500,8 +1426,8 @@ func ask_to_leave_availability(patron_id: StringName) -> Dictionary:
 	return _command_state(true, true, &"")
 
 
-func begin_ask_to_leave(cultist_id: StringName, patron_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _ask_to_leave.is_empty():
+func begin_ask_to_leave(cultist_id: int, patron_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _ask_to_leave.is_empty():
 		return false
 	var state := ask_to_leave_availability(patron_id)
 	if not bool(state["available"]):
@@ -1518,10 +1444,10 @@ func begin_ask_to_leave(cultist_id: StringName, patron_id: StringName) -> bool:
 	return true
 
 
-func cancel_ask_to_leave(cultist_id: StringName) -> bool:
+func cancel_ask_to_leave(cultist_id: int) -> bool:
 	if _ask_to_leave.is_empty() or _ask_to_leave["cultist_id"] != cultist_id:
 		return false
-	var patron_id: StringName = _ask_to_leave["patron_id"]
+	var patron_id: int = _ask_to_leave["patron_id"]
 	if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active":
 		_set_activity(_patrons[patron_id], &"socializing", &"seat")
 	_ask_to_leave.clear()
@@ -1531,7 +1457,7 @@ func cancel_ask_to_leave(cultist_id: StringName) -> bool:
 func _advance_ask_to_leave(step: float) -> void:
 	if _ask_to_leave.is_empty() or _ask_to_leave["state"] != &"talking":
 		return
-	var patron_id: StringName = _ask_to_leave["patron_id"]
+	var patron_id: int = _ask_to_leave["patron_id"]
 	var state := ask_to_leave_availability(patron_id)
 	if not bool(state["available"]):
 		_ask_to_leave["state"] = &"failed"
@@ -1545,7 +1471,7 @@ func _advance_ask_to_leave(step: float) -> void:
 	var group: Dictionary = _groups[group_id]
 	group["asked_to_leave"] = true
 	_groups[group_id] = group
-	for member_id: StringName in group["patrons"]:
+	for member_id: int in group["patrons"]:
 		if _patrons[member_id]["lifecycle"] == &"active":
 			_suspicion_states[member_id].apply_stimulus(&"asked_to_leave")
 			_record(&"ask_to_leave_result", member_id)
@@ -1556,8 +1482,8 @@ func _advance_ask_to_leave(step: float) -> void:
 
 # Completes one five-second bar Action by placing a typed Prepared Drink in the
 # oldest available bar position. Preparation does not need an open Order.
-func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _prepared_drinks.can_add():
+func make_drink(drink_type: StringName, cultist_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _prepared_drinks.can_add():
 		return false
 	var result: Dictionary = _prepared_drinks.add_drink(drink_type)
 	if not bool(result["added"]):
@@ -1573,13 +1499,13 @@ func make_drink(drink_type: StringName, cultist_id: StringName) -> bool:
 
 # Kept as a narrow compatibility seam for older callers while menus migrate to
 # the three explicit preparation commands.
-func prepare_drink(cultist_id: StringName) -> bool:
+func prepare_drink(cultist_id: int) -> bool:
 	return make_drink(&"wine", cultist_id)
 
 
-func carries_prepared_drink(cultist_id: StringName) -> bool:
+func carries_prepared_drink(cultist_id: int) -> bool:
 	for drink: Dictionary in _prepared_drinks.snapshot()["drinks"]:
-		if StringName(drink["carried_by"]) == cultist_id:
+		if int(drink["carried_by"]) == cultist_id:
 			return true
 	return false
 
@@ -1588,15 +1514,15 @@ func prepared_drink(drink_id: StringName) -> Dictionary:
 	return _prepared_drinks.drink(drink_id)
 
 
-func reserve_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func reserve_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return not is_cultist_busy(cultist_id) and _prepared_drinks.reserve(drink_id, cultist_id)
 
 
-func pick_up_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func pick_up_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _prepared_drinks.pick_up(drink_id, cultist_id)
 
 
-func release_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func release_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	return _prepared_drinks.release(drink_id, cultist_id)
 
 
@@ -1608,7 +1534,7 @@ func dispose_prepared_drink(drink_id: StringName) -> Dictionary:
 	return result
 
 
-func drug_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
+func drug_prepared_drink(drink_id: StringName, cultist_id: int) -> bool:
 	if _doses_remaining <= 0 or not _prepared_drinks.drug(drink_id, cultist_id):
 		return false
 	_doses_remaining -= 1
@@ -1621,26 +1547,26 @@ func drug_prepared_drink(drink_id: StringName, cultist_id: StringName) -> bool:
 
 # Doses the longest-waiting open Order. The bar work position has no Patron of
 # its own, so the target comes from the Order book, not from the player's click.
-func prepare_drugged_drink_for_next_order(cultist_id: StringName) -> bool:
+func prepare_drugged_drink_for_next_order(cultist_id: int) -> bool:
 	var targets := _open_order_patrons()
 	if targets.is_empty():
 		return false
 	return prepare_drugged_drink(targets[0], cultist_id)
 
 
-func next_drug_target() -> StringName:
+func next_drug_target() -> int:
 	var targets := _open_order_patrons()
-	return &"" if targets.is_empty() else targets[0]
+	return ActorIds.NO_ACTOR if targets.is_empty() else targets[0]
 
 
 # Ends a standing engagement so the Cultist's next Action can start. Only Talk
 # holds a Cultist this way; every other operation ends on its own clock.
-func end_cultist_engagement(cultist_id: StringName) -> bool:
+func end_cultist_engagement(cultist_id: int) -> bool:
 	return end_conversation(cultist_id)
 
 
-func conversation_is_active(cultist_id: StringName, patron_id: StringName) -> bool:
-	return _conversations.get(cultist_id, &"") == patron_id
+func conversation_is_active(cultist_id: int, patron_id: int) -> bool:
+	return _conversations.get(cultist_id, ActorIds.NO_ACTOR) == patron_id
 
 
 # The single authority for whether one command applies to one target right now.
@@ -1648,8 +1574,8 @@ func conversation_is_active(cultist_id: StringName, patron_id: StringName) -> bo
 # with a short reason explains a temporary condition the player can act on.
 func command_availability(
 		command: StringName,
-		cultist_id: StringName,
-		target_id: StringName
+		cultist_id: int,
+		target_id: Variant
 ) -> Dictionary:
 	if cultist_is_incapacitated(cultist_id):
 		return _command_state(true, false, &"cultist_incapacitated")
@@ -1665,7 +1591,7 @@ func command_availability(
 			var talk := _conscious_patron(target_id)
 			if not talk:
 				return _command_state(false, false, &"patron_unavailable")
-			if _conversation_partner(target_id) != &"":
+			if _conversation_partner(target_id) != ActorIds.NO_ACTOR:
 				return _command_state(true, false, &"not_receptive")
 			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
 		&"ask_to_leave":
@@ -1685,7 +1611,7 @@ func command_availability(
 			var drink: Dictionary = _prepared_drinks.drink(target_id)
 			if bool(drink["drugged"]):
 				return _command_state(true, false, &"already_drugged")
-			if not StringName(drink["reserved_by"]).is_empty() and drink["reserved_by"] != cultist_id:
+			if int(drink["reserved_by"]) != ActorIds.NO_ACTOR and drink["reserved_by"] != cultist_id:
 				return _command_state(true, false, &"drink_reserved")
 			return _command_state(true, true, &"")
 		&"serve_order":
@@ -1750,7 +1676,7 @@ func command_availability(
 			return _command_state(true, not _busy_for_command(cultist_id), &"cultist_busy")
 		&"rescue_persuasion":
 			var victim := _carrying_collapse_victim()
-			if victim.is_empty() or _collapses[victim]["helper_id"] != target_id:
+			if victim == ActorIds.NO_ACTOR or _collapses[victim]["helper_id"] != target_id:
 				return _command_state(false, false, &"patron_unavailable")
 			if _collapses[victim]["rescue_attempted"]:
 				return _command_state(true, false, &"already_attempted")
@@ -1767,7 +1693,7 @@ func command_availability(
 			if not _drug_prep.is_empty():
 				return _command_state(true, false, &"drug_prep_running")
 			var dose_target := next_drug_target()
-			if dose_target.is_empty():
+			if dose_target == ActorIds.NO_ACTOR:
 				return _command_state(true, false, &"no_open_order")
 			var state := _command_state(true, true, &"")
 			state["detail"] = normal_patron_view(dose_target, cultist_id)["name"]
@@ -1775,13 +1701,13 @@ func command_availability(
 		&"activate_trapdoor":
 			return _command_state(true, _trapdoor_state == &"closed", &"trapdoor_busy")
 		&"drop_body":
-			var carrying := not _drag_victim_for_cultist(cultist_id).is_empty()
+			var carrying := _drag_victim_for_cultist(cultist_id) != ActorIds.NO_ACTOR
 			return _command_state(carrying, carrying, &"not_carrying_body")
 	return _command_state(false, false, &"unknown_command")
 
 
 func serve_drink_availability(
-		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+		patron_id: int, cultist_id: int, drink_id: StringName
 ) -> Dictionary:
 	if not _conscious_patron(patron_id):
 		return _command_state(false, false, &"patron_unavailable")
@@ -1790,8 +1716,8 @@ func serve_drink_availability(
 	var drink := _prepared_drinks.drink(drink_id)
 	if drink.is_empty():
 		return _command_state(false, false, &"drink_unavailable")
-	var owner := StringName(drink["reserved_by"])
-	if not owner.is_empty() and owner != cultist_id:
+	var owner := int(drink["reserved_by"])
+	if owner != ActorIds.NO_ACTOR and owner != cultist_id:
 		return _command_state(true, false, &"drink_reserved")
 	return _command_state(true, true, &"")
 
@@ -1805,11 +1731,11 @@ func _command_state(visible: bool, available: bool, reason: StringName) -> Dicti
 	}
 
 
-func _conscious_patron(patron_id: StringName) -> bool:
+func _conscious_patron(patron_id: int) -> bool:
 	return _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"active"
 
 
-func _knockout_target_available(patron_id: StringName) -> bool:
+func _knockout_target_available(patron_id: int) -> bool:
 	return (
 		_patrons.has(patron_id)
 		and StringName(_patrons[patron_id]["lifecycle"]) in [&"active", &"escaping", &"leaving"]
@@ -1818,7 +1744,7 @@ func _knockout_target_available(patron_id: StringName) -> bool:
 
 # Busy for the purpose of offering a command. A running Talk does not count,
 # because issuing the next command ends that Talk first.
-func _busy_for_command(cultist_id: StringName) -> bool:
+func _busy_for_command(cultist_id: int) -> bool:
 	if cultist_is_incapacitated(cultist_id):
 		return true
 	if not _admission.is_empty() and _admission["cultist_id"] == cultist_id:
@@ -1827,19 +1753,19 @@ func _busy_for_command(cultist_id: StringName) -> bool:
 		return true
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
-	for target_id: StringName in _stirs:
+	for target_id: Variant in _stirs:
 		if _stirs[target_id]["helper_id"] == cultist_id:
 			return true
-	for patron_id: StringName in _follows:
+	for patron_id: int in _follows:
 		if _follows[patron_id]["cultist_id"] == cultist_id:
 			return true
-	return not _drag_victim_for_cultist(cultist_id).is_empty()
+	return _drag_victim_for_cultist(cultist_id) != ActorIds.NO_ACTOR
 
 
 # Patrons with an open Order, longest wait first, so bar work is deterministic.
-func _open_order_patrons() -> Array[StringName]:
+func _open_order_patrons() -> Array[int]:
 	var waiting: Array[Dictionary] = []
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var order_id: StringName = _patrons[patron_id]["order_id"]
 		if order_id.is_empty() or not _order_system.is_open(order_id):
 			continue
@@ -1847,16 +1773,16 @@ func _open_order_patrons() -> Array[StringName]:
 		waiting.append({"id": patron_id, "at": float(order["requested_at"])})
 	waiting.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
 		if is_equal_approx(left["at"], right["at"]):
-			return String(left["id"]) < String(right["id"])
+			return int(left["id"]) < int(right["id"])
 		return left["at"] < right["at"]
 	)
-	var result: Array[StringName] = []
+	var result: Array[int] = []
 	for entry: Dictionary in waiting:
 		result.append(entry["id"])
 	return result
 
 
-func serve_patron_order(patron_id: StringName) -> bool:
+func serve_patron_order(patron_id: int) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
@@ -1866,7 +1792,7 @@ func serve_patron_order(patron_id: StringName) -> bool:
 
 
 func serve_prepared_drink(
-		patron_id: StringName, cultist_id: StringName, drink_id: StringName
+		patron_id: int, cultist_id: int, drink_id: StringName
 ) -> Dictionary:
 	var result := {
 		"served": false, "accepted": false, "correct": false,
@@ -1922,7 +1848,7 @@ func serve_prepared_drink(
 	return result
 
 
-func _start_served_drink(patron_id: StringName, patron: Dictionary, drink: Dictionary) -> void:
+func _start_served_drink(patron_id: int, patron: Dictionary, drink: Dictionary) -> void:
 	_set_activity(patron, &"drinking", &"drink")
 	if bool(drink["drugged"]):
 		patron["drug_countdown"] = 0.0
@@ -1931,9 +1857,9 @@ func _start_served_drink(patron_id: StringName, patron: Dictionary, drink: Dicti
 	_patrons[patron_id] = patron
 
 
-func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = false) -> Dictionary:
+func offer_drink(patron_id: int, cultist_id: int, drugged: bool = false) -> Dictionary:
 	var result := {"accepted": false, "reason": &"invalid_target", "roll": -1.0}
-	if not _patrons.has(patron_id) or cultist_id.is_empty():
+	if not _patrons.has(patron_id) or cultist_id == ActorIds.NO_ACTOR:
 		return result
 	var patron: Dictionary = _patrons[patron_id]
 	if (
@@ -1969,7 +1895,7 @@ func offer_drink(patron_id: StringName, cultist_id: StringName, drugged: bool = 
 
 
 func debug_set_patron_drink_state(
-	patron_id: StringName,
+	patron_id: int,
 	intoxication: int,
 	overdrink_limit: int,
 	excess_drinks: int = 0,
@@ -1991,14 +1917,14 @@ func debug_set_patron_drink_state(
 	return true
 
 
-func debug_change_patron_satisfaction(patron_id: StringName, amount: float) -> bool:
+func debug_change_patron_satisfaction(patron_id: int, amount: float) -> bool:
 	if not _satisfaction.has(patron_id):
 		return false
 	_satisfaction[patron_id].change(amount, &"debug_setup")
 	return true
 
 
-func debug_force_finish_drink(patron_id: StringName) -> bool:
+func debug_force_finish_drink(patron_id: int) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
@@ -2008,7 +1934,7 @@ func debug_force_finish_drink(patron_id: StringName) -> bool:
 	return true
 
 
-func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
+func _serve_patron(patron_id: int, patron: Dictionary) -> bool:
 	var order: Dictionary = _order_system.order_snapshot(patron["order_id"])
 	if order.is_empty() or not _order_system.is_open(patron["order_id"]):
 		return false
@@ -2031,7 +1957,7 @@ func _serve_patron(patron_id: StringName, patron: Dictionary) -> bool:
 	return true
 
 
-func _finish_drink(patron_id: StringName, patron: Dictionary) -> void:
+func _finish_drink(patron_id: int, patron: Dictionary) -> void:
 	var was_max_drunk := int(patron["intoxication"]) >= 3
 	patron["bladder"] = minf(100.0, float(patron["bladder"]) + float(patron["bladder_gain"]))
 	patron["intoxication"] = mini(3, int(patron["intoxication"]) + 1)
@@ -2055,7 +1981,7 @@ func _finish_drink(patron_id: StringName, patron: Dictionary) -> void:
 	_record(&"drink_completed", patron_id, {"bladder": patron["bladder"], "intoxication": patron["intoxication"]})
 
 
-func _advance_bathroom_checks(patron_id: StringName, patron: Dictionary) -> void:
+func _advance_bathroom_checks(patron_id: int, patron: Dictionary) -> void:
 	if not patron["bathroom_checks_active"]:
 		return
 	while _simulated_seconds + 0.0001 >= float(patron["next_bathroom_check_at"]):
@@ -2094,12 +2020,12 @@ func activate_trapdoor() -> bool:
 	var occupant := _bathroom_occupant()
 	_trapdoor_eligible_occupant = occupant
 	_record(&"trapdoor_opened", occupant)
-	if not occupant.is_empty() and _is_standing_bathroom_activity(_activity(_patrons[occupant])):
+	if occupant != ActorIds.NO_ACTOR and _is_standing_bathroom_activity(_activity(_patrons[occupant])):
 		_begin_trapdoor_fall(occupant)
 	else:
 		_trapdoor_state = &"open"
 		_trapdoor_remaining = TRAPDOOR_OPEN_SECONDS
-		if not occupant.is_empty() and _activity(_patrons[occupant]) == &"seated_bathroom_use":
+		if occupant != ActorIds.NO_ACTOR and _activity(_patrons[occupant]) == &"seated_bathroom_use":
 			_apply_seated_hard_evidence(occupant)
 	_emit_snapshot()
 	return true
@@ -2107,7 +2033,7 @@ func activate_trapdoor() -> bool:
 
 # A standing snapped occupant enters the finite capture: the door holds them in
 # `trapdoor_falling`, the bathroom stays reserved, and only closure makes it terminal.
-func _begin_trapdoor_fall(occupant: StringName) -> void:
+func _begin_trapdoor_fall(occupant: int) -> void:
 	_trapdoor_state = &"falling"
 	_trapdoor_remaining = TRAPDOOR_FALL_SECONDS
 	_trapdoor_fall_ratio = 0.0
@@ -2125,7 +2051,7 @@ func _trapdoor_locked() -> bool:
 
 
 func _bathroom_available_for_entry() -> bool:
-	return _bathroom_occupant().is_empty() and not _trapdoor_locked()
+	return _bathroom_occupant() == ActorIds.NO_ACTOR and not _trapdoor_locked()
 
 
 func _trapdoor_close_ratio() -> float:
@@ -2134,8 +2060,8 @@ func _trapdoor_close_ratio() -> float:
 	return clampf(1.0 - _trapdoor_remaining / TRAPDOOR_CLOSE_SECONDS, 0.0, 1.0)
 
 
-func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
-	if not _patrons.has(patron_id) or cultist_id.is_empty() or not _active_intercept.is_empty():
+func begin_intercept(patron_id: int, cultist_id: int) -> bool:
+	if not _patrons.has(patron_id) or cultist_id == ActorIds.NO_ACTOR or not _active_intercept.is_empty():
 		return false
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["lifecycle"] != &"escaping" or _activity(patron) != &"escaping":
@@ -2159,8 +2085,8 @@ func begin_intercept(patron_id: StringName, cultist_id: StringName) -> bool:
 func cancel_intercept() -> bool:
 	if _active_intercept.is_empty():
 		return false
-	var patron_id: StringName = _active_intercept["patron_id"]
-	var cultist_id: StringName = _active_intercept["cultist_id"]
+	var patron_id: int = _active_intercept["patron_id"]
+	var cultist_id: int = _active_intercept["cultist_id"]
 	_interaction_registry.release_actor(cultist_id)
 	_active_intercept.clear()
 	if _patrons.has(patron_id) and _patrons[patron_id]["lifecycle"] == &"escaping":
@@ -2173,7 +2099,7 @@ func cancel_intercept() -> bool:
 
 
 func has_active_escape() -> bool:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		if _patrons[patron_id]["lifecycle"] == &"escaping":
 			return true
 	return false
@@ -2185,7 +2111,7 @@ func has_defeat() -> bool:
 
 # Debug-only seam: place an arrived Patron in the bathroom deterministically instead of
 # waiting on seeded bladder rolls. Used by tests and the capture-chain validation slice.
-func debug_force_bathroom(patron_id: StringName) -> bool:
+func debug_force_bathroom(patron_id: int) -> bool:
 	if not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
@@ -2226,11 +2152,11 @@ func _advance_trapdoor(step: float) -> void:
 			_record(&"trapdoor_closing", &"trapdoor")
 		&"closing":
 			# The panels have finished closing: remove the falling Patron now, not before.
-			if not _trapdoor_falling_patron.is_empty():
+			if _trapdoor_falling_patron != ActorIds.NO_ACTOR:
 				_finalize_trapdoor_capture()
 			_trapdoor_state = &"cooldown"
 			_trapdoor_remaining = TRAPDOOR_COOLDOWN_SECONDS
-			_trapdoor_eligible_occupant = &""
+			_trapdoor_eligible_occupant = ActorIds.NO_ACTOR
 			_record(&"trapdoor_cooldown", &"trapdoor")
 		&"cooldown":
 			_trapdoor_state = &"closed"
@@ -2240,9 +2166,9 @@ func _advance_trapdoor(step: float) -> void:
 
 
 func _advance_missing_companions(step: float) -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
-		if StringName(patron["missing_target"]).is_empty() or patron["missing_40_applied"]:
+		if int(patron["missing_target"]) == ActorIds.NO_ACTOR or patron["missing_40_applied"]:
 			continue
 		if patron["lifecycle"] != &"active":
 			continue
@@ -2264,7 +2190,7 @@ func _advance_missing_companions(step: float) -> void:
 
 
 func _advance_investigations(step: float) -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"investigating":
 			continue
@@ -2288,8 +2214,8 @@ func _advance_escape(step: float) -> void:
 	if not _active_intercept.is_empty():
 		_active_intercept["remaining"] = maxf(0.0, float(_active_intercept["remaining"]) - step)
 		if _active_intercept["remaining"] <= TIME_EPSILON:
-			var intercepted_id: StringName = _active_intercept["patron_id"]
-			var cultist_id: StringName = _active_intercept["cultist_id"]
+			var intercepted_id: int = _active_intercept["patron_id"]
+			var cultist_id: int = _active_intercept["cultist_id"]
 			_interaction_registry.release_actor(cultist_id)
 			_active_intercept.clear()
 			if _patrons.has(intercepted_id) and _patrons[intercepted_id]["lifecycle"] == &"escaping":
@@ -2298,7 +2224,7 @@ func _advance_escape(step: float) -> void:
 				_patrons[intercepted_id] = resumed
 			_record(&"intercept_completed", intercepted_id)
 		return
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if not _windup.is_empty() and _windup["victim_id"] == patron_id:
 			continue
@@ -2332,7 +2258,7 @@ func _advance_escape(step: float) -> void:
 # Suspicion module selected (missing Companion -> Investigation; Hard Evidence, general
 # danger, or Companion drift -> Escape). Patrons mid-bathroom finish that visit first.
 func _dispatch_maximum_responses() -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"active":
 			continue
@@ -2348,12 +2274,12 @@ func _dispatch_maximum_responses() -> void:
 				_begin_escape(patron_id)
 
 
-func _request_investigation(patron_id: StringName) -> void:
+func _request_investigation(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	patron["lifecycle"] = &"investigating"
 	patron["bathroom_checks_active"] = false
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	if _bathroom_available_for_entry() and _interaction_registry.request_slot(patron_id, BATHROOM_SLOT):
 		_set_activity(patron, &"investigation_search", &"bathroom")
@@ -2364,11 +2290,11 @@ func _request_investigation(patron_id: StringName) -> void:
 	_patrons[patron_id] = patron
 
 
-func _begin_escape(patron_id: StringName) -> void:
+func _begin_escape(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	_interaction_registry.release_actor(patron_id)
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	var order_id: StringName = patron["order_id"]
 	if not order_id.is_empty() and _order_system.is_open(order_id):
@@ -2384,18 +2310,18 @@ func _begin_escape(patron_id: StringName) -> void:
 
 func _capture_occupant(cause: StringName) -> void:
 	var captured_id := _bathroom_occupant()
-	if captured_id.is_empty() or not _patrons.has(captured_id):
+	if captured_id == ActorIds.NO_ACTOR or not _patrons.has(captured_id):
 		return
 	var patron: Dictionary = _patrons[captured_id]
 	_interaction_registry.release_actor(captured_id)
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	var order_id: StringName = patron["order_id"]
 	if not order_id.is_empty() and _order_system.is_open(order_id):
 		_order_system.cancel_order(order_id, _simulated_seconds, &"captured")
 	patron["lifecycle"] = &"captured"
-	patron["missing_target"] = &""
+	patron["missing_target"] = ActorIds.NO_ACTOR
 	patron["bathroom_checks_active"] = false
 	_set_activity(patron, &"captured", &"tunnel")
 	_patrons[captured_id] = patron
@@ -2407,10 +2333,10 @@ func _capture_occupant(cause: StringName) -> void:
 # terminal and the bathroom slot releases now, never before the panels are shut.
 func _finalize_trapdoor_capture() -> void:
 	_capture_occupant(&"trapdoor")
-	_trapdoor_falling_patron = &""
+	_trapdoor_falling_patron = ActorIds.NO_ACTOR
 
 
-func _apply_seated_hard_evidence(patron_id: StringName) -> void:
+func _apply_seated_hard_evidence(patron_id: int) -> void:
 	var patron: Dictionary = _patrons[patron_id]
 	var observer_is_max_drunk := int(patron["intoxication"]) >= 3
 	_suspicion_states[patron_id].apply_stimulus(&"trapdoor_open_seen_seated", observer_is_max_drunk)
@@ -2423,17 +2349,17 @@ func _apply_seated_hard_evidence(patron_id: StringName) -> void:
 # Opens a Bathroom Visit: samples the one seeded Seated Bathroom Use duration for
 # this visit and starts the standing walk from the door to the mirror. The seeded
 # whole-number duration is drawn once here, never re-rolled mid-visit.
-func _begin_bathroom_visit(patron_id: StringName, patron: Dictionary) -> void:
+func _begin_bathroom_visit(patron_id: int, patron: Dictionary) -> void:
 	patron["bathroom_use_seconds"] = float(_patron_rngs[patron_id].randi_range(
 		BATHROOM_USE_MIN_SECONDS, BATHROOM_USE_MAX_SECONDS
 	))
 	_set_activity(patron, &"entering_bathroom", &"mirror")
 
 
-func _start_missing_companion_clock(entered_id: StringName) -> void:
+func _start_missing_companion_clock(entered_id: int) -> void:
 	if not _patrons.has(entered_id):
 		return
-	for companion_id: StringName in _patrons[entered_id]["companions"]:
+	for companion_id: int in _patrons[entered_id]["companions"]:
 		if not _patrons.has(companion_id):
 			continue
 		var companion: Dictionary = _patrons[companion_id]
@@ -2448,18 +2374,18 @@ func _start_missing_companion_clock(entered_id: StringName) -> void:
 		_record(&"companion_missing_started", companion_id, {"target_id": entered_id})
 
 
-func _clear_missing_companion_clock(returned_id: StringName) -> void:
-	for patron_id: StringName in _patrons:
+func _clear_missing_companion_clock(returned_id: int) -> void:
+	for patron_id: int in _patrons:
 		if _patrons[patron_id]["missing_target"] != returned_id:
 			continue
 		var patron: Dictionary = _patrons[patron_id]
-		patron["missing_target"] = &""
+		patron["missing_target"] = ActorIds.NO_ACTOR
 		patron["missing_seconds"] = 0.0
 		_patrons[patron_id] = patron
 		_record(&"companion_returned", patron_id, {"target_id": returned_id})
 
 
-func _bathroom_occupant() -> StringName:
+func _bathroom_occupant() -> int:
 	return _interaction_registry.slot_owner(BATHROOM_SLOT)
 
 
@@ -2473,8 +2399,8 @@ func _is_standing_bathroom_activity(activity: StringName) -> bool:
 # the front, where one Rescue Persuasion may capture both at the Tunnel Intake.
 
 
-func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> bool:
-	if _doses_remaining <= 0 or not _drug_prep.is_empty() or cultist_id.is_empty():
+func prepare_drugged_drink(patron_id: int, cultist_id: int) -> bool:
+	if _doses_remaining <= 0 or not _drug_prep.is_empty() or cultist_id == ActorIds.NO_ACTOR:
 		return false
 	if not _patrons.has(patron_id):
 		return false
@@ -2490,11 +2416,11 @@ func prepare_drugged_drink(patron_id: StringName, cultist_id: StringName) -> boo
 	return true
 
 
-func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
-	if cultist_id.is_empty():
+func attempt_rescue_persuasion(cultist_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR:
 		return false
 	var victim_id := _carrying_collapse_victim()
-	if victim_id.is_empty():
+	if victim_id == ActorIds.NO_ACTOR:
 		return false
 	var collapse: Dictionary = _collapses[victim_id]
 	if collapse["rescue_attempted"]:
@@ -2513,11 +2439,11 @@ func attempt_rescue_persuasion(cultist_id: StringName) -> bool:
 	return true
 
 
-func rescue_persuasion_chance(cultist_id: StringName) -> float:
+func rescue_persuasion_chance(cultist_id: int) -> float:
 	var victim_id := _active_collapse_with_helper()
-	if victim_id.is_empty() or cultist_id.is_empty():
+	if victim_id == ActorIds.NO_ACTOR or cultist_id == ActorIds.NO_ACTOR:
 		return 0.0
-	var helper_id: StringName = _collapses[victim_id]["helper_id"]
+	var helper_id: int = _collapses[victim_id]["helper_id"]
 	if not _patrons.has(helper_id):
 		return 0.0
 	var friendship: float = float(_patrons[helper_id]["friendship"].get(cultist_id, 0))
@@ -2531,7 +2457,7 @@ func _advance_drug_prep(step: float) -> void:
 	_drug_prep["remaining"] = float(_drug_prep["remaining"]) - step
 	if _drug_prep["remaining"] > TIME_EPSILON:
 		return
-	var patron_id: StringName = _drug_prep["patron_id"]
+	var patron_id: int = _drug_prep["patron_id"]
 	_doses_remaining -= 1
 	if _patrons.has(patron_id) and _order_system.is_open(_patrons[patron_id]["order_id"]):
 		_patrons[patron_id]["dosed_pending"] = true
@@ -2540,7 +2466,7 @@ func _advance_drug_prep(step: float) -> void:
 
 
 func _advance_drug(step: float) -> void:
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if float(patron["drug_countdown"]) < 0.0 or patron["lifecycle"] != &"active":
 			continue
@@ -2554,7 +2480,7 @@ func _advance_drug(step: float) -> void:
 
 
 func _advance_collapses(step: float) -> void:
-	for victim_id: StringName in _collapses.keys():
+	for victim_id: int in _collapses.keys():
 		var collapse: Dictionary = _collapses[victim_id]
 		match collapse["phase"]:
 			&"reacting":
@@ -2573,7 +2499,7 @@ func _advance_collapses(step: float) -> void:
 					)
 					_record(&"helper_carrying", collapse["helper_id"], {"victim_id": victim_id})
 			&"carrying":
-				var helper_id: StringName = collapse["helper_id"]
+				var helper_id: int = collapse["helper_id"]
 				if _physical_navigation_enabled and not _behavior_arrived(_patrons[helper_id]):
 					continue
 				collapse["remaining"] = 0.0 if _physical_navigation_enabled else float(collapse["remaining"]) - step
@@ -2592,7 +2518,7 @@ func _advance_collapses(step: float) -> void:
 
 
 func _collapse_patron(
-	patron_id: StringName,
+	patron_id: int,
 	cause: StringName = &"drugged_drink",
 	apply_drink_effect: bool = true
 ) -> void:
@@ -2612,7 +2538,7 @@ func _collapse_patron(
 	patron["lifecycle"] = &"unconscious"
 	_set_activity(patron, &"unconscious", &"collapsed")
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	_interaction_registry.release_actor(patron_id)
 	var order_id: StringName = patron["order_id"]
@@ -2621,11 +2547,11 @@ func _collapse_patron(
 	_patrons[patron_id] = patron
 	_collapses[patron_id] = {
 		"victim_id": patron_id,
-		"helper_id": &"",
+		"helper_id": ActorIds.NO_ACTOR,
 		"phase": &"reacting",
 		"remaining": HELPER_REACTION_SECONDS,
 		"carry_remaining": HELPER_CARRY_SECONDS,
-		"acting_cultist": &"",
+		"acting_cultist": ActorIds.NO_ACTOR,
 		"rescue_attempted": false,
 		"last_chance": 0.0,
 		"last_roll": -1.0,
@@ -2639,12 +2565,12 @@ func _collapse_patron(
 
 
 func _apply_collapse_satisfaction_reactions(
-	victim_id: StringName,
+	victim_id: int,
 	room: StringName,
 	cause: StringName
 ) -> void:
 	var collapse: Dictionary = _collapses[victim_id]
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		if patron_id == victim_id or _patrons[patron_id]["lifecycle"] != &"active":
 			continue
 		if _patron_room(_patrons[patron_id]) != room:
@@ -2666,8 +2592,8 @@ func _apply_collapse_satisfaction_reactions(
 	_collapses[victim_id] = collapse
 
 
-func _apply_overdrink_body_satisfaction(patron_id: StringName, patron: Dictionary) -> void:
-	for victim_id: StringName in _collapses:
+func _apply_overdrink_body_satisfaction(patron_id: int, patron: Dictionary) -> void:
+	for victim_id: int in _collapses:
 		var collapse: Dictionary = _collapses[victim_id]
 		if collapse.get("cause", &"") != &"overdrink":
 			continue
@@ -2685,9 +2611,9 @@ func _apply_overdrink_body_satisfaction(patron_id: StringName, patron: Dictionar
 			_depart_patron(patron_id, patron, &"satisfaction_zero")
 
 
-func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
+func _assign_helper(victim_id: int, collapse: Dictionary) -> void:
 	var helper_id := _select_helper(victim_id)
-	if helper_id.is_empty():
+	if helper_id == ActorIds.NO_ACTOR:
 		collapse["phase"] = &"unattended"
 		_collapses[victim_id] = collapse
 		_record(&"collapse_unattended", victim_id)
@@ -2695,7 +2621,7 @@ func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
 	var helper: Dictionary = _patrons[helper_id]
 	helper["bathroom_checks_active"] = false
 	if not StringName(helper["seat"]).is_empty():
-		_seat_owners[helper["seat"]] = &""
+		_seat_owners[helper["seat"]] = ActorIds.NO_ACTOR
 		helper["seat"] = &""
 	_interaction_registry.release_actor(helper_id)
 	var order_id: StringName = helper["order_id"]
@@ -2713,11 +2639,11 @@ func _assign_helper(victim_id: StringName, collapse: Dictionary) -> void:
 	_record(&"helper_assigned", helper_id, {"victim_id": victim_id})
 
 
-func _select_helper(victim_id: StringName) -> StringName:
-	var best_id: StringName = &""
+func _select_helper(victim_id: int) -> int:
+	var best_id: int = ActorIds.NO_ACTOR
 	var best_intoxication := 4
 	var best_index := 999
-	for companion_id: StringName in _patrons[victim_id]["companions"]:
+	for companion_id: int in _patrons[victim_id]["companions"]:
 		if not _patrons.has(companion_id) or _patrons[companion_id]["lifecycle"] != &"active":
 			continue
 		if _satisfaction[companion_id].band() == "Miserable":
@@ -2733,37 +2659,37 @@ func _select_helper(victim_id: StringName) -> StringName:
 	return best_id
 
 
-func _definition_index(patron_id: StringName) -> int:
+func _definition_index(patron_id: int) -> int:
 	for index in range(FULL_NIGHT_PATRON_DEFINITIONS.size()):
 		if FULL_NIGHT_PATRON_DEFINITIONS[index]["id"] == patron_id:
 			return index
 	return 999
 
 
-func _helper_reaches_front(victim_id: StringName) -> void:
+func _helper_reaches_front(victim_id: int) -> void:
 	var collapse: Dictionary = _collapses[victim_id]
-	var helper_id: StringName = collapse["helper_id"]
+	var helper_id: int = collapse["helper_id"]
 	# Both Patrons leave. It is defeat only if the Helper is at maximum Suspicion.
 	if _patrons.has(helper_id) and _suspicion_states[helper_id].snapshot()["score"] >= 100.0:
 		_defeat = true
 		_record(&"defeat", helper_id, {"reason": &"helper_max_suspicion_at_front"})
-	for patron_id: StringName in [victim_id, helper_id]:
+	for patron_id: int in [victim_id, helper_id]:
 		if not _patrons.has(patron_id):
 			continue
 		var patron: Dictionary = _patrons[patron_id]
 		_interaction_registry.release_actor(patron_id)
 		patron["lifecycle"] = &"exited"
-		patron["helper_id"] = &""
-		patron["helping_victim"] = &""
+		patron["helper_id"] = ActorIds.NO_ACTOR
+		patron["helping_victim"] = ActorIds.NO_ACTOR
 		_set_activity(patron, &"normal_departure", &"front_exit")
 		_patrons[patron_id] = patron
 	_collapses.erase(victim_id)
 	_record(&"helper_reached_front", helper_id, {"victim_id": victim_id})
 
 
-func _resolve_rescue(victim_id: StringName) -> void:
+func _resolve_rescue(victim_id: int) -> void:
 	var collapse: Dictionary = _collapses[victim_id]
-	var helper_id: StringName = collapse["helper_id"]
+	var helper_id: int = collapse["helper_id"]
 	var roll := _rng.randf_range(0.0, 100.0)
 	var success := roll <= float(collapse["last_chance"])
 	collapse["last_roll"] = roll
@@ -2782,18 +2708,18 @@ func _resolve_rescue(victim_id: StringName) -> void:
 	_record(&"rescue_persuasion_failed", helper_id, {"roll": roll, "chance": collapse["last_chance"]})
 
 
-func _capture_pair(victim_id: StringName, helper_id: StringName, cause: StringName) -> void:
-	for patron_id: StringName in [victim_id, helper_id]:
+func _capture_pair(victim_id: int, helper_id: int, cause: StringName) -> void:
+	for patron_id: int in [victim_id, helper_id]:
 		if not _patrons.has(patron_id):
 			continue
 		var patron: Dictionary = _patrons[patron_id]
 		_interaction_registry.release_actor(patron_id)
 		if not StringName(patron["seat"]).is_empty():
-			_seat_owners[patron["seat"]] = &""
+			_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 			patron["seat"] = &""
 		patron["lifecycle"] = &"captured"
-		patron["helper_id"] = &""
-		patron["helping_victim"] = &""
+		patron["helper_id"] = ActorIds.NO_ACTOR
+		patron["helping_victim"] = ActorIds.NO_ACTOR
 		_set_activity(patron, &"captured", &"tunnel")
 		_patrons[patron_id] = patron
 		_captures.append({"id": patron_id, "cause": cause, "at": _simulated_seconds})
@@ -2801,7 +2727,7 @@ func _capture_pair(victim_id: StringName, helper_id: StringName, cause: StringNa
 	_collapses.erase(victim_id)
 
 
-func _set_helper_activity(helper_id: StringName, activity: StringName) -> void:
+func _set_helper_activity(helper_id: int, activity: StringName) -> void:
 	if not _patrons.has(helper_id):
 		return
 	var helper: Dictionary = _patrons[helper_id]
@@ -2809,27 +2735,27 @@ func _set_helper_activity(helper_id: StringName, activity: StringName) -> void:
 	_patrons[helper_id] = helper
 
 
-func _carrying_collapse_victim() -> StringName:
-	for victim_id: StringName in _collapses:
-		if _collapses[victim_id]["phase"] == &"carrying" and not StringName(_collapses[victim_id]["helper_id"]).is_empty():
+func _carrying_collapse_victim() -> int:
+	for victim_id: int in _collapses:
+		if _collapses[victim_id]["phase"] == &"carrying" and int(_collapses[victim_id]["helper_id"]) != ActorIds.NO_ACTOR:
 			return victim_id
-	return &""
+	return ActorIds.NO_ACTOR
 
 
-func _active_collapse_with_helper() -> StringName:
-	for victim_id: StringName in _collapses:
+func _active_collapse_with_helper() -> int:
+	for victim_id: int in _collapses:
 		var phase: StringName = _collapses[victim_id]["phase"]
-		if phase in [&"carrying", &"persuading"] and not StringName(_collapses[victim_id]["helper_id"]).is_empty():
+		if phase in [&"carrying", &"persuading"] and int(_collapses[victim_id]["helper_id"]) != ActorIds.NO_ACTOR:
 			return victim_id
-	return &""
+	return ActorIds.NO_ACTOR
 
 
 # --- Manual knockout and dragging (GDD §10.3) --------------------------------
 
 # Begins the 2-second interruptible wind-up. Valid against an active Patron when
 # the acting Cultist is free and no other wind-up is in progress.
-func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _patrons.has(victim_id):
+func begin_knockout(cultist_id: int, victim_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _patrons.has(victim_id):
 		return false
 	if not _knockout_target_available(victim_id):
 		return false
@@ -2845,21 +2771,21 @@ func begin_knockout(cultist_id: StringName, victim_id: StringName) -> bool:
 	return true
 
 
-func knockout_chance(victim_id: StringName) -> float:
+func knockout_chance(victim_id: int) -> float:
 	if not _patrons.has(victim_id):
 		return 0.0
 	return KNOCKOUT_CHANCES[clampi(int(_patrons[victim_id]["intoxication"]), 0, 3)]
 
 
-func cultist_is_incapacitated(cultist_id: StringName) -> bool:
+func cultist_is_incapacitated(cultist_id: int) -> bool:
 	return _incapacitated_cultists.has(cultist_id)
 
 
-func cultist_incapacitated_remaining(cultist_id: StringName) -> float:
+func cultist_incapacitated_remaining(cultist_id: int) -> float:
 	return float(_incapacitated_cultists.get(cultist_id, 0.0))
 
 
-func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
+func begin_stir(helper_id: int, target_id: Variant) -> bool:
 	if helper_id == target_id or helper_id not in CULTIST_IDS or target_id not in CULTIST_IDS:
 		return false
 	if not cultist_is_incapacitated(target_id) or _stirs.has(target_id) or _busy_for_command(helper_id):
@@ -2870,8 +2796,8 @@ func begin_stir(helper_id: StringName, target_id: StringName) -> bool:
 	return true
 
 
-func cancel_stir(helper_id: StringName) -> bool:
-	for target_id: StringName in _stirs:
+func cancel_stir(helper_id: int) -> bool:
+	for target_id: Variant in _stirs:
 		if _stirs[target_id]["helper_id"] == helper_id:
 			_stirs.erase(target_id)
 			_record(&"stir_cancelled", target_id, {"cultist_id": helper_id})
@@ -2882,10 +2808,10 @@ func cancel_stir(helper_id: StringName) -> bool:
 
 # Interrupts the wind-up before impact. The Commitment Point has not passed, so
 # the victim is unharmed. Only the Cultist who started the wind-up can cancel it.
-func cancel_knockout(cultist_id: StringName) -> bool:
+func cancel_knockout(cultist_id: int) -> bool:
 	if _windup.is_empty() or _windup["cultist_id"] != cultist_id:
 		return false
-	var victim_id: StringName = _windup["victim_id"]
+	var victim_id: int = _windup["victim_id"]
 	_windup.clear()
 	_record(&"knockout_windup_cancelled", victim_id, {"cultist_id": cultist_id})
 	_emit_snapshot()
@@ -2893,7 +2819,7 @@ func cancel_knockout(cultist_id: StringName) -> bool:
 
 
 func command_action_state(
-		command: StringName, cultist_id: StringName, target_id: StringName
+		command: StringName, cultist_id: int, target_id: Variant
 ) -> StringName:
 	match command:
 		&"admit_group":
@@ -2938,7 +2864,7 @@ func command_action_state(
 				and _drug_prep["cultist_id"] == cultist_id
 			):
 				return &"executing"
-			for patron_id: StringName in _patrons:
+			for patron_id: int in _patrons:
 				if bool(_patrons[patron_id]["dosed_pending"]):
 					return &"completed"
 		&"pick_up_body":
@@ -2959,7 +2885,7 @@ func command_action_state(
 			if _patrons.has(target_id) and _patrons[target_id]["lifecycle"] == &"captured":
 				return &"completed"
 		&"rescue_persuasion":
-			for victim_id: StringName in _collapses:
+			for victim_id: int in _collapses:
 				var collapse: Dictionary = _collapses[victim_id]
 				if collapse["helper_id"] != target_id or collapse["acting_cultist"] != cultist_id:
 					continue
@@ -2971,8 +2897,8 @@ func command_action_state(
 
 # Starts the 1-second pickup of an Unconscious, unattended body. Pickup pauses the
 # Unattended Body pressure and occupies the Cultist through the drag that follows.
-func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _patrons.has(victim_id):
+func pick_up_body(cultist_id: int, victim_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _patrons.has(victim_id):
 		return false
 	if _patrons[victim_id]["lifecycle"] != &"unconscious" or _drags.has(victim_id):
 		return false
@@ -2984,7 +2910,7 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 			return false
 		collapse["phase"] = &"cultist_dragged"
 		collapse["remaining"] = 0.0
-		collapse["helper_id"] = &""
+		collapse["helper_id"] = ActorIds.NO_ACTOR
 		_collapses[victim_id] = collapse
 	_perception.set_body_state(victim_id, &"held")
 	_drags[victim_id] = {
@@ -3007,9 +2933,9 @@ func pick_up_body(cultist_id: StringName, victim_id: StringName) -> bool:
 
 # Drops the body the Cultist is holding or dragging. Dragging can always be
 # interrupted this way; dropping restarts the victim's Unattended Body grace.
-func drop_body(cultist_id: StringName) -> bool:
+func drop_body(cultist_id: int) -> bool:
 	var victim_id := _drag_victim_for_cultist(cultist_id)
-	if victim_id.is_empty():
+	if victim_id == ActorIds.NO_ACTOR:
 		return false
 	_drags.erase(victim_id)
 	var patron: Dictionary = _patrons[victim_id]
@@ -3030,33 +2956,33 @@ func drop_body(cultist_id: StringName) -> bool:
 	return true
 
 
-func is_cultist_busy(cultist_id: StringName) -> bool:
+func is_cultist_busy(cultist_id: int) -> bool:
 	if cultist_is_incapacitated(cultist_id):
 		return true
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
 	if _conversations.has(cultist_id):
 		return true
-	for target_id: StringName in _stirs:
+	for target_id: Variant in _stirs:
 		if _stirs[target_id]["helper_id"] == cultist_id:
 			return true
-	for patron_id: StringName in _follows:
+	for patron_id: int in _follows:
 		if _follows[patron_id]["cultist_id"] == cultist_id:
 			return true
-	return not _drag_victim_for_cultist(cultist_id).is_empty()
+	return _drag_victim_for_cultist(cultist_id) != ActorIds.NO_ACTOR
 
 
-func _drag_victim_for_cultist(cultist_id: StringName) -> StringName:
-	for victim_id: StringName in _drags:
+func _drag_victim_for_cultist(cultist_id: int) -> int:
+	for victim_id: int in _drags:
 		if _drags[victim_id]["cultist_id"] == cultist_id:
 			return victim_id
-	return &""
+	return ActorIds.NO_ACTOR
 
 
 func _advance_windup(step: float) -> void:
 	if _windup.is_empty():
 		return
-	var victim_id: StringName = _windup["victim_id"]
+	var victim_id: int = _windup["victim_id"]
 	# A victim who left or fell before impact aborts the wind-up harmlessly.
 	if not _knockout_target_available(victim_id):
 		_windup.clear()
@@ -3064,13 +2990,13 @@ func _advance_windup(step: float) -> void:
 	_windup["remaining"] = float(_windup["remaining"]) - step
 	if float(_windup["remaining"]) > TIME_EPSILON:
 		return
-	var cultist_id: StringName = _windup["cultist_id"]
+	var cultist_id: int = _windup["cultist_id"]
 	_windup.clear()
 	_knockout_patron(victim_id, cultist_id)
 
 
 func _advance_incapacitated_cultists(step: float) -> void:
-	for cultist_id: StringName in _incapacitated_cultists.keys():
+	for cultist_id: int in _incapacitated_cultists.keys():
 		_incapacitated_cultists[cultist_id] = maxf(
 			0.0, float(_incapacitated_cultists[cultist_id]) - step
 		)
@@ -3079,7 +3005,7 @@ func _advance_incapacitated_cultists(step: float) -> void:
 
 
 func _advance_stirs(step: float) -> void:
-	for target_id: StringName in _stirs.keys():
+	for target_id: Variant in _stirs.keys():
 		if not cultist_is_incapacitated(target_id):
 			_stirs.erase(target_id)
 			continue
@@ -3090,7 +3016,7 @@ func _advance_stirs(step: float) -> void:
 			_recover_cultist(target_id, &"stirred")
 
 
-func _recover_cultist(cultist_id: StringName, cause: StringName) -> void:
+func _recover_cultist(cultist_id: int, cause: StringName) -> void:
 	_incapacitated_cultists.erase(cultist_id)
 	_stirs.erase(cultist_id)
 	_record(&"cultist_recovered", cultist_id, {"cause": cause})
@@ -3098,7 +3024,7 @@ func _recover_cultist(cultist_id: StringName, cause: StringName) -> void:
 
 # The knockout impact. This is the Commitment Point: witnesses perceive it and the
 # victim goes Unconscious for the Night, becoming an Unattended Body on the spot.
-func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
+func _knockout_patron(victim_id: int, cultist_id: int) -> void:
 	var patron: Dictionary = _patrons[victim_id]
 	var source_room := _patron_room(patron)
 	var source_position := _patron_position(patron)
@@ -3122,7 +3048,7 @@ func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
 	patron["body_position"] = source_position
 	_set_activity(patron, &"unconscious", &"collapsed")
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	_interaction_registry.release_actor(victim_id)
 	var order_id: StringName = patron["order_id"]
@@ -3137,15 +3063,15 @@ func _knockout_patron(victim_id: StringName, cultist_id: StringName) -> void:
 
 # Fans the impact out: a Patron who sees it receives Hard Evidence, a Patron who
 # only hears it receives the +25 soft increase, and the victim never witnesses it.
-func _witness_knockout(victim_id: StringName, source_room: StringName, source_position: Vector2) -> void:
+func _witness_knockout(victim_id: int, source_room: StringName, source_position: Vector2) -> void:
 	var perceivers := _active_perceivers()
 	var seen: Dictionary = {}
-	for patron_id: StringName in _perception.visual_recipients(source_room, source_position, perceivers):
+	for patron_id: int in _perception.visual_recipients(source_room, source_position, perceivers):
 		if patron_id == victim_id:
 			continue
 		if _route_stimulus(patron_id, &"knockout_witnessed", &"visual", victim_id):
 			seen[patron_id] = true
-	for patron_id: StringName in _perception.auditory_recipients(source_room, perceivers):
+	for patron_id: int in _perception.auditory_recipients(source_room, perceivers):
 		if patron_id == victim_id or seen.has(patron_id):
 			continue
 		var noticed := _rng.randi_range(1, 100) <= int(KNOCKOUT_HEARING_NOTICE_PERCENT)
@@ -3157,7 +3083,7 @@ func _witness_knockout(victim_id: StringName, source_room: StringName, source_po
 
 
 func _advance_drags(step: float) -> void:
-	for victim_id: StringName in _drags.keys():
+	for victim_id: int in _drags.keys():
 		var drag: Dictionary = _drags[victim_id]
 		match drag["phase"]:
 			&"pickup":
@@ -3188,7 +3114,7 @@ func _advance_drags(step: float) -> void:
 
 # Crossing the Tunnel Intake completes the Capture exactly once: the record is
 # erased and the body removed, so a finished drag cannot capture the victim again.
-func _capture_dragged_body(victim_id: StringName) -> void:
+func _capture_dragged_body(victim_id: int) -> void:
 	var drag: Dictionary = _drags[victim_id]
 	_apply_intake_witnessing(victim_id, drag)
 	_drags.erase(victim_id)
@@ -3204,21 +3130,21 @@ func _capture_dragged_body(victim_id: StringName) -> void:
 	_record(&"capture", victim_id, {"cause": cause, "cultist_id": drag["cultist_id"]})
 
 
-func _apply_drag_witnessing(victim_id: StringName, drag: Dictionary, first: bool) -> void:
+func _apply_drag_witnessing(victim_id: int, drag: Dictionary, first: bool) -> void:
 	var stimulus: StringName
 	if StringName(drag.get("capture_cause", &"knockout")) == &"overdrink":
 		stimulus = &"overdrink_body_drag_seen_first" if first else &"overdrink_body_drag_seen_continuing"
 	else:
 		stimulus = &"body_drag_seen_first" if first else &"body_drag_seen_continuing"
 	var source_position: Vector2 = drag["source_position"] if first else BAR_POSITION
-	for patron_id: StringName in _perception.visual_recipients(
+	for patron_id: int in _perception.visual_recipients(
 		drag["source_room"], source_position, _active_perceivers()
 	):
 		_route_stimulus(patron_id, stimulus, &"visual", victim_id)
 
 
-func _apply_intake_witnessing(victim_id: StringName, drag: Dictionary) -> void:
-	for patron_id: StringName in _perception.visual_recipients(
+func _apply_intake_witnessing(victim_id: int, drag: Dictionary) -> void:
+	for patron_id: int in _perception.visual_recipients(
 		drag["source_room"], BAR_POSITION, _active_perceivers()
 	):
 		_route_stimulus(patron_id, &"body_intake_seen", &"visual", victim_id)
@@ -3228,8 +3154,8 @@ func _apply_intake_witnessing(victim_id: StringName, drag: Dictionary) -> void:
 
 # Offers a cigarette: an instant +10 Friendship from this Cultist. Repeatable, capped
 # at the Friendship maximum. Valid against any active Patron.
-func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _patrons.has(patron_id):
+func offer_cigarette(cultist_id: int, patron_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _patrons.has(patron_id):
 		return false
 	if _patrons[patron_id]["lifecycle"] != &"active":
 		return false
@@ -3243,12 +3169,12 @@ func offer_cigarette(cultist_id: StringName, patron_id: StringName) -> bool:
 
 # Begins a sustained conversation that accrues ~0.75 Friendship per second and occupies
 # the Cultist. Valid against an active Patron when the Cultist is free.
-func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _patrons.has(patron_id):
+func begin_conversation(cultist_id: int, patron_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _patrons.has(patron_id):
 		return false
 	if _patrons[patron_id]["lifecycle"] != &"active" or is_cultist_busy(cultist_id):
 		return false
-	if _conversation_partner(patron_id) != &"":
+	if _conversation_partner(patron_id) != ActorIds.NO_ACTOR:
 		return false
 	var patron: Dictionary = _patrons[patron_id]
 	if not _set_activity(patron, &"conversing", &"seat"):
@@ -3260,10 +3186,10 @@ func begin_conversation(cultist_id: StringName, patron_id: StringName) -> bool:
 	return true
 
 
-func end_conversation(cultist_id: StringName) -> bool:
+func end_conversation(cultist_id: int) -> bool:
 	if not _conversations.has(cultist_id):
 		return false
-	var patron_id: StringName = _conversations[cultist_id]
+	var patron_id: int = _conversations[cultist_id]
 	_conversations.erase(cultist_id)
 	if _patrons.has(patron_id):
 		var patron: Dictionary = _patrons[patron_id]
@@ -3288,8 +3214,8 @@ func end_conversation(cultist_id: StringName) -> bool:
 
 # Leads a Trusted, receptive Patron to the Tunnel Intake. There is no roll — only the
 # sad, friendship-capturable Patron follows, and only once at Trusted Friendship (75+).
-func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> bool:
-	if cultist_id.is_empty() or not _patrons.has(patron_id):
+func begin_friendship_capture(cultist_id: int, patron_id: int) -> bool:
+	if cultist_id == ActorIds.NO_ACTOR or not _patrons.has(patron_id):
 		return false
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["lifecycle"] != &"active" or not patron["friendship_capturable"]:
@@ -3302,7 +3228,7 @@ func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> 
 	patron["bathroom_checks_active"] = false
 	patron["lifecycle"] = &"following"
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 		patron["seat"] = &""
 	_interaction_registry.release_actor(patron_id)
 	var order_id: StringName = patron["order_id"]
@@ -3316,15 +3242,15 @@ func begin_friendship_capture(cultist_id: StringName, patron_id: StringName) -> 
 	return true
 
 
-func friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+func friendship_value(patron_id: int, cultist_id: int) -> float:
 	return _friendship_value(patron_id, cultist_id)
 
 
-func friendship_band(patron_id: StringName, cultist_id: StringName) -> String:
+func friendship_band(patron_id: int, cultist_id: int) -> String:
 	return _friendship_band(_friendship_value(patron_id, cultist_id))
 
 
-func stay_behind_chance(patron_id: StringName) -> float:
+func stay_behind_chance(patron_id: int) -> float:
 	if not _patrons.has(patron_id):
 		return 0.0
 	var suspicion: float = _suspicion_states[patron_id].snapshot()["score"]
@@ -3341,12 +3267,12 @@ func stay_behind_chance(patron_id: StringName) -> float:
 	)
 
 
-func _add_friendship(patron_id: StringName, cultist_id: StringName, amount: float) -> void:
+func _add_friendship(patron_id: int, cultist_id: int, amount: float) -> void:
 	var friendship: Dictionary = _patrons[patron_id]["friendship"]
 	friendship[cultist_id] = minf(FRIENDSHIP_MAXIMUM, float(friendship.get(cultist_id, 0.0)) + amount)
 
 
-func _friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
+func _friendship_value(patron_id: int, cultist_id: int) -> float:
 	if not _patrons.has(patron_id):
 		return 0.0
 	return float(_patrons[patron_id]["friendship"].get(cultist_id, 0.0))
@@ -3354,29 +3280,29 @@ func _friendship_value(patron_id: StringName, cultist_id: StringName) -> float:
 
 # The Active Bartender Friendship: the Patron's highest Friendship toward a Cultist doing
 # bar work. Every Cultist may serve, so we take the Patron's highest Friendship of all.
-func _active_bartender_friendship(patron_id: StringName) -> float:
+func _active_bartender_friendship(patron_id: int) -> float:
 	var best := 0.0
-	for cultist_id: StringName in _patrons[patron_id]["friendship"]:
+	for cultist_id: int in _patrons[patron_id]["friendship"]:
 		best = maxf(best, float(_patrons[patron_id]["friendship"][cultist_id]))
 	return best
 
 
-func _conversation_partner(patron_id: StringName) -> StringName:
-	for cultist_id: StringName in _conversations:
+func _conversation_partner(patron_id: int) -> int:
+	for cultist_id: int in _conversations:
 		if _conversations[cultist_id] == patron_id:
 			return cultist_id
-	return &""
+	return ActorIds.NO_ACTOR
 
 
-func _end_conversation_with(patron_id: StringName) -> void:
+func _end_conversation_with(patron_id: int) -> void:
 	var cultist_id := _conversation_partner(patron_id)
-	if not cultist_id.is_empty():
+	if cultist_id != ActorIds.NO_ACTOR:
 		_conversations.erase(cultist_id)
 
 
 func _advance_conversations(step: float) -> void:
-	for cultist_id: StringName in _conversations.keys():
-		var patron_id: StringName = _conversations[cultist_id]
+	for cultist_id: int in _conversations.keys():
+		var patron_id: int = _conversations[cultist_id]
 		if not _patrons.has(patron_id) or _patrons[patron_id]["lifecycle"] != &"active":
 			_conversations.erase(cultist_id)
 			continue
@@ -3384,7 +3310,7 @@ func _advance_conversations(step: float) -> void:
 
 
 func _advance_follows(step: float) -> void:
-	for patron_id: StringName in _follows.keys():
+	for patron_id: int in _follows.keys():
 		var follow: Dictionary = _follows[patron_id]
 		if _physical_navigation_enabled and not _behavior_arrived(_patrons[patron_id]):
 			continue
@@ -3395,7 +3321,7 @@ func _advance_follows(step: float) -> void:
 		_follows[patron_id] = follow
 
 
-func _capture_follower(patron_id: StringName, cultist_id: StringName) -> void:
+func _capture_follower(patron_id: int, cultist_id: int) -> void:
 	_follows.erase(patron_id)
 	var patron: Dictionary = _patrons[patron_id]
 	_interaction_registry.release_actor(patron_id)
@@ -3406,7 +3332,7 @@ func _capture_follower(patron_id: StringName, cultist_id: StringName) -> void:
 	_record(&"capture", patron_id, {"cause": &"friendship_capture", "cultist_id": cultist_id})
 
 
-func _advance_intoxication(patron_id: StringName, patron: Dictionary, delta: float) -> void:
+func _advance_intoxication(patron_id: int, patron: Dictionary, delta: float) -> void:
 	if int(patron["intoxication"]) <= 0:
 		return
 	patron["intoxication_decay_in"] = float(patron["intoxication_decay_in"]) - delta
@@ -3433,7 +3359,7 @@ func _try_group_departures() -> void:
 		# The departure anchor (first-defined member) always leaves. Every other eligible
 		# member rolls its stay-behind chance once; a stayer becomes a solo Patron.
 		var anchor_taken := false
-		for patron_id: StringName in group["patrons"]:
+		for patron_id: int in group["patrons"]:
 			var patron: Dictionary = _patrons[patron_id]
 			if patron["lifecycle"] != &"active":
 				continue
@@ -3450,7 +3376,7 @@ func _try_group_departures() -> void:
 
 
 # A single stay-behind roll on the seeded source. Returns true when the Patron stays.
-func _roll_stay_behind(patron_id: StringName) -> bool:
+func _roll_stay_behind(patron_id: int) -> bool:
 	var patron: Dictionary = _patrons[patron_id]
 	if patron["stay_rolled"]:
 		return patron["stayed_behind"]
@@ -3468,7 +3394,7 @@ func _roll_stay_behind(patron_id: StringName) -> bool:
 func _try_stayer_departures() -> void:
 	if not _closing:
 		return
-	for patron_id: StringName in _patrons:
+	for patron_id: int in _patrons:
 		var patron: Dictionary = _patrons[patron_id]
 		if not patron["stayed_behind"] or patron["lifecycle"] != &"active":
 			continue
@@ -3479,7 +3405,7 @@ func _try_stayer_departures() -> void:
 
 
 func _group_ready_to_depart(group: Dictionary) -> bool:
-	for patron_id: StringName in group["patrons"]:
+	for patron_id: int in group["patrons"]:
 		var patron: Dictionary = _patrons[patron_id]
 		if patron["lifecycle"] != &"active":
 			continue
@@ -3488,10 +3414,10 @@ func _group_ready_to_depart(group: Dictionary) -> bool:
 	return true
 
 
-func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringName) -> void:
+func _depart_patron(patron_id: int, patron: Dictionary, reason: StringName) -> void:
 	_interaction_registry.release_actor(patron_id)
 	if not StringName(patron["seat"]).is_empty():
-		_seat_owners[patron["seat"]] = &""
+		_seat_owners[patron["seat"]] = ActorIds.NO_ACTOR
 	var order_id: StringName = patron["order_id"]
 	if not order_id.is_empty() and _order_system.is_open(order_id):
 		_order_system.cancel_order(order_id, _simulated_seconds, reason)
@@ -3511,7 +3437,7 @@ func _depart_patron(patron_id: StringName, patron: Dictionary, reason: StringNam
 
 
 func _set_activity(patron: Dictionary, activity: StringName, destination: StringName) -> bool:
-	var patron_id: StringName = patron["id"]
+	var patron_id: int = patron["id"]
 	if _patron_actions.has(patron_id):
 		var reservation: StringName = _interaction_registry.actor_slot(patron_id)
 		var result: Dictionary = _patron_actions[patron_id].submit(
@@ -3549,7 +3475,7 @@ func _activity_duration(patron: Dictionary, activity: StringName) -> float:
 
 
 func _complete_activity(patron: Dictionary, fallback: StringName, destination: StringName) -> void:
-	var patron_id: StringName = patron["id"]
+	var patron_id: int = patron["id"]
 	if not _patron_actions.has(patron_id):
 		_set_activity(patron, fallback, destination)
 		return
@@ -3696,7 +3622,7 @@ func _count_capture_autonomy_actions() -> int:
 	return count
 
 
-func _record(event_name: StringName, actor_id: StringName, details: Dictionary = {}) -> void:
+func _record(event_name: StringName, actor_id: Variant, details: Dictionary = {}) -> void:
 	_events.append({"at": _simulated_seconds, "event": event_name, "actor_id": actor_id, "details": details.duplicate(true)})
 
 

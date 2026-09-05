@@ -15,7 +15,7 @@ const SCENARIOS := {
 
 var _session = GAME_SESSION_SCRIPT.new()
 var _scenario: String = "trapdoor_capture"
-var _focus_patron_id: StringName = &"patron_june"
+var _focus_patron_id: int = 4
 var _scenario_trace: String = ""
 var _capture_mode: bool = false
 var _scenario_buttons: Dictionary = {}
@@ -218,53 +218,53 @@ func _set_scenario(scenario_id: String) -> void:
 	_session.restart_night(707)
 	match scenario_id:
 		"trapdoor_capture":
-			_focus_patron_id = &"patron_june"
+			_focus_patron_id = 4
 			_session.advance(100.0)
-			_session.debug_force_bathroom(&"patron_june")
+			_session.debug_force_bathroom(4)
 			_session.activate_trapdoor()
 			_session.advance(20.0)
-			var mara: Dictionary = _debug_for(&"patron_mara")
+			var mara: Dictionary = _debug_for(5)
 			_scenario_trace = "June forced into the bathroom (standing).\nTrapdoor armed: June is captured. Captures now %d.\nMara (Companion) after 20 s: %.0f, %s." % [
 				_session.snapshot()["captures"], mara["suspicion"], _humanize(mara["suspicion_cause"]),
 			]
 		"seated_witness":
-			_focus_patron_id = &"patron_mara"
+			_focus_patron_id = 5
 			_session.advance(100.0)
-			_session.debug_force_bathroom(&"patron_mara")
+			_session.debug_force_bathroom(5)
 			_session.advance(2.05)
 			_session.activate_trapdoor()
-			var seated: Dictionary = _debug_for(&"patron_mara")
+			var seated: Dictionary = _debug_for(5)
 			_scenario_trace = "Mara forced into the bathroom, seated (using it).\nTrapdoor armed: a seated occupant is not captured.\nMara gains Hard Evidence: %.0f, %s, still %s." % [
 				seated["suspicion"], _humanize(seated["suspicion_cause"]), _humanize(seated["activity"]),
 			]
 		"missing_investigation":
-			_focus_patron_id = &"patron_mara"
+			_focus_patron_id = 5
 			_session.advance(100.0)
-			_session.debug_force_bathroom(&"patron_june")
+			_session.debug_force_bathroom(4)
 			_session.activate_trapdoor()
 			_session.advance(40.0)
-			var m: Dictionary = _debug_for(&"patron_mara")
+			var m: Dictionary = _debug_for(5)
 			_scenario_trace = "June captured; Mara's missing-Companion clock runs.\n40 s later Mara reaches %.0f, %s.\nResponse %s → lifecycle %s." % [
 				m["suspicion"], _humanize(m["suspicion_cause"]),
 				_humanize(m["suspicion_maximum_response"]), _humanize(m["lifecycle"]),
 			]
 		"escape_intercept":
-			_focus_patron_id = &"patron_elias"
+			_focus_patron_id = 6
 			_session.advance(200.0)
 			_session.set_time_scale(4.0)
-			_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+			_session.report_patron_stimulus(6, &"drink_dosed_seen")
 			_session.advance(1.0)
 			var scale_after: float = _session.snapshot()["time_scale"]
 			var refused := not _session.set_time_scale(4.0)
-			var started := _session.begin_intercept(&"patron_elias", &"cultist_01")
-			var second := _session.begin_intercept(&"patron_elias", &"cultist_02")
+			var started := _session.begin_intercept(6, 1)
+			var second := _session.begin_intercept(6, 2)
 			_scenario_trace = "Elias sees his drink dosed → Escape.\nNight was 4x; Escape forced it to %.0fx (faster refused: %s).\nIntercept started: %s. Second Intercept refused: %s." % [
 				scale_after, str(refused), str(started), str(not second),
 			]
 		"front_exit_defeat":
-			_focus_patron_id = &"patron_elias"
+			_focus_patron_id = 6
 			_session.advance(200.0)
-			_session.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+			_session.report_patron_stimulus(6, &"drink_dosed_seen")
 			_session.advance(0.2)
 			_session.advance(10.0)
 			var loss: Dictionary = _session.snapshot()
@@ -305,20 +305,23 @@ func _patron_markup(state: Dictionary) -> String:
 		normal["name"], _humanize(debug["lifecycle"]), _humanize(debug["activity"]),
 		_humanize(debug["room"]), debug["suspicion"], normal["suspicion_band"],
 		_humanize(debug["suspicion_cause"]), _humanize(debug["suspicion_maximum_response"]),
-		_actor_name(debug["missing_target"]) if not StringName(debug["missing_target"]).is_empty() else "None",
+		_actor_name(debug["missing_target"]) if int(debug["missing_target"]) != ActorIds.NO_ACTOR else "None",
 	]
 
 
-func _debug_for(patron_id: StringName) -> Dictionary:
+func _debug_for(patron_id: int) -> Dictionary:
 	return _session.snapshot()["debug_patron_views"][patron_id]
 
 
 func _humanize(value: Variant) -> String:
-	return String(value).replace("_", " ").capitalize()
+	return str(value).replace("_", " ").capitalize()
 
 
-func _actor_name(actor_id: StringName) -> String:
-	return String(actor_id).trim_prefix("patron_").capitalize()
+func _actor_name(actor_id: Variant) -> String:
+	if actor_id is int:
+		return ActorRoster.display_name(actor_id)
+	return str(actor_id).replace("arrival_group_", "").replace("_", " ").capitalize()
+
 
 
 func _command_line_value(prefix: String, fallback: String = "") -> String:
@@ -354,52 +357,52 @@ func _validation_report() -> Dictionary:
 	var cap = GAME_SESSION_SCRIPT.new()
 	cap.start_night(707)
 	cap.advance(100.0)
-	cap.debug_force_bathroom(&"patron_june")
+	cap.debug_force_bathroom(4)
 	cap.activate_trapdoor()
-	var june_captured: StringName = cap.snapshot()["debug_patron_views"][&"patron_june"]["lifecycle"]
+	var june_captured: StringName = cap.snapshot()["debug_patron_views"][4]["lifecycle"]
 	var captures_after: int = cap.snapshot()["captures"]
 	cap.advance(20.0)
-	var mara_missing: Dictionary = cap.snapshot()["debug_patron_views"][&"patron_mara"]
+	var mara_missing: Dictionary = cap.snapshot()["debug_patron_views"][5]
 
 	var witness = GAME_SESSION_SCRIPT.new()
 	witness.start_night(707)
 	witness.advance(100.0)
-	witness.debug_force_bathroom(&"patron_mara")
+	witness.debug_force_bathroom(5)
 	witness.advance(2.05)
 	witness.activate_trapdoor()
-	var seated: Dictionary = witness.snapshot()["debug_patron_views"][&"patron_mara"]
+	var seated: Dictionary = witness.snapshot()["debug_patron_views"][5]
 	var seated_captures: int = witness.snapshot()["captures"]
 
 	# AC2: missing-Companion Maximum drives Investigation; proof drives Escape.
 	var invest = GAME_SESSION_SCRIPT.new()
 	invest.start_night(707)
 	invest.advance(100.0)
-	invest.debug_force_bathroom(&"patron_june")
+	invest.debug_force_bathroom(4)
 	invest.activate_trapdoor()
 	invest.advance(40.0)
-	var investigator: Dictionary = invest.snapshot()["debug_patron_views"][&"patron_mara"]
+	var investigator: Dictionary = invest.snapshot()["debug_patron_views"][5]
 
 	var proof = GAME_SESSION_SCRIPT.new()
 	proof.start_night(707)
 	proof.advance(200.0)
-	proof.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+	proof.report_patron_stimulus(6, &"drink_dosed_seen")
 	proof.advance(0.2)
-	var escaper: Dictionary = proof.snapshot()["debug_patron_views"][&"patron_elias"]
+	var escaper: Dictionary = proof.snapshot()["debug_patron_views"][6]
 
 	# AC3: Escape forces 1x and permits exactly one 5-second Intercept.
 	var esc = GAME_SESSION_SCRIPT.new()
 	esc.start_night(707)
 	esc.advance(200.0)
 	esc.set_time_scale(4.0)
-	esc.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+	esc.report_patron_stimulus(6, &"drink_dosed_seen")
 	esc.advance(1.0)
 	var forced_scale: float = esc.snapshot()["time_scale"]
 	var faster_refused := not esc.set_time_scale(4.0)
-	var first_intercept := esc.begin_intercept(&"patron_elias", &"cultist_01")
-	var second_intercept := esc.begin_intercept(&"patron_elias", &"cultist_02")
+	var first_intercept := esc.begin_intercept(6, 1)
+	var second_intercept := esc.begin_intercept(6, 2)
 	esc.advance(5.0)
 	var after_intercept: Dictionary = esc.snapshot()
-	var resumed: StringName = after_intercept["debug_patron_views"][&"patron_elias"]["lifecycle"]
+	var resumed: StringName = after_intercept["debug_patron_views"][6]["lifecycle"]
 
 	# AC4: only a Maximum-Suspicion front-exit crossing is defeat; Normal Departures are not.
 	var clean = GAME_SESSION_SCRIPT.new()
@@ -411,7 +414,7 @@ func _validation_report() -> Dictionary:
 	var loss = GAME_SESSION_SCRIPT.new()
 	loss.start_night(707)
 	loss.advance(200.0)
-	loss.report_patron_stimulus(&"patron_elias", &"drink_dosed_seen")
+	loss.report_patron_stimulus(6, &"drink_dosed_seen")
 	loss.advance(0.2)
 	loss.advance(10.0)
 	var loss_snapshot: Dictionary = loss.snapshot()
