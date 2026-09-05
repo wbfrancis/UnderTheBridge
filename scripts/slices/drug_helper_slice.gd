@@ -17,8 +17,8 @@ const FAILURE_SEED := 1
 
 var _session = GAME_SESSION_SCRIPT.new()
 var _scenario: String = "prepare_and_collapse"
-var _victim_id: int = 5
-var _helper_id: int = 4
+var _victim_id: int = ScenarioActors.opening_companion()
+var _helper_id: int = ScenarioActors.opening_patron()
 var _scenario_trace: String = ""
 var _capture_mode: bool = false
 var _scenario_buttons: Dictionary = {}
@@ -218,56 +218,56 @@ func _set_scenario(scenario_id: String) -> void:
 	if not SCENARIOS.has(scenario_id):
 		scenario_id = "prepare_and_collapse"
 	_scenario = scenario_id
-	_victim_id = 5
-	_helper_id = 4
+	_victim_id = ScenarioActors.opening_companion()
+	_helper_id = ScenarioActors.opening_patron()
 	var night_seed := SUCCESS_SEED if scenario_id == "rescue_success" else FAILURE_SEED if scenario_id == "rescue_failure" else 707
 	_session.restart_night(night_seed)
 	_session.advance(95.0)
 	match scenario_id:
 		"prepare_and_collapse":
 			var doses_before: int = _session.snapshot()["doses_remaining"]
-			_session.prepare_drugged_drink(5, 1)
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 			_session.advance(8.1)
 			var doses_after: int = _session.snapshot()["doses_remaining"]
 			_session.advance(22.0)
-			var victim: Dictionary = _debug_for(5)
+			var victim: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "Prepared a dose for Mara (doses %d -> %d).\nFirst sip started her 20 s countdown.\nCountdown %.0f s -> lifecycle %s." % [
 				doses_before, doses_after, victim["drug_countdown"], _humanize(victim["lifecycle"]),
 			]
 		"helper_carry":
-			_session.prepare_drugged_drink(5, 1)
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 			_session.advance(30.1)
 			_session.advance(6.1)
-			var helper: Dictionary = _debug_for(4)
+			var helper: Dictionary = _debug_for(ScenarioActors.opening_patron())
 			_scenario_trace = "Mara collapses; June is the conscious Companion.\nAfter a 2 s reaction and 4 s lift, June carries her.\nJune lifecycle %s, activity %s." % [
 				_humanize(helper["lifecycle"]), _humanize(helper["activity"]),
 			]
 		"rescue_chance":
-			_session.report_patron_stimulus(4, &"missing_companion_20")
-			_session.prepare_drugged_drink(5, 1)
+			_session.report_patron_stimulus(ScenarioActors.opening_patron(), &"missing_companion_20")
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 			_session.advance(36.2)
-			var chance: float = _session.rescue_persuasion_chance(1)
-			var helper_suspicion: float = _debug_for(4)["suspicion"]
+			var chance: float = _session.rescue_persuasion_chance(ActorIds.CULTIST_IDS[0])
+			var helper_suspicion: float = _debug_for(ScenarioActors.opening_patron())["suspicion"]
 			_scenario_trace = "June (Helper) carries with %0.0f Suspicion, Friendship 0.\nchance = clamp(25 + 0.7 x (0 - %0.0f), 5, 95).\nDisplayed Rescue Persuasion chance: %0.1f%%." % [
 				helper_suspicion, helper_suspicion, chance,
 			]
 		"rescue_success":
-			_session.prepare_drugged_drink(5, 1)
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 			_session.advance(36.2)
-			var win_chance: float = _session.rescue_persuasion_chance(1)
-			_session.attempt_rescue_persuasion(1)
+			var win_chance: float = _session.rescue_persuasion_chance(ActorIds.CULTIST_IDS[0])
+			_session.attempt_rescue_persuasion(ActorIds.CULTIST_IDS[0])
 			_session.advance(6.1)
 			var won: Dictionary = _session.snapshot()
 			_scenario_trace = "Cultist 01 attempts Rescue Persuasion at %0.1f%%.\nThe seeded roll succeeds.\nCaptures now %d — both captured at the Tunnel Intake." % [
 				win_chance, won["captures"],
 			]
 		"rescue_failure":
-			_session.prepare_drugged_drink(5, 1)
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 			_session.advance(36.2)
-			var lose_chance: float = _session.rescue_persuasion_chance(1)
-			_session.attempt_rescue_persuasion(1)
+			var lose_chance: float = _session.rescue_persuasion_chance(ActorIds.CULTIST_IDS[0])
+			_session.attempt_rescue_persuasion(ActorIds.CULTIST_IDS[0])
 			_session.advance(6.1)
-			var helper_after: Dictionary = _debug_for(4)
+			var helper_after: Dictionary = _debug_for(ScenarioActors.opening_patron())
 			_scenario_trace = "Cultist 01 attempts Rescue Persuasion at %0.1f%%.\nThe seeded roll fails: June gains 25 Suspicion (now %0.0f).\nJune resumes carrying (%s); both will leave." % [
 				lose_chance, helper_after["suspicion"], _humanize(helper_after["activity"]),
 			]
@@ -360,8 +360,8 @@ func _carry_session(night_seed: int, helper_suspicion_stimulus: StringName):
 	session.start_night(night_seed)
 	session.advance(95.0)
 	if not helper_suspicion_stimulus.is_empty():
-		session.report_patron_stimulus(4, helper_suspicion_stimulus)
-	session.prepare_drugged_drink(5, 1)
+		session.report_patron_stimulus(ScenarioActors.opening_patron(), helper_suspicion_stimulus)
+	session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 	session.advance(36.2)  # collapse + reaction + lift => carrying
 	return session
 
@@ -372,35 +372,35 @@ func _validation_report() -> Dictionary:
 	drug.start_night(707)
 	var doses_start: int = drug.snapshot()["doses_remaining"]
 	drug.advance(95.0)
-	drug.prepare_drugged_drink(5, 1)
+	drug.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[0])
 	drug.advance(8.1)
 	var doses_after: int = drug.snapshot()["doses_remaining"]
 	drug.advance(1.5)
-	var sip_countdown: float = drug.snapshot()["debug_patron_views"][5]["drug_countdown"]
+	var sip_countdown: float = drug.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]["drug_countdown"]
 	drug.advance(21.0)
-	var collapsed: StringName = drug.snapshot()["debug_patron_views"][5]["lifecycle"]
+	var collapsed: StringName = drug.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]["lifecycle"]
 
 	# AC2: least-intoxicated conscious Companion becomes Helper and carries.
 	var carry = _carry_session(707, &"")
-	var helper: Dictionary = carry.snapshot()["debug_patron_views"][4]
-	var victim: Dictionary = carry.snapshot()["debug_patron_views"][5]
+	var helper: Dictionary = carry.snapshot()["debug_patron_views"][ScenarioActors.opening_patron()]
+	var victim: Dictionary = carry.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]
 
 	# AC3: displayed chance uses Friendship and Suspicion.
 	var calm = _carry_session(707, &"")
-	var calm_chance: float = calm.rescue_persuasion_chance(1)
+	var calm_chance: float = calm.rescue_persuasion_chance(ActorIds.CULTIST_IDS[0])
 	var wary = _carry_session(707, &"missing_companion_20")
-	var wary_chance: float = wary.rescue_persuasion_chance(1)
+	var wary_chance: float = wary.rescue_persuasion_chance(ActorIds.CULTIST_IDS[0])
 
 	# AC4: success captures both; failure raises Suspicion and resumes leaving.
 	var win = _carry_session(SUCCESS_SEED, &"")
-	win.attempt_rescue_persuasion(1)
+	win.attempt_rescue_persuasion(ActorIds.CULTIST_IDS[0])
 	win.advance(6.1)
 	var won: Dictionary = win.snapshot()
 
 	var lose = _carry_session(FAILURE_SEED, &"")
-	lose.attempt_rescue_persuasion(1)
+	lose.attempt_rescue_persuasion(ActorIds.CULTIST_IDS[0])
 	lose.advance(6.1)
-	var failed_helper: Dictionary = lose.snapshot()["debug_patron_views"][4]
+	var failed_helper: Dictionary = lose.snapshot()["debug_patron_views"][ScenarioActors.opening_patron()]
 	lose.advance(15.0)
 	var left: Dictionary = lose.snapshot()
 
@@ -411,15 +411,15 @@ func _validation_report() -> Dictionary:
 		"collapse_after_twenty_seconds": collapsed == &"unconscious",
 		"conscious_companion_carries_victim": helper["lifecycle"] == &"helping"
 			and helper["activity"] == &"helper_carrying"
-			and victim["helper_id"] == 4,
+			and victim["helper_id"] == ScenarioActors.opening_patron(),
 		"chance_uses_friendship_and_suspicion": is_equal_approx(calm_chance, 25.0)
 			and is_equal_approx(wary_chance, 7.5),
 		"success_captures_both_at_tunnel": won["captures"] == 2
-			and won["debug_patron_views"][5]["lifecycle"] == &"captured"
-			and won["debug_patron_views"][4]["lifecycle"] == &"captured",
+			and won["debug_patron_views"][ScenarioActors.opening_companion()]["lifecycle"] == &"captured"
+			and won["debug_patron_views"][ScenarioActors.opening_patron()]["lifecycle"] == &"captured",
 		"failure_raises_suspicion_and_resumes": lose_failed_suspicion(failed_helper)
 			and left["captures"] == 0
-			and left["debug_patron_views"][5]["lifecycle"] == &"exited"
+			and left["debug_patron_views"][ScenarioActors.opening_companion()]["lifecycle"] == &"exited"
 			and not left["defeat"],
 	}
 	return {

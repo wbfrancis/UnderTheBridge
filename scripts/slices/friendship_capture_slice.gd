@@ -18,8 +18,8 @@ const LEAVE_SEED := 707  # a natural Mara leaves at this seed
 
 var _session = GAME_SESSION_SCRIPT.new()
 var _scenario: String = "build_friendship"
-var _subject_id: int = 6
-var _cultist_id: int = 1
+var _subject_id: int = ScenarioActors.friendship_candidate()
+var _cultist_id: int = ActorIds.CULTIST_IDS[0]
 var _scenario_trace: String = ""
 var _capture_mode: bool = false
 var _scenario_buttons: Dictionary = {}
@@ -219,63 +219,63 @@ func _set_scenario(scenario_id: String) -> void:
 	if not SCENARIOS.has(scenario_id):
 		scenario_id = "build_friendship"
 	_scenario = scenario_id
-	_subject_id = 6
-	_cultist_id = 1
+	_subject_id = ScenarioActors.friendship_candidate()
+	_cultist_id = ActorIds.CULTIST_IDS[0]
 	match scenario_id:
 		"build_friendship":
 			_session.restart_night(707)
 			_session.advance(200.0)
-			_session.offer_cigarette(1, 6)
-			_session.begin_conversation(1, 6)
+			_session.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+			_session.begin_conversation(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
 			_session.advance(21.0)
-			_session.end_conversation(1)
-			var value: float = _session.friendship_value(6, 1)
+			_session.end_conversation(ActorIds.CULTIST_IDS[0])
+			var value: float = _session.friendship_value(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0])
 			_scenario_trace = "Offered Elias a cigarette (+10), then conversed 21 s.\nFriendship with Cultist 01 now %.1f (%s); Cultist 02 stays 0.\nFriendship does not decay for the rest of the Night." % [
-				value, _session.friendship_band(6, 1),
+				value, _session.friendship_band(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0]),
 			]
 		"friendship_capture":
 			_session.restart_night(707)
 			_session.advance(200.0)
 			for _i in range(8):
-				_session.offer_cigarette(1, 6)
-			var trusted := _session.begin_friendship_capture(1, 6)
+				_session.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+			var trusted := _session.begin_friendship_capture(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
 			_session.advance(14.1)
 			var captured: Dictionary = _session.snapshot()
 			_scenario_trace = "Raised Elias to Trusted (%s), then led him out (started=%s).\nHe followed deterministically to the Tunnel Intake — no roll.\nCaptures now %d; lifecycle %s." % [
-				_session.friendship_band(6, 1), str(trusted),
-				captured["captures"], _humanize(_debug_for(6)["lifecycle"]),
+				_session.friendship_band(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0]), str(trusted),
+				captured["captures"], _humanize(_debug_for(ScenarioActors.friendship_candidate())["lifecycle"]),
 			]
 		"anchor_leaves":
-			_subject_id = 5
+			_subject_id = ScenarioActors.opening_companion()
 			_session.restart_night(LEAVE_SEED)
 			_session.advance(700.0)
-			var anchor: Dictionary = _debug_for(4)
-			var member: Dictionary = _debug_for(5)
+			var anchor: Dictionary = _debug_for(ScenarioActors.opening_patron())
+			var member: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "June + Mara reach their pre-Closing departure.\nAnchor June always leaves: lifecycle %s.\nMara rolled once (%s) and left: lifecycle %s." % [
 				_humanize(anchor["lifecycle"]), str(member["stay_rolled"]), _humanize(member["lifecycle"]),
 			]
 		"stay_behind":
-			_subject_id = 5
+			_subject_id = ScenarioActors.opening_companion()
 			_session.restart_night(STAY_SEED)
 			_session.advance(600.0)
 			for _i in range(10):
-				_session.offer_cigarette(1, 5)
-			var chance: float = _session.stay_behind_chance(5)
+				_session.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.opening_companion())
+			var chance: float = _session.stay_behind_chance(ScenarioActors.opening_companion())
 			_session.advance(60.0)
-			var stayer: Dictionary = _debug_for(5)
+			var stayer: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "Boosted Mara's stay chance to %.0f%%, then her group left.\nAnchor June departed; Mara's roll kept her behind.\nMara is now a solo Patron: lifecycle %s, stayed %s." % [
 				chance, _humanize(stayer["lifecycle"]), str(stayer["stayed_behind"]),
 			]
 		"stay_chance":
 			_session.restart_night(707)
 			_session.advance(250.0)
-			var intoxication: float = float(_debug_for(6)["intoxication_level"])
-			var base_chance: float = _session.stay_behind_chance(6)
+			var intoxication: float = float(_debug_for(ScenarioActors.friendship_candidate())["intoxication_level"])
+			var base_chance: float = _session.stay_behind_chance(ScenarioActors.friendship_candidate())
 			for _i in range(5):
-				_session.offer_cigarette(1, 6)
-			var friendly_chance: float = _session.stay_behind_chance(6)
-			_session.report_patron_stimulus(6, &"knockout_heard")
-			var wary_chance: float = _session.stay_behind_chance(6)
+				_session.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+			var friendly_chance: float = _session.stay_behind_chance(ScenarioActors.friendship_candidate())
+			_session.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"knockout_heard")
+			var wary_chance: float = _session.stay_behind_chance(ScenarioActors.friendship_candidate())
 			_scenario_trace = "Elias Intoxication %.0f -> base stay chance %.0f%%.\nFriendship 50 raises it to %.0f%% (+0.5 per point).\n25 Suspicion lowers it to %.0f%% (-0.6 per point)." % [
 				intoxication, base_chance, friendly_chance, wary_chance,
 			]
@@ -313,9 +313,9 @@ func _subject_markup(state: Dictionary) -> String:
 	return "[color=#e9edf0][b]%s[/b][/color]\nLifecycle  [b]%s[/b]     Intoxication  [b]%d[/b]\nStay rolled  [b]%s[/b]  ·  Stayed  [b]%s[/b]\nReceptive to Friendship Capture  [b]%s[/b]\n\n[color=#e9edf0][b]Friendship matrix[/b][/color]\nCultist 01  [b]%.1f[/b]  (%s)\nCultist 02  [b]%.1f[/b]  (%s)\nCultist 03  [b]%.1f[/b]  (%s)" % [
 		_actor_name(_subject_id), _humanize(subject["lifecycle"]), int(subject["intoxication_level"]),
 		str(subject["stay_rolled"]), str(subject["stayed_behind"]), str(subject["friendship_capturable"]),
-		float(friendship[1]), _band(float(friendship[1])),
-		float(friendship[2]), _band(float(friendship[2])),
-		float(friendship[3]), _band(float(friendship[3])),
+		float(friendship[ActorIds.CULTIST_IDS[0]]), _band(float(friendship[ActorIds.CULTIST_IDS[0]])),
+		float(friendship[ActorIds.CULTIST_IDS[1]]), _band(float(friendship[ActorIds.CULTIST_IDS[1]])),
+		float(friendship[ActorIds.CULTIST_IDS[2]]), _band(float(friendship[ActorIds.CULTIST_IDS[2]])),
 	]
 
 
@@ -376,70 +376,70 @@ func _validation_report() -> Dictionary:
 	var build = GAME_SESSION_SCRIPT.new()
 	build.start_night(707)
 	build.advance(200.0)
-	build.offer_cigarette(1, 6)
-	var per_cultist: bool = is_equal_approx(build.friendship_value(6, 1), 10.0) \
-		and is_equal_approx(build.friendship_value(6, 2), 0.0)
-	build.begin_conversation(1, 6)
+	build.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+	var per_cultist: bool = is_equal_approx(build.friendship_value(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0]), 10.0) \
+		and is_equal_approx(build.friendship_value(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[1]), 0.0)
+	build.begin_conversation(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
 	build.advance(21.0)
-	build.end_conversation(1)
-	var built: float = build.friendship_value(6, 1)
-	var band_ok: bool = build.friendship_band(6, 1) == "Acquainted"
+	build.end_conversation(ActorIds.CULTIST_IDS[0])
+	var built: float = build.friendship_value(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0])
+	var band_ok: bool = build.friendship_band(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0]) == "Acquainted"
 	build.advance(120.0)
-	var no_decay: bool = is_equal_approx(build.friendship_value(6, 1), built)
+	var no_decay: bool = is_equal_approx(build.friendship_value(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0]), built)
 
 	# AC2: only the sad Patron follows, only at Trusted, captured at the intake.
 	var capture = GAME_SESSION_SCRIPT.new()
 	capture.start_night(707)
 	capture.advance(200.0)
-	var sub_trusted_refused: bool = not capture.begin_friendship_capture(1, 6)
+	var sub_trusted_refused: bool = not capture.begin_friendship_capture(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
 	for _i in range(8):
-		capture.offer_cigarette(1, 6)
-	var trusted_follows: bool = capture.begin_friendship_capture(1, 6)
+		capture.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+	var trusted_follows: bool = capture.begin_friendship_capture(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
 	capture.advance(14.1)
 	var captured_at_intake: bool = capture.snapshot()["captures"] == 1 \
-		and capture.snapshot()["debug_patron_views"][6]["lifecycle"] == &"captured"
+		and capture.snapshot()["debug_patron_views"][ScenarioActors.friendship_candidate()]["lifecycle"] == &"captured"
 	for _j in range(8):
-		capture.offer_cigarette(2, 4)
-	var non_sad_refused: bool = not capture.begin_friendship_capture(2, 4) \
-		and capture.snapshot()["debug_patron_views"][4]["lifecycle"] == &"active"
+		capture.offer_cigarette(ActorIds.CULTIST_IDS[1], ScenarioActors.opening_patron())
+	var non_sad_refused: bool = not capture.begin_friendship_capture(ActorIds.CULTIST_IDS[1], ScenarioActors.opening_patron()) \
+		and capture.snapshot()["debug_patron_views"][ScenarioActors.opening_patron()]["lifecycle"] == &"active"
 
 	# AC3: the anchor leaves and others roll once; a boosted roll can stay.
 	var leave = GAME_SESSION_SCRIPT.new()
 	leave.start_night(LEAVE_SEED)
 	leave.advance(700.0)
 	var leave_views: Dictionary = leave.snapshot()["debug_patron_views"]
-	var anchor_leaves: bool = leave_views[4]["lifecycle"] == &"exited" \
-		and not leave_views[4]["stay_rolled"] \
-		and leave_views[5]["stay_rolled"]
+	var anchor_leaves: bool = leave_views[ScenarioActors.opening_patron()]["lifecycle"] == &"exited" \
+		and not leave_views[ScenarioActors.opening_patron()]["stay_rolled"] \
+		and leave_views[ScenarioActors.opening_companion()]["stay_rolled"]
 
 	var stay = GAME_SESSION_SCRIPT.new()
 	stay.start_night(STAY_SEED)
 	stay.advance(600.0)
 	for _k in range(10):
-		stay.offer_cigarette(1, 5)
+		stay.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.opening_companion())
 	stay.advance(60.0)
 	var stay_views: Dictionary = stay.snapshot()["debug_patron_views"]
-	var stayer_becomes_solo: bool = stay_views[4]["lifecycle"] == &"exited" \
-		and stay_views[5]["stayed_behind"] \
-		and stay_views[5]["lifecycle"] == &"active" \
-		and stay_views[5]["suspicion_cause"] != &"missing_companion"
+	var stayer_becomes_solo: bool = stay_views[ScenarioActors.opening_patron()]["lifecycle"] == &"exited" \
+		and stay_views[ScenarioActors.opening_companion()]["stayed_behind"] \
+		and stay_views[ScenarioActors.opening_companion()]["lifecycle"] == &"active" \
+		and stay_views[ScenarioActors.opening_companion()]["suspicion_cause"] != &"missing_companion"
 
 	# AC4: the stay chance uses Friendship, Intoxication, and Suspicion with the clamp.
 	var math = GAME_SESSION_SCRIPT.new()
 	math.start_night(707)
 	math.advance(250.0)
-	var intoxication := float(math.snapshot()["debug_patron_views"][6]["intoxication_level"])
-	var base_ok: bool = is_equal_approx(math.stay_behind_chance(6),
+	var intoxication := float(math.snapshot()["debug_patron_views"][ScenarioActors.friendship_candidate()]["intoxication_level"])
+	var base_ok: bool = is_equal_approx(math.stay_behind_chance(ScenarioActors.friendship_candidate()),
 		clampf(10.0 + 15.0 * intoxication, 0.0, 90.0))
 	for _m in range(5):
-		math.offer_cigarette(1, 6)
-	var friendly_ok: bool = is_equal_approx(math.stay_behind_chance(6),
+		math.offer_cigarette(ActorIds.CULTIST_IDS[0], ScenarioActors.friendship_candidate())
+	var friendly_ok: bool = is_equal_approx(math.stay_behind_chance(ScenarioActors.friendship_candidate()),
 		clampf(10.0 + 0.5 * 50.0 + 15.0 * intoxication, 0.0, 90.0))
-	math.report_patron_stimulus(6, &"knockout_heard")
-	var suspicion_ok: bool = is_equal_approx(math.stay_behind_chance(6),
+	math.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"knockout_heard")
+	var suspicion_ok: bool = is_equal_approx(math.stay_behind_chance(ScenarioActors.friendship_candidate()),
 		clampf(10.0 + 25.0 + 15.0 * intoxication - 0.6 * 25.0, 0.0, 90.0))
-	math.report_patron_stimulus(6, &"drink_dosed_seen")
-	var max_never_stays: bool = is_equal_approx(math.stay_behind_chance(6), 0.0)
+	math.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
+	var max_never_stays: bool = is_equal_approx(math.stay_behind_chance(ScenarioActors.friendship_candidate()), 0.0)
 
 	var checks := {
 		"friendship_stored_per_cultist": per_cultist,
@@ -458,8 +458,8 @@ func _validation_report() -> Dictionary:
 		"observed": {
 			"built_friendship": built,
 			"trusted_follows": trusted_follows,
-			"leave_seed_mara": leave_views[5]["lifecycle"],
-			"stay_seed_mara": stay_views[5]["lifecycle"],
+			"leave_seed_mara": leave_views[ScenarioActors.opening_companion()]["lifecycle"],
+			"stay_seed_mara": stay_views[ScenarioActors.opening_companion()]["lifecycle"],
 			"intoxication": intoxication,
 		},
 	}

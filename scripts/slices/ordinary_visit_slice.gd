@@ -1,16 +1,16 @@
 extends Control
 
 const SESSION_SCRIPT := preload("res://scripts/simulation/ordinary_visit_session.gd")
-const JUNE := 4
-const MARA := 5
+var OPENING_PATRON_ID := ScenarioActors.opening_patron()
+var OPENING_COMPANION_ID := ScenarioActors.opening_companion()
 
 var _session = SESSION_SCRIPT.new()
-var _selected_patron: int = JUNE
+var _selected_patron: int = OPENING_PATRON_ID
 var _debug_mode: bool = false
 var _title_status: Label
 var _time_label: Label
-var _june_button: Button
-var _mara_button: Button
+var _opening_patron_button: Button
+var _opening_companion_button: Button
 var _debug_toggle: CheckButton
 var _normal_text: RichTextLabel
 var _debug_panel: PanelContainer
@@ -70,10 +70,10 @@ func _build_ui() -> void:
 	select_label.text = "SELECT PATRON"
 	select_label.add_theme_color_override("font_color", Color("9fb0c1"))
 	toolbar.add_child(select_label)
-	_june_button = _button("June", _select_patron.bind(JUNE))
-	_mara_button = _button("Mara", _select_patron.bind(MARA))
-	toolbar.add_child(_june_button)
-	toolbar.add_child(_mara_button)
+	_opening_patron_button = _button("June", _select_patron.bind(OPENING_PATRON_ID))
+	_opening_companion_button = _button("Mara", _select_patron.bind(OPENING_COMPANION_ID))
+	toolbar.add_child(_opening_patron_button)
+	toolbar.add_child(_opening_companion_button)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	toolbar.add_child(spacer)
@@ -229,8 +229,8 @@ func _refresh(state: Dictionary) -> void:
 	var normal: Dictionary = state["normal_views"][_selected_patron]
 	var debug: Dictionary = state["debug_views"][_selected_patron]
 	_time_label.text = "SIMULATED TIME\n%s" % _format_time(state["simulated_seconds"])
-	_june_button.button_pressed = _selected_patron == JUNE
-	_mara_button.button_pressed = _selected_patron == MARA
+	_opening_patron_button.button_pressed = _selected_patron == OPENING_PATRON_ID
+	_opening_companion_button.button_pressed = _selected_patron == OPENING_COMPANION_ID
 	_normal_text.text = _normal_markup(normal)
 	_debug_text.text = _debug_markup(debug)
 	_group_text.text = _group_markup(state)
@@ -251,9 +251,9 @@ func _debug_markup(view: Dictionary) -> String:
 
 
 func _group_markup(state: Dictionary) -> String:
-	var june: Dictionary = state["normal_views"][JUNE]
-	var mara: Dictionary = state["normal_views"][MARA]
-	return "[b]June[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Mara[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Bathroom occupant[/b]  %s" % [june["visible_activity"], _seat_for(state, JUNE), june["order_state"], june["intoxication"], mara["visible_activity"], _seat_for(state, MARA), mara["order_state"], mara["intoxication"], "None" if int(state["bathroom_owner"]) == ActorIds.NO_ACTOR else state["bathroom_owner"]]
+	var subject: Dictionary = state["normal_views"][OPENING_PATRON_ID]
+	var companion: Dictionary = state["normal_views"][OPENING_COMPANION_ID]
+	return "[b]June[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Mara[/b] — %s\nSeat: %s   Order: %s   Intoxication: %s\n\n[b]Bathroom occupant[/b]  %s" % [subject["visible_activity"], _seat_for(state, OPENING_PATRON_ID), subject["order_state"], subject["intoxication"], companion["visible_activity"], _seat_for(state, OPENING_COMPANION_ID), companion["order_state"], companion["intoxication"], "None" if int(state["bathroom_owner"]) == ActorIds.NO_ACTOR else state["bathroom_owner"]]
 
 
 func _timeline_markup(events: Array) -> String:
@@ -266,8 +266,8 @@ func _timeline_markup(events: Array) -> String:
 
 
 func _status_text(state: Dictionary) -> String:
-	var june: Dictionary = state["normal_views"][JUNE]
-	if june["visible_activity"] == "Normal Departure":
+	var subject: Dictionary = state["normal_views"][OPENING_PATRON_ID]
+	if subject["visible_activity"] == "Normal Departure":
 		return "Ordinary visit complete: both Patrons left normally and released their seats."
 	if float(state["simulated_seconds"]) >= 286.0:
 		return "Four drink-free minutes passed: Intoxication decayed one level."

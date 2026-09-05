@@ -2,9 +2,9 @@ extends Control
 
 const SERVICE_SESSION_SCRIPT := preload("res://scripts/simulation/service_slice_session.gd")
 const CULTIST_LABELS := {
-	1: "Silas",
-	2: "Ruth",
-	3: "Caleb",
+	ActorIds.CULTIST_IDS[0]: "Silas",
+	ActorIds.CULTIST_IDS[1]: "Ruth",
+	ActorIds.CULTIST_IDS[2]: "Caleb",
 }
 const ACTION_LABELS := {
 	&"prepare_drink": "Prepare June's drink",
@@ -404,19 +404,19 @@ func _on_patron_leaves() -> void:
 func _apply_stage(stage: StringName) -> void:
 	match stage:
 		&"queued":
-			_session.select_cultist(2)
+			_session.select_cultist(ActorIds.CULTIST_IDS[1])
 			_session.queue_full_service()
 			_session.advance(2.0)
 		&"carried":
-			_session.select_cultist(2)
+			_session.select_cultist(ActorIds.CULTIST_IDS[1])
 			_session.queue_full_service()
 			_session.advance(6.25)
 		&"served":
-			_session.select_cultist(2)
+			_session.select_cultist(ActorIds.CULTIST_IDS[1])
 			_session.queue_full_service()
 			_session.advance(10.25)
 		&"failed":
-			_session.select_cultist(3)
+			_session.select_cultist(ActorIds.CULTIST_IDS[2])
 			_session.queue_full_service()
 			_session.patron_leaves()
 			_session.advance(2.0)
@@ -435,11 +435,11 @@ func _parse_arguments() -> void:
 func _write_report(path: String) -> void:
 	var happy = SERVICE_SESSION_SCRIPT.new()
 	happy.start()
-	happy.queue_full_service(2)
+	happy.queue_full_service(ActorIds.CULTIST_IDS[1])
 	happy.advance(10.25)
 	var stale = SERVICE_SESSION_SCRIPT.new()
 	stale.start()
-	stale.queue_full_service(3)
+	stale.queue_full_service(ActorIds.CULTIST_IDS[2])
 	stale.patron_leaves()
 	stale.advance(2.0)
 	var report := {

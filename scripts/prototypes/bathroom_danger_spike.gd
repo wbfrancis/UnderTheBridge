@@ -97,26 +97,26 @@ func _show_stage(stage: StringName) -> void:
 
 func _setup_standing_capture() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(5, 100.0, false, 6)
-	_scenario.add_patron(6, 0.0, false, 5)
-	_scenario.force_bathroom_intent(5)
+	_scenario.add_patron(ScenarioActors.opening_companion(), 100.0, false, ScenarioActors.friendship_candidate())
+	_scenario.add_patron(ScenarioActors.friendship_candidate(), 0.0, false, ScenarioActors.opening_companion())
+	_scenario.force_bathroom_intent(ScenarioActors.opening_companion())
 	_scenario.activate_trapdoor()
 
 
 func _setup_seated_misfire() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(5, 0.0)
-	_scenario.add_patron(4, 100.0)
-	_scenario.force_bathroom_intent(4)
+	_scenario.add_patron(ScenarioActors.opening_companion(), 0.0)
+	_scenario.add_patron(ScenarioActors.opening_patron(), 100.0)
+	_scenario.force_bathroom_intent(ScenarioActors.opening_patron())
 	_scenario.advance(2.05)
 	_scenario.activate_trapdoor()
 
 
 func _setup_investigation() -> void:
 	_scenario.start(41_904)
-	_scenario.add_patron(5, 100.0, false, 6)
-	_scenario.add_patron(6, 0.0, false, 5)
-	_scenario.force_bathroom_intent(5)
+	_scenario.add_patron(ScenarioActors.opening_companion(), 100.0, false, ScenarioActors.friendship_candidate())
+	_scenario.add_patron(ScenarioActors.friendship_candidate(), 0.0, false, ScenarioActors.opening_companion())
+	_scenario.force_bathroom_intent(ScenarioActors.opening_companion())
 	_scenario.activate_trapdoor()
 	_scenario.advance(40.05)
 
@@ -124,7 +124,7 @@ func _setup_investigation() -> void:
 func _setup_intercept() -> void:
 	_setup_investigation()
 	_scenario.advance(7.1)
-	_scenario.begin_intercept(6, 1)
+	_scenario.begin_intercept(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0])
 
 
 func _setup_defeat() -> void:
@@ -194,9 +194,9 @@ func _draw_actors() -> void:
 		var activity: StringName = patron["activity"]
 		var position := Vector2(820, 330)
 		var color := BLUE
-		if patron_id == 6:
+		if patron_id == ScenarioActors.friendship_candidate():
 			color = PURPLE
-		elif patron_id == 4:
+		elif patron_id == ScenarioActors.opening_patron():
 			color = AMBER
 		match activity:
 			&"standing_entry", &"seated_use", &"standing_exit", &"investigation_search":

@@ -53,3 +53,17 @@ static func unique_patron_in_state(session, activity: StringName) -> int:
 			matches.append(patron_id)
 	assert(matches.size() == 1, "The fixture needs exactly one Patron in the requested state.")
 	return matches[0]
+
+## Review CLI text is converted here. Runtime actor APIs accept only integers.
+static func from_argument(value: String) -> int:
+	match value:
+		"": return ActorIds.NO_ACTOR
+		"opening_patron": return opening_patron()
+		"opening_companion": return opening_companion()
+		"friendship_candidate": return friendship_candidate()
+	if value.is_valid_int():
+		var actor_id := value.to_int()
+		if actor_id == ActorIds.NO_ACTOR or not ActorRoster.kind(actor_id).is_empty():
+			return actor_id
+	push_error("Unknown review actor: %s" % value)
+	return ActorIds.NO_ACTOR

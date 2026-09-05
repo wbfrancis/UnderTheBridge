@@ -23,13 +23,13 @@ const NAVIGATION_MESH: NavigationMesh = preload(
 const BARTENDER_TEXTURE: Texture2D = preload("res://assets/characters/prototype_visual/Bartender.png")
 const VISUAL_SPIKE_SOURCE := "res://assets/environment/prototype_visual/Speakeasy_VisualSpike.blend"
 const VISUAL_SPIKE_EXPECTED_SHA256 := "a03beb87ab04e88460a7c6787dd8cd2f1dde0129bb0c03d2d9beab51f81dcc80"
-const PATRON_IDS: Array[int] = [4, 5]
-const ALL_PATRON_IDS: Array[int] = [
-	4, 5, 6, 7,
-	8, 9, 10, 11,
+var PATRON_IDS: Array[int] = [ScenarioActors.opening_patron(), ScenarioActors.opening_companion()]
+var ALL_PATRON_IDS: Array[int] = [
+	ScenarioActors.opening_patron(), ScenarioActors.opening_companion(), ScenarioActors.friendship_candidate(), ScenarioActors.group_member(&"arrival_group_trio_01", 0, 3),
+	ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3), ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3), ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2), ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2),
 ]
-const CULTIST_IDS: Array[int] = [1, 2, 3]
-const PLAYABLE_CULTIST_IDS: Array[int] = [1, 2]
+const CULTIST_IDS: Array[int] = [ActorIds.CULTIST_IDS[0], ActorIds.CULTIST_IDS[1], ActorIds.CULTIST_IDS[2]]
+const PLAYABLE_CULTIST_IDS: Array[int] = [ActorIds.CULTIST_IDS[0], ActorIds.CULTIST_IDS[1]]
 const CULTIST_NAMES = ActorRoster.CULTIST_NAMES
 const SETTINGS_PATH := "user://settings.cfg"
 const CAMERA_FOCUS_SECONDS := 0.4
@@ -129,25 +129,25 @@ const SMART_OBJECTS := {
 	},
 }
 const SMART_OBJECT_COLOR := Color("c9a86a")
-const PATRON_COLORS := {
-	4: Color("e3a57a"), 5: Color("7fc7c4"),
-	6: Color("b79ad8"), 7: Color("d9c56f"),
-	8: Color("83a9d8"), 9: Color("d8849d"),
-	10: Color("94c77c"), 11: Color("d69a63"),
+var PATRON_COLORS := {
+	ScenarioActors.opening_patron(): Color("e3a57a"), ScenarioActors.opening_companion(): Color("7fc7c4"),
+	ScenarioActors.friendship_candidate(): Color("b79ad8"), ScenarioActors.group_member(&"arrival_group_trio_01", 0, 3): Color("d9c56f"),
+	ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3): Color("83a9d8"), ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3): Color("d8849d"),
+	ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2): Color("94c77c"), ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2): Color("d69a63"),
 }
-const PATRON_HEIGHT_SCALE := {
-	4: 0.94, 5: 1.02, 6: 1.08,
-	7: 0.98, 8: 1.12, 9: 0.9,
-	10: 1.04, 11: 0.96,
+var PATRON_HEIGHT_SCALE := {
+	ScenarioActors.opening_patron(): 0.94, ScenarioActors.opening_companion(): 1.02, ScenarioActors.friendship_candidate(): 1.08,
+	ScenarioActors.group_member(&"arrival_group_trio_01", 0, 3): 0.98, ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3): 1.12, ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3): 0.9,
+	ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2): 1.04, ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2): 0.96,
 }
 const CULTIST_COLORS := {
-	1: Color("efe1ce"), 2: Color("b9a0db"),
-	3: Color("8fc4af"),
+	ActorIds.CULTIST_IDS[0]: Color("efe1ce"), ActorIds.CULTIST_IDS[1]: Color("b9a0db"),
+	ActorIds.CULTIST_IDS[2]: Color("8fc4af"),
 }
 const CULTIST_POSITIONS := {
-	1: Vector3(-3.6, 0.0, 1.45),
-	2: Vector3(3.6, 0.0, 1.45),
-	3: Vector3(3.6, 0.0, 1.45),
+	ActorIds.CULTIST_IDS[0]: Vector3(-3.6, 0.0, 1.45),
+	ActorIds.CULTIST_IDS[1]: Vector3(3.6, 0.0, 1.45),
+	ActorIds.CULTIST_IDS[2]: Vector3(3.6, 0.0, 1.45),
 }
 
 # The real perception rule values, read straight from the module so the drawn cone
@@ -253,7 +253,7 @@ var _focus_elapsed := 0.0
 var _emote_labels := false
 var _emote_ui_scale := 1.0
 var _emote_head_offset := 2.25
-var _selected_cultist_id: int = 1
+var _selected_cultist_id: int = ActorIds.CULTIST_IDS[0]
 var _hovered_actor_id: int = ActorIds.NO_ACTOR
 var _hovered_is_cultist := false
 var _hovered_drink_id: StringName = &""
@@ -319,16 +319,16 @@ func _ready() -> void:
 	_movement_validation_scale = clampf(
 		float(_command_line_value("--movement-scale=", "4.0")), 1.0, 4.0
 	)
-	var identify_patron := int(_command_line_value("--identify-patron="))
+	var identify_patron := ScenarioActors.from_argument(_command_line_value("--identify-patron="))
 	if identify_patron != ActorIds.NO_ACTOR:
-		_session.begin_conversation(1, identify_patron)
-		_session.end_conversation(1)
-	var inspect_patron := int(_command_line_value("--inspect-patron="))
+		_session.begin_conversation(ActorIds.CULTIST_IDS[0], identify_patron)
+		_session.end_conversation(ActorIds.CULTIST_IDS[0])
+	var inspect_patron := ScenarioActors.from_argument(_command_line_value("--inspect-patron="))
 	if inspect_patron != ActorIds.NO_ACTOR:
 		_inspected_patron_id = inspect_patron
 		_refresh(_session.snapshot())
 	_hud_preview = _command_line_value("--hud-preview=")
-	var hover_actor := int(_command_line_value("--hover-actor="))
+	var hover_actor := ScenarioActors.from_argument(_command_line_value("--hover-actor="))
 	if hover_actor != ActorIds.NO_ACTOR:
 		_hovered_actor_id = hover_actor
 		_hovered_is_cultist = hover_actor in CULTIST_IDS
@@ -364,7 +364,7 @@ func _process(delta: float) -> void:
 	elif not _command_report_path.is_empty():
 		# Command validation uses the same scaled Action clock as interactive play.
 		_commands.advance(delta * _session.current_time_scale())
-		var active: Dictionary = _commands.snapshot()["cultists"][1]["active"]
+		var active: Dictionary = _commands.snapshot()["cultists"][ActorIds.CULTIST_IDS[0]]["active"]
 		if not active.is_empty() and active["command"] in [
 			&"knock_out", &"pick_up_body", &"intercept", &"lead_to_tunnel",
 			&"rescue_persuasion", &"prepare_drugged_drink",
@@ -788,7 +788,7 @@ func _open_preview_context_menu() -> void:
 	if SMART_OBJECTS.has(_context_menu_preview):
 		target = _smart_target(_context_menu_preview)
 	else:
-		target = _actor_target(int(_context_menu_preview))
+		target = _actor_target(ScenarioActors.from_argument(str(_context_menu_preview)))
 	_open_context_menu(Vector2(520.0, 300.0), target, false)
 
 
@@ -1055,7 +1055,7 @@ func _set_emote_accessibility(labels: bool, ui_scale: float) -> void:
 
 
 func _cultist_display_name(cultist_id: int) -> String:
-	return CULTIST_NAMES.get(cultist_id, str(cultist_id).replace("cultist_", "Cultist "))
+	return ActorRoster.display_name(cultist_id)
 
 
 func _actor_display_name(actor_id: int) -> String:
@@ -1496,24 +1496,24 @@ func _run_bathroom_review(report_path: String) -> void:
 # A full visit: each station captured with its distinct Emote Progress fill.
 func _review_full_visit(artifact_dir: String) -> Array[Dictionary]:
 	var checks: Array[Dictionary] = []
-	_session.debug_force_bathroom(5)
-	checks.append(await _bathroom_phase_frame(artifact_dir, "mirror", 5, &"mirror_check"))
-	checks.append(await _bathroom_phase_frame(artifact_dir, "toilet", 5, &"seated_bathroom_use"))
+	_session.debug_force_bathroom(ScenarioActors.opening_companion())
+	checks.append(await _bathroom_phase_frame(artifact_dir, "mirror", ScenarioActors.opening_companion(), &"mirror_check"))
+	checks.append(await _bathroom_phase_frame(artifact_dir, "toilet", ScenarioActors.opening_companion(), &"seated_bathroom_use"))
 	await _save_frame(artifact_dir, "toilet_1024", Vector2i(1_024, 576))
 	await _save_frame(artifact_dir, "toilet_1920", Vector2i(1_920, 1_080))
 	get_window().size = Vector2i(1_280, 720)
-	checks.append(await _bathroom_phase_frame(artifact_dir, "handwashing", 5, &"handwashing"))
+	checks.append(await _bathroom_phase_frame(artifact_dir, "handwashing", ScenarioActors.opening_companion(), &"handwashing"))
 	return checks
 
 
 # A standing capture: the panels open, the avatar sinks occluded, then removal.
 func _review_standing_capture(artifact_dir: String) -> Array[Dictionary]:
-	_session.debug_force_bathroom(4)
+	_session.debug_force_bathroom(ScenarioActors.opening_patron())
 	var standing_phases: Array[StringName] = [
 		&"mirror_check", &"moving_to_toilet", &"moving_to_sink", &"handwashing",
 	]
 	var reached_standing := await _play_until(func() -> bool:
-		return _session.snapshot()["debug_patron_views"][4]["activity"] in standing_phases, 3_000)
+		return _session.snapshot()["debug_patron_views"][ScenarioActors.opening_patron()]["activity"] in standing_phases, 3_000)
 	await _save_frame(artifact_dir, "before_activation", Vector2i(1_280, 720))
 	_session.activate_trapdoor()
 	var saw_falling := await _play_until(func() -> bool:
@@ -1521,8 +1521,8 @@ func _review_standing_capture(artifact_dir: String) -> Array[Dictionary]:
 	await _play_until(func() -> bool:
 		return float(_session.snapshot()["trapdoor"]["fall_ratio"]) > 0.5, 60)
 	await _save_frame(artifact_dir, "falling", Vector2i(1_280, 720))
-	var june_node := _patron_nodes[4] as NavigableActor3D
-	var sank := june_node.global_position.y < NAVIGATION_FLOOR_Y - 0.2
+	var subject_node := _patron_nodes[ScenarioActors.opening_patron()] as NavigableActor3D
+	var sank := subject_node.global_position.y < NAVIGATION_FLOOR_Y - 0.2
 	var saw_closing := await _play_until(func() -> bool:
 		return _session.snapshot()["trapdoor"]["state"] == &"closing", 120)
 	await _save_frame(artifact_dir, "closing", Vector2i(1_280, 720))
@@ -1535,7 +1535,7 @@ func _review_standing_capture(artifact_dir: String) -> Array[Dictionary]:
 		{"check": &"panels_opened_falling", "passed": saw_falling},
 		{"check": &"avatar_sank_below_floor", "passed": sank},
 		{"check": &"panels_closed", "passed": saw_closing},
-		{"check": &"patron_removed_after_close", "passed": removed and not june_node.visible},
+		{"check": &"patron_removed_after_close", "passed": removed and not subject_node.visible},
 	]
 
 
@@ -1608,7 +1608,7 @@ func _run_emote_validation(report_path: String) -> void:
 	_pan_camera(Vector3(-3.0, 0.0, -2.0))
 
 	# Departure, Capture, and Closing remove the actor and their bubble with it.
-	var escaping_id := 10
+	var escaping_id := ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2)
 	var before_close := false
 	for bubble: Dictionary in _emotes.bubbles():
 		before_close = before_close or bubble["actor_id"] == escaping_id
@@ -1658,12 +1658,12 @@ func _run_emote_validation(report_path: String) -> void:
 # Forces one readable example of each urgent state so the frame under test
 # carries eleven actors and every catalog category at once.
 func _stage_emote_states() -> void:
-	_session.report_patron_stimulus(10, &"drink_dosed_seen")
-	_session.debug_set_patron_drink_state(8, 3, 1, 0, 3)
-	_session.debug_force_finish_drink(8)
-	_session.debug_force_bathroom(9)
-	_session.debug_set_patron_drink_state(4, 0, 5, 0, 3)
-	_session.begin_conversation(2, 5)
+	_session.report_patron_stimulus(ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2), &"drink_dosed_seen")
+	_session.debug_set_patron_drink_state(ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3), 3, 1, 0, 3)
+	_session.debug_force_finish_drink(ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3))
+	_session.debug_force_bathroom(ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3))
+	_session.debug_set_patron_drink_state(ScenarioActors.opening_patron(), 0, 5, 0, 3)
+	_session.begin_conversation(ActorIds.CULTIST_IDS[1], ScenarioActors.opening_companion())
 	_session.advance(45.0)
 	_advance_emotes(0.0)
 
@@ -1729,7 +1729,7 @@ func _run_command_validation(report_path: String) -> void:
 		_refresh(_session.snapshot())
 		# The staged full cast has every Order served, so give one Patron a fresh
 		# Order to make the bar and service commands meaningful.
-		_session.debug_set_patron_drink_state(4, 0, 5, 0, 3)
+		_session.debug_set_patron_drink_state(ScenarioActors.opening_patron(), 0, 5, 0, 3)
 		_session.advance(45.0)
 		await _wait_for_patrons(1_800)
 
@@ -1739,36 +1739,36 @@ func _run_command_validation(report_path: String) -> void:
 		# the far-left Patrons; reservation still transfers and releases per command,
 		# which the trailing reserved_slots check verifies.
 		steps.append(await _validate_step(
-			&"floor_move", 1, &"move", _floor_target(Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)),
+			&"floor_move", ActorIds.CULTIST_IDS[0], &"move", _floor_target(Vector3(8.0, NAVIGATION_FLOOR_Y, 4.0)),
 			func() -> bool: return true
 		))
 
 		steps.append(await _validate_step(
-			&"trapdoor", 1, &"activate_trapdoor", _smart_target(&"trapdoor_control"),
+			&"trapdoor", ActorIds.CULTIST_IDS[0], &"activate_trapdoor", _smart_target(&"trapdoor_control"),
 			func() -> bool: return _session.snapshot()["trapdoor"]["state"] != &"closed"
 		))
 
 		steps.append(await _validate_step(
-			&"bar_command", 1, &"make_wine", _smart_target(&"bar_work_position"),
+			&"bar_command", ActorIds.CULTIST_IDS[0], &"make_wine", _smart_target(&"bar_work_position"),
 			func() -> bool: return not _session.snapshot()["prepared_drinks"]["drinks"].is_empty()
 		))
 
 		steps.append(await _validate_patron_chain(
-			1, 4,
-			func() -> bool: return _session.snapshot()["conversations"].has(1)
+			ActorIds.CULTIST_IDS[0], ScenarioActors.opening_patron(),
+			func() -> bool: return _session.snapshot()["conversations"].has(ActorIds.CULTIST_IDS[0])
 		))
 
-		_session.debug_set_patron_drink_state(5, 3, 1, 0, 3)
-		_session.debug_force_finish_drink(5)
+		_session.debug_set_patron_drink_state(ScenarioActors.opening_companion(), 3, 1, 0, 3)
+		_session.debug_force_finish_drink(ScenarioActors.opening_companion())
 		_session.advance(0.2)
 		await _wait_for_patrons(900)
 		steps.append(await _validate_step(
-			&"body_pickup", 1, &"pick_up_body", _actor_target(5),
-			func() -> bool: return _session.snapshot()["drags"].has(5)
+			&"body_pickup", ActorIds.CULTIST_IDS[0], &"pick_up_body", _actor_target(ScenarioActors.opening_companion()),
+			func() -> bool: return _session.snapshot()["drags"].has(ScenarioActors.opening_companion())
 		))
 		steps.append(await _validate_step(
-			&"body_drop", 1, &"drop_body", _floor_target(Vector3(-2.0, NAVIGATION_FLOOR_Y, 3.0)),
-			func() -> bool: return not _session.snapshot()["drags"].has(5)
+			&"body_drop", ActorIds.CULTIST_IDS[0], &"drop_body", _floor_target(Vector3(-2.0, NAVIGATION_FLOOR_Y, 3.0)),
+			func() -> bool: return not _session.snapshot()["drags"].has(ScenarioActors.opening_companion())
 		))
 
 	var stuck_actors: Array[String] = []
@@ -1844,7 +1844,7 @@ func _validate_patron_chain(
 		and int(active["chain_id"]) == int(pending[0]["chain_id"])
 	)
 	var reservation_held: bool = bool(_commands.snapshot()["reserved_slots"].get(cultist_id, &"") == (
-		&"approach_patron_june"
+		StringName("approach_%d" % ScenarioActors.opening_patron())
 	))
 
 	_sync_cultist_navigation(cultist_id)
@@ -1946,17 +1946,17 @@ func _run_movement_validation(report_path: String) -> void:
 	# Movement validation drives Vera through a two-leg queue while Iris stays idle,
 	# so the report measures one route without cross-traffic.
 	var targets := {
-		1: [Vector3(-8.0, NAVIGATION_FLOOR_Y, 4.0), Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)],
+		ActorIds.CULTIST_IDS[0]: [Vector3(-8.0, NAVIGATION_FLOOR_Y, 4.0), Vector3(-3.0, NAVIGATION_FLOOR_Y, 2.0)],
 	}
 	var patron_targets := {
-		4: Vector3(-12.0, NAVIGATION_FLOOR_Y, 6.0),
-		5: Vector3(-10.5, NAVIGATION_FLOOR_Y, 6.0),
-		6: Vector3(-6.0, NAVIGATION_FLOOR_Y, 6.0),
-		7: Vector3(-4.5, NAVIGATION_FLOOR_Y, 6.0),
-		8: Vector3(4.5, NAVIGATION_FLOOR_Y, 6.0),
-		9: Vector3(6.0, NAVIGATION_FLOOR_Y, 6.0),
-		10: Vector3(10.5, NAVIGATION_FLOOR_Y, 6.0),
-		11: Vector3(12.0, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.opening_patron(): Vector3(-12.0, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.opening_companion(): Vector3(-10.5, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.friendship_candidate(): Vector3(-6.0, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.group_member(&"arrival_group_trio_01", 0, 3): Vector3(-4.5, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3): Vector3(4.5, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3): Vector3(6.0, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2): Vector3(10.5, NAVIGATION_FLOOR_Y, 6.0),
+		ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2): Vector3(12.0, NAVIGATION_FLOOR_Y, 6.0),
 	}
 	if _navigation_ready:
 		for cultist_id: int in PLAYABLE_CULTIST_IDS:
@@ -2736,7 +2736,7 @@ func _set_scenario(scenario_id: String) -> void:
 		# This explicit checkpoint admits the first group so it opens with a real
 		# Order, while the normal Night still requires the player to answer every knock.
 		_session.advance(3.1)
-		_session.begin_admit_group(1)
+		_session.begin_admit_group(ActorIds.CULTIST_IDS[0])
 		_session.advance(15.0)
 	elif scenario_id == "front_exit":
 		_stage_full_cast()
@@ -2755,25 +2755,25 @@ func _set_scenario(scenario_id: String) -> void:
 		"full_cast":
 			_scenario_trace = "Both playable Cultists and all eight authored Patrons share the full-scale room. Distinct palettes, names, visible activities, and Suspicion bands come from one GameSession snapshot."
 		"service_wing":
-			_session.debug_force_bathroom(4)
+			_session.debug_force_bathroom(ScenarioActors.opening_patron())
 			_session.advance(2.1)
 			_scenario_trace = "The hallway preserves the proven east-side route. The bathroom shows its standing zone, seated fixture, and Trapdoor; the curtained Tunnel Intake remains a separate threshold."
 		"front_exit":
-			_session.report_patron_stimulus(10, &"drink_dosed_seen")
+			_session.report_patron_stimulus(ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2), &"drink_dosed_seen")
 			_session.advance(2.2)
 			_scenario_trace = "The seven-metre front approach ends at the street doors. Vincent's visible Escape intention occupies the same front-exit coordinates used by GameSession."
 		"cultist_states":
-			_session.begin_knockout(1, 4)
-			_session.begin_conversation(2, 5)
-			_session.prepare_drugged_drink(5, 3)
+			_session.begin_knockout(ActorIds.CULTIST_IDS[0], ScenarioActors.opening_patron())
+			_session.begin_conversation(ActorIds.CULTIST_IDS[1], ScenarioActors.opening_companion())
+			_session.prepare_drugged_drink(ScenarioActors.opening_companion(), ActorIds.CULTIST_IDS[2])
 			_scenario_trace = "The public snapshot labels three simultaneous observable states: knockout wind-up, conversation, and Drugged Drink preparation."
 		"line_of_sight":
-			_record_event(&"body_drag_seen_first", &"visual", &"main_hall", 1, Vector2(0.0, 0.0))
-			_record_event(&"unexplained_collapse_seen", &"visual", &"main_hall", 1, Vector2(-18.0, 6.0))
+			_record_event(&"body_drag_seen_first", &"visual", &"main_hall", ActorIds.CULTIST_IDS[0], Vector2(0.0, 0.0))
+			_record_event(&"unexplained_collapse_seen", &"visual", &"main_hall", ActorIds.CULTIST_IDS[0], Vector2(-18.0, 6.0))
 			_scenario_trace = "Drag at the bar is inside the facing cone: SEEN (+50). A collapse behind the pair falls outside the cone: UNSEEN, no line."
 		"room_hearing":
-			_record_event(&"knockout_heard", &"auditory", &"main_hall", 2, Vector2(0.0, 0.0))
-			_record_event(&"knockout_heard", &"auditory", &"bathroom", 2, Vector2(18.0, 6.0))
+			_record_event(&"knockout_heard", &"auditory", &"main_hall", ActorIds.CULTIST_IDS[1], Vector2(0.0, 0.0))
+			_record_event(&"knockout_heard", &"auditory", &"bathroom", ActorIds.CULTIST_IDS[1], Vector2(18.0, 6.0))
 			_scenario_trace = "Main-hall knockout fills the hall and reaches the pair (+25). The bathroom knockout fills only bathroom + hallway and never reaches them."
 		"unattended_body":
 			_stage_body(1001, &"hallway", Vector2(14.0, 6.0))
@@ -2781,11 +2781,11 @@ func _set_scenario(scenario_id: String) -> void:
 			_session.advance(8.0)
 			_scenario_trace = "Two bodies past their grace add +5 each every 5 s to every active Patron. Press play to watch it climb."
 		"companion":
-			_session.report_patron_stimulus(4, &"drink_dosed_seen")
+			_session.report_patron_stimulus(ScenarioActors.opening_patron(), &"drink_dosed_seen")
 			_session.advance(10.0)
 			_scenario_trace = "June is pinned at Maximum. Press play: Mara drifts up to +5 every 10 s and settles at 100 → Escape."
 		"debug_trace":
-			_record_event(&"knockout_heard", &"auditory", &"main_hall", 2, Vector2(0.0, 0.0))
+			_record_event(&"knockout_heard", &"auditory", &"main_hall", ActorIds.CULTIST_IDS[1], Vector2(0.0, 0.0))
 			_stage_body(1001, &"main_hall", Vector2(0.0, 8.0))
 			_session.advance(8.0)
 			_scenario_trace = "Every perception is named in the debug panel: source, recipient, resulting cause, and timing."
@@ -2814,7 +2814,7 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"toggle_plain_pause", {})
 		"escape_lock":
 			_submit_playback(&"select_speed", {"value": 4.0})
-			_session.report_patron_stimulus(11, &"drink_dosed_seen")
+			_session.report_patron_stimulus(ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2), &"drink_dosed_seen")
 			_session.advance(0.2)
 			_playback.synchronize()
 			_refresh_hud(_session.snapshot())
@@ -2841,7 +2841,7 @@ func _preview_hud_state(state_id: String) -> void:
 			_submit_playback(&"toggle_plain_pause", {})
 			_open_pause_menu()
 		"queue":
-			_issue_command(&"talk", _actor_target(4), false)
+			_issue_command(&"talk", _actor_target(ScenarioActors.opening_patron()), false)
 			_issue_command(
 				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
 			)
@@ -2854,9 +2854,9 @@ func _preview_hud_state(state_id: String) -> void:
 					index > 0
 				)
 		"move_talk_chain":
-			_issue_command(&"talk", _actor_target(4), false)
+			_issue_command(&"talk", _actor_target(ScenarioActors.opening_patron()), false)
 		"chain_unrelated":
-			_issue_command(&"talk", _actor_target(4), false)
+			_issue_command(&"talk", _actor_target(ScenarioActors.opening_patron()), false)
 			_issue_command(
 				&"move", _floor_target(Vector3(-6.0, NAVIGATION_FLOOR_Y, 4.0)), true
 			)
@@ -2882,9 +2882,9 @@ func _stage_full_cast() -> void:
 	var configured: Dictionary = {}
 	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
 		_session.advance(arrival - float(_session.snapshot()["simulated_seconds"]))
-		_session.begin_admit_group(1)
+		_session.begin_admit_group(ActorIds.CULTIST_IDS[0])
 		_session.advance(4.2)
-		_session.command_action_state(&"admit_group", 1, &"front_entrance")
+		_session.command_action_state(&"admit_group", ActorIds.CULTIST_IDS[0], &"front_entrance")
 		for patron_id: int in _session.snapshot()["debug_patron_views"]:
 			var patron: Dictionary = _session.snapshot()["debug_patron_views"][patron_id]
 			if patron["lifecycle"] != &"active" or configured.has(patron_id):
@@ -2895,9 +2895,9 @@ func _stage_full_cast() -> void:
 
 func _stage_first_group(target_seconds: float) -> void:
 	_session.advance(3.1)
-	_session.begin_admit_group(1)
+	_session.begin_admit_group(ActorIds.CULTIST_IDS[0])
 	_session.advance(4.2)
-	_session.command_action_state(&"admit_group", 1, &"front_entrance")
+	_session.command_action_state(&"admit_group", ActorIds.CULTIST_IDS[0], &"front_entrance")
 	if float(_session.snapshot()["simulated_seconds"]) < target_seconds:
 		_session.advance(target_seconds - float(_session.snapshot()["simulated_seconds"]))
 

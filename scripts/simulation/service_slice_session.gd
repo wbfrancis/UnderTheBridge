@@ -6,8 +6,8 @@ signal service_event_recorded(event: Dictionary)
 
 const ACTION_QUEUE_SCRIPT := preload("res://scripts/actions/cultist_action_queue.gd")
 const ORDER_SYSTEM_SCRIPT := preload("res://scripts/orders/order_system.gd")
-const CULTIST_IDS: Array[int] = [1, 2, 3]
-const PATRON_ID := 4
+const CULTIST_IDS: Array[int] = [ActorIds.CULTIST_IDS[0], ActorIds.CULTIST_IDS[1], ActorIds.CULTIST_IDS[2]]
+var PATRON_ID := ScenarioActors.opening_patron()
 const STEP_SECONDS := 0.05
 
 var _simulated_seconds: float = 0.0

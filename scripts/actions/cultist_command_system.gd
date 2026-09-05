@@ -1331,7 +1331,7 @@ func _markers(cultist_id: int, state: Dictionary) -> Array[Dictionary]:
 
 
 func _display_name(cultist_id: int) -> String:
-	return str(cultist_id).replace("cultist_", "Cultist ")
+	return ActorRoster.display_name(cultist_id)
 
 
 func _reason_label(reason: StringName) -> String:

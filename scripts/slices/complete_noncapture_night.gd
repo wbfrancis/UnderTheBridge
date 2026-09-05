@@ -1,19 +1,19 @@
 extends Control
 
 const GAME_SESSION_SCRIPT := preload("res://scripts/simulation/game_session.gd")
-const PATRON_IDS: Array[int] = [
-	4,
-	5,
-	6,
-	7,
-	8,
-	9,
-	10,
-	11,
+var PATRON_IDS: Array[int] = [
+	ScenarioActors.opening_patron(),
+	ScenarioActors.opening_companion(),
+	ScenarioActors.friendship_candidate(),
+	ScenarioActors.group_member(&"arrival_group_trio_01", 0, 3),
+	ScenarioActors.group_member(&"arrival_group_trio_01", 1, 3),
+	ScenarioActors.group_member(&"arrival_group_trio_01", 2, 3),
+	ScenarioActors.group_member(&"arrival_group_pair_02", 0, 2),
+	ScenarioActors.group_member(&"arrival_group_pair_02", 1, 2),
 ]
 
 var _session = GAME_SESSION_SCRIPT.new()
-var _selected_patron_id: int = 4
+var _selected_patron_id: int = ScenarioActors.opening_patron()
 var _capture_mode: bool = false
 var _phase_label: Label
 var _clock_label: Label
@@ -330,7 +330,7 @@ func _set_time_scale(scale: float) -> void:
 
 func _restart_night() -> void:
 	_session.restart_night(707)
-	_selected_patron_id = 4
+	_selected_patron_id = ScenarioActors.opening_patron()
 
 
 func _refresh(state: Dictionary) -> void:

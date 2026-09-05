@@ -15,7 +15,7 @@ const SCENARIOS := {
 
 var _session = GAME_SESSION_SCRIPT.new()
 var _scenario: String = "trapdoor_capture"
-var _focus_patron_id: int = 4
+var _focus_patron_id: int = ScenarioActors.opening_patron()
 var _scenario_trace: String = ""
 var _capture_mode: bool = false
 var _scenario_buttons: Dictionary = {}
@@ -218,53 +218,53 @@ func _set_scenario(scenario_id: String) -> void:
 	_session.restart_night(707)
 	match scenario_id:
 		"trapdoor_capture":
-			_focus_patron_id = 4
+			_focus_patron_id = ScenarioActors.opening_patron()
 			_session.advance(100.0)
-			_session.debug_force_bathroom(4)
+			_session.debug_force_bathroom(ScenarioActors.opening_patron())
 			_session.activate_trapdoor()
 			_session.advance(20.0)
-			var mara: Dictionary = _debug_for(5)
+			var companion: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "June forced into the bathroom (standing).\nTrapdoor armed: June is captured. Captures now %d.\nMara (Companion) after 20 s: %.0f, %s." % [
-				_session.snapshot()["captures"], mara["suspicion"], _humanize(mara["suspicion_cause"]),
+				_session.snapshot()["captures"], companion["suspicion"], _humanize(companion["suspicion_cause"]),
 			]
 		"seated_witness":
-			_focus_patron_id = 5
+			_focus_patron_id = ScenarioActors.opening_companion()
 			_session.advance(100.0)
-			_session.debug_force_bathroom(5)
+			_session.debug_force_bathroom(ScenarioActors.opening_companion())
 			_session.advance(2.05)
 			_session.activate_trapdoor()
-			var seated: Dictionary = _debug_for(5)
+			var seated: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "Mara forced into the bathroom, seated (using it).\nTrapdoor armed: a seated occupant is not captured.\nMara gains Hard Evidence: %.0f, %s, still %s." % [
 				seated["suspicion"], _humanize(seated["suspicion_cause"]), _humanize(seated["activity"]),
 			]
 		"missing_investigation":
-			_focus_patron_id = 5
+			_focus_patron_id = ScenarioActors.opening_companion()
 			_session.advance(100.0)
-			_session.debug_force_bathroom(4)
+			_session.debug_force_bathroom(ScenarioActors.opening_patron())
 			_session.activate_trapdoor()
 			_session.advance(40.0)
-			var m: Dictionary = _debug_for(5)
+			var m: Dictionary = _debug_for(ScenarioActors.opening_companion())
 			_scenario_trace = "June captured; Mara's missing-Companion clock runs.\n40 s later Mara reaches %.0f, %s.\nResponse %s → lifecycle %s." % [
 				m["suspicion"], _humanize(m["suspicion_cause"]),
 				_humanize(m["suspicion_maximum_response"]), _humanize(m["lifecycle"]),
 			]
 		"escape_intercept":
-			_focus_patron_id = 6
+			_focus_patron_id = ScenarioActors.friendship_candidate()
 			_session.advance(200.0)
 			_session.set_time_scale(4.0)
-			_session.report_patron_stimulus(6, &"drink_dosed_seen")
+			_session.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
 			_session.advance(1.0)
 			var scale_after: float = _session.snapshot()["time_scale"]
 			var refused := not _session.set_time_scale(4.0)
-			var started := _session.begin_intercept(6, 1)
-			var second := _session.begin_intercept(6, 2)
+			var started := _session.begin_intercept(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0])
+			var second := _session.begin_intercept(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[1])
 			_scenario_trace = "Elias sees his drink dosed → Escape.\nNight was 4x; Escape forced it to %.0fx (faster refused: %s).\nIntercept started: %s. Second Intercept refused: %s." % [
 				scale_after, str(refused), str(started), str(not second),
 			]
 		"front_exit_defeat":
-			_focus_patron_id = 6
+			_focus_patron_id = ScenarioActors.friendship_candidate()
 			_session.advance(200.0)
-			_session.report_patron_stimulus(6, &"drink_dosed_seen")
+			_session.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
 			_session.advance(0.2)
 			_session.advance(10.0)
 			var loss: Dictionary = _session.snapshot()
@@ -357,52 +357,52 @@ func _validation_report() -> Dictionary:
 	var cap = GAME_SESSION_SCRIPT.new()
 	cap.start_night(707)
 	cap.advance(100.0)
-	cap.debug_force_bathroom(4)
+	cap.debug_force_bathroom(ScenarioActors.opening_patron())
 	cap.activate_trapdoor()
-	var june_captured: StringName = cap.snapshot()["debug_patron_views"][4]["lifecycle"]
+	var subject_captured: StringName = cap.snapshot()["debug_patron_views"][ScenarioActors.opening_patron()]["lifecycle"]
 	var captures_after: int = cap.snapshot()["captures"]
 	cap.advance(20.0)
-	var mara_missing: Dictionary = cap.snapshot()["debug_patron_views"][5]
+	var companion_missing: Dictionary = cap.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]
 
 	var witness = GAME_SESSION_SCRIPT.new()
 	witness.start_night(707)
 	witness.advance(100.0)
-	witness.debug_force_bathroom(5)
+	witness.debug_force_bathroom(ScenarioActors.opening_companion())
 	witness.advance(2.05)
 	witness.activate_trapdoor()
-	var seated: Dictionary = witness.snapshot()["debug_patron_views"][5]
+	var seated: Dictionary = witness.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]
 	var seated_captures: int = witness.snapshot()["captures"]
 
 	# AC2: missing-Companion Maximum drives Investigation; proof drives Escape.
 	var invest = GAME_SESSION_SCRIPT.new()
 	invest.start_night(707)
 	invest.advance(100.0)
-	invest.debug_force_bathroom(4)
+	invest.debug_force_bathroom(ScenarioActors.opening_patron())
 	invest.activate_trapdoor()
 	invest.advance(40.0)
-	var investigator: Dictionary = invest.snapshot()["debug_patron_views"][5]
+	var investigator: Dictionary = invest.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]
 
 	var proof = GAME_SESSION_SCRIPT.new()
 	proof.start_night(707)
 	proof.advance(200.0)
-	proof.report_patron_stimulus(6, &"drink_dosed_seen")
+	proof.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
 	proof.advance(0.2)
-	var escaper: Dictionary = proof.snapshot()["debug_patron_views"][6]
+	var escaper: Dictionary = proof.snapshot()["debug_patron_views"][ScenarioActors.friendship_candidate()]
 
 	# AC3: Escape forces 1x and permits exactly one 5-second Intercept.
 	var esc = GAME_SESSION_SCRIPT.new()
 	esc.start_night(707)
 	esc.advance(200.0)
 	esc.set_time_scale(4.0)
-	esc.report_patron_stimulus(6, &"drink_dosed_seen")
+	esc.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
 	esc.advance(1.0)
 	var forced_scale: float = esc.snapshot()["time_scale"]
 	var faster_refused := not esc.set_time_scale(4.0)
-	var first_intercept := esc.begin_intercept(6, 1)
-	var second_intercept := esc.begin_intercept(6, 2)
+	var first_intercept := esc.begin_intercept(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[0])
+	var second_intercept := esc.begin_intercept(ScenarioActors.friendship_candidate(), ActorIds.CULTIST_IDS[1])
 	esc.advance(5.0)
 	var after_intercept: Dictionary = esc.snapshot()
-	var resumed: StringName = after_intercept["debug_patron_views"][6]["lifecycle"]
+	var resumed: StringName = after_intercept["debug_patron_views"][ScenarioActors.friendship_candidate()]["lifecycle"]
 
 	# AC4: only a Maximum-Suspicion front-exit crossing is defeat; Normal Departures are not.
 	var clean = GAME_SESSION_SCRIPT.new()
@@ -414,15 +414,15 @@ func _validation_report() -> Dictionary:
 	var loss = GAME_SESSION_SCRIPT.new()
 	loss.start_night(707)
 	loss.advance(200.0)
-	loss.report_patron_stimulus(6, &"drink_dosed_seen")
+	loss.report_patron_stimulus(ScenarioActors.friendship_candidate(), &"drink_dosed_seen")
 	loss.advance(0.2)
 	loss.advance(10.0)
 	var loss_snapshot: Dictionary = loss.snapshot()
 
 	var checks := {
-		"trapdoor_captures_standing_occupant": june_captured == &"captured" and captures_after == 1,
-		"capture_starts_companion_missing_clock": mara_missing["suspicion"] == 25.0
-			and mara_missing["suspicion_cause"] == &"missing_companion",
+		"trapdoor_captures_standing_occupant": subject_captured == &"captured" and captures_after == 1,
+		"capture_starts_companion_missing_clock": companion_missing["suspicion"] == 25.0
+			and companion_missing["suspicion_cause"] == &"missing_companion",
 		"seated_occupant_is_hard_evidence_witness": seated["suspicion"] == 100.0
 			and seated["suspicion_cause"] == &"hard_evidence"
 			and seated["activity"] == &"seated_bathroom_use" and seated_captures == 0,
@@ -448,7 +448,7 @@ func _validation_report() -> Dictionary:
 		"checks": checks,
 		"observed": {
 			"captures_after_trapdoor": captures_after,
-			"mara_missing_suspicion": mara_missing["suspicion"],
+			"mara_missing_suspicion": companion_missing["suspicion"],
 			"forced_scale": forced_scale,
 			"clean_normal_departures": clean_snapshot["patrons"]["normal_departure_count"],
 			"loss_outcome": loss_snapshot["outcome"],

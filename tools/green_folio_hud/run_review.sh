@@ -21,7 +21,7 @@ source "$SCRIPT_DIR/../_godot_lib.sh"
 
 GODOT_BIN="$(require_godot)"
 isolate_profile "$PROJECT_ROOT/.godot/headless_profile"
-SCENE="res://scenes/prototypes/ticket16_presentation_review.tscn"
+SCENE="res://scenes/prototypes/main_test.tscn"
 ARTIFACT_DIR="$PROJECT_ROOT/artifacts/green_folio_hud"
 mkdir -p "$ARTIFACT_DIR"
 
@@ -33,7 +33,7 @@ capture() {
   local name="$1"; local frames="${2:-$FRAMES}"; shift 2
   "$GODOT_BIN" --path "$PROJECT_ROOT" --fixed-fps=60 --disable-vsync \
     --rendering-method gl_compatibility --resolution 1280x720 "$SCENE" -- \
-    "--stage=full_cast" "--capture-frames=$frames" "--identify-patron=patron_june" \
+    "--stage=full_cast" "--capture-frames=$frames" "--identify-patron=opening_patron" \
     "$@" "--capture=res://artifacts/green_folio_hud/${name}.png"
 }
 
@@ -46,16 +46,16 @@ capture long_queue 60 --hud-preview=long_queue
 capture move_talk_chain 60 --hud-preview=move_talk_chain
 capture chain_unrelated 60 --hud-preview=chain_unrelated
 capture pause_from_plain 60 --hud-preview=pause_from_plain
-capture inspected "$FRAMES" --inspect-patron=patron_june --hud-preview=quiet
+capture inspected "$FRAMES" --inspect-patron=opening_patron --hud-preview=quiet
 capture action_queue "$FRAMES" --hud-preview=queue
 capture settings_menu "$FRAMES" --hud-preview=settings
 capture developer_menu "$FRAMES" --hud-preview=developer
 capture clock_hover "$FRAMES" --hud-preview=clock_hover
 capture speed_2 "$FRAMES" --hud-preview=speed_2
 capture speed_4 "$FRAMES" --hud-preview=speed_4
-capture reduced_motion "$FRAMES" --hud-preview=reduced_motion
 capture offscreen_indicator "$FRAMES" --hud-preview=offscreen
 capture pause_menu 60 --hud-preview=pause
+capture controls_card 60 --hud-preview=controls
 capture outcome_success 60 --hud-preview=outcome_victory
 capture outcome_failed 60 --hud-preview=outcome_failed
 capture outcome_exposed 60 --hud-preview=outcome_exposed
@@ -64,8 +64,8 @@ capture_resolution() {
   local name="$1"; local resolution="$2"; shift 2
   "$GODOT_BIN" --path "$PROJECT_ROOT" --fixed-fps=60 --disable-vsync \
     --rendering-method gl_compatibility --resolution "$resolution" "$SCENE" -- \
-    "--stage=full_cast" "--capture-frames=60" "--identify-patron=patron_june" \
-    --inspect-patron=patron_june "$@" \
+    "--stage=full_cast" "--capture-frames=60" "--identify-patron=opening_patron" \
+    --inspect-patron=opening_patron "$@" \
     "--capture=res://artifacts/green_folio_hud/${name}.png"
 }
 
@@ -77,5 +77,13 @@ capture_resolution long_queue_1024 1024x576 --hud-preview=long_queue
 capture_resolution long_queue_1920 1920x1080 --hud-preview=long_queue
 capture_resolution move_talk_chain_1024 1024x576 --hud-preview=move_talk_chain
 capture_resolution move_talk_chain_1920 1920x1080 --hud-preview=move_talk_chain
+
+# The default captures cover 1280x720. Add the 1024x576 worst case for the
+# Controls Card and every Outcome state.
+for state in "controls_card:controls" \
+    "outcome_success:outcome_victory" "outcome_failed:outcome_failed" "outcome_exposed:outcome_exposed"; do
+  name="${state%%:*}"; preview="${state##*:}"
+  capture_resolution "${name}_1024" 1024x576 "--hud-preview=${preview}"
+done
 
 echo "Green Folio HUD approval frames written to $ARTIFACT_DIR"
