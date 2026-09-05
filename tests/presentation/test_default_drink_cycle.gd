@@ -18,8 +18,8 @@ func test_default_scene_opens_at_the_start_of_a_fresh_night() -> void:
 	assert_eq(String(presentation.get("_scenario")), "night_start")
 	var cultist_nodes: Dictionary = presentation.get("_cultist_nodes")
 	assert_eq(cultist_nodes.size(), 2, "The playable scene exposes Vera and Iris.")
-	assert_true(cultist_nodes.has(ActorIds.CULTIST_IDS[0]), "Vera (cultist_01) is playable.")
-	assert_true(cultist_nodes.has(ActorIds.CULTIST_IDS[1]), "Iris (cultist_02) is playable.")
+	assert_true(cultist_nodes.has(ActorIds.CULTIST_IDS[0]), "The first Cultist is playable.")
+	assert_true(cultist_nodes.has(ActorIds.CULTIST_IDS[1]), "The second Cultist is playable.")
 	assert_eq(int(presentation.get("_selected_cultist_id")), ActorIds.CULTIST_IDS[0],
 		"Vera is the Selected Cultist by default.")
 

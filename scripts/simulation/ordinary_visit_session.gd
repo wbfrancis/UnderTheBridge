@@ -438,7 +438,7 @@ func report_danger_event(
 			recipients = _perception.auditory_recipients(source_room, perceivers)
 		_:
 			recipients = []
-	var effective_source: Variant = source_id if source_id != ActorIds.NO_ACTOR else source_room
+	var effective_source: Variant = source_id if not is_same(source_id, ActorIds.NO_ACTOR) else source_room
 	var perceived: Array[int] = []
 	for patron_id: int in recipients:
 		if _route_stimulus(patron_id, stimulus, channel, effective_source):
@@ -978,21 +978,27 @@ static func bathroom_probability(bladder: float) -> float:
 
 
 func _initialize_legacy_pair() -> void:
-	_patrons = {
-		4: _new_patron(
-			4, "June", GROUP_ID, [5], 75.0, 9.0, &"active",
-			"Ordinary", "Low", false, &"patron_june"
-		),
-		5: _new_patron(
-			5, "Mara", GROUP_ID, [4], 45.0, 13.0, &"active",
-			"Ordinary", "Low", false, &"patron_mara"
-		),
-	}
+	var members: Array[int] = []
+	var group_label := ""
+	for definition in FULL_NIGHT_PATRON_DEFINITIONS:
+		if definition["group_id"] != GROUP_ID:
+			continue
+		var patron_id: int = definition["id"]
+		members.append(patron_id)
+		_patrons[patron_id] = _new_patron(
+			patron_id, definition["name"], GROUP_ID, definition["companions"],
+			definition["bladder_gain"], definition["service_delay"], &"active",
+			definition["victim_value"], definition["victim_risk"],
+			definition.get("friendship_capturable", false), definition["seed_key"]
+		)
+	for definition in FULL_NIGHT_GROUP_DEFINITIONS:
+		if definition["id"] == GROUP_ID:
+			group_label = definition["label"]
 	_groups[GROUP_ID] = {
 		"id": GROUP_ID,
-		"label": "June + Mara",
+		"label": group_label,
 		"arrival_at": 0.0,
-		"patrons": [4, 5],
+		"patrons": members,
 		"arrived": true,
 		"waiting": false,
 		"wait_remaining": 0.0,
@@ -1048,18 +1054,16 @@ func _new_patron(
 		bladder_gain: float,
 		service_delay: float,
 		lifecycle: StringName,
-		victim_value: String = "Ordinary",
-		victim_risk: String = "Low",
-		friendship_capturable: bool = false,
-		seed_key: StringName = &""
+		victim_value: String,
+		victim_risk: String,
+		friendship_capturable: bool,
+		seed_key: StringName
 ) -> Dictionary:
 	var patron_rng := RandomNumberGenerator.new()
 	# Seeded rolls hang off an authored content key, never off identity, so that
-	# renaming or renumbering a Patron cannot silently reroll their Night. A
-	# roster entry without one falls back to its id.
-	patron_rng.seed = hash(
-		"%d:%s:patron" % [_seed, seed_key if not seed_key.is_empty() else id]
-	)
+	# renaming or renumbering a Patron cannot silently reroll their Night.
+	assert(not seed_key.is_empty(), "Every Patron needs an authored seed key.")
+	patron_rng.seed = hash("%d:%s:patron" % [_seed, seed_key])
 	_patron_rngs[id] = patron_rng
 	var ideal_intoxication := clampi(int(round(patron_rng.randfn(2.0, 0.6))), 0, 3)
 	return {
@@ -1753,7 +1757,7 @@ func _busy_for_command(cultist_id: int) -> bool:
 		return true
 	if not _windup.is_empty() and _windup["cultist_id"] == cultist_id:
 		return true
-	for target_id: Variant in _stirs:
+	for target_id: int in _stirs:
 		if _stirs[target_id]["helper_id"] == cultist_id:
 			return true
 	for patron_id: int in _follows:
@@ -2785,7 +2789,7 @@ func cultist_incapacitated_remaining(cultist_id: int) -> float:
 	return float(_incapacitated_cultists.get(cultist_id, 0.0))
 
 
-func begin_stir(helper_id: int, target_id: Variant) -> bool:
+func begin_stir(helper_id: int, target_id: int) -> bool:
 	if helper_id == target_id or helper_id not in CULTIST_IDS or target_id not in CULTIST_IDS:
 		return false
 	if not cultist_is_incapacitated(target_id) or _stirs.has(target_id) or _busy_for_command(helper_id):
@@ -2797,7 +2801,7 @@ func begin_stir(helper_id: int, target_id: Variant) -> bool:
 
 
 func cancel_stir(helper_id: int) -> bool:
-	for target_id: Variant in _stirs:
+	for target_id: int in _stirs:
 		if _stirs[target_id]["helper_id"] == helper_id:
 			_stirs.erase(target_id)
 			_record(&"stir_cancelled", target_id, {"cultist_id": helper_id})
@@ -2963,7 +2967,7 @@ func is_cultist_busy(cultist_id: int) -> bool:
 		return true
 	if _conversations.has(cultist_id):
 		return true
-	for target_id: Variant in _stirs:
+	for target_id: int in _stirs:
 		if _stirs[target_id]["helper_id"] == cultist_id:
 			return true
 	for patron_id: int in _follows:
@@ -3005,7 +3009,7 @@ func _advance_incapacitated_cultists(step: float) -> void:
 
 
 func _advance_stirs(step: float) -> void:
-	for target_id: Variant in _stirs.keys():
+	for target_id: int in _stirs.keys():
 		if not cultist_is_incapacitated(target_id):
 			_stirs.erase(target_id)
 			continue

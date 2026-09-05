@@ -626,7 +626,7 @@ func _issue_command(command: StringName, target: Dictionary, append_to_queue: bo
 
 # The live geometry fact the command seam asks for: whether the Cultist already
 # stands at the Patron's valid Approach Position within the arrival tolerance.
-func _cultist_adjacent_to_actor(cultist_id: int, target_id: Variant) -> bool:
+func _cultist_adjacent_to_actor(cultist_id: int, target_id: int) -> bool:
 	if not _cultist_nodes.has(cultist_id):
 		return false
 	var actor := _cultist_nodes[cultist_id] as NavigableActor3D

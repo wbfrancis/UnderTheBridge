@@ -311,7 +311,7 @@ func cultist_incapacitated_remaining(cultist_id: int) -> float:
 	return _ordinary_visits.cultist_incapacitated_remaining(cultist_id)
 
 
-func begin_stir(helper_id: int, target_id: Variant) -> bool:
+func begin_stir(helper_id: int, target_id: int) -> bool:
 	if _phase == &"results":
 		return false
 	var started := _ordinary_visits.begin_stir(helper_id, target_id)
@@ -782,9 +782,9 @@ func _cultist_summary(visit: Dictionary) -> Dictionary:
 		_set_active_cultist_summary(
 			summaries, windup["cultist_id"], &"knockout_windup", windup["victim_id"]
 		)
-	for target_id: Variant in visit["incapacitated_cultists"]:
+	for target_id: int in visit["incapacitated_cultists"]:
 		_set_active_cultist_summary(summaries, target_id, &"knocked_out", &"")
-	for target_id: Variant in visit["stirs"]:
+	for target_id: int in visit["stirs"]:
 		_set_active_cultist_summary(
 			summaries, visit["stirs"][target_id]["helper_id"], &"stirring", target_id
 		)

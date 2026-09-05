@@ -10,7 +10,7 @@ const STATE_CLASS = PLANNER_SCRIPT.STATE_CLASS
 const CLASS_PRIORITY = PLANNER_SCRIPT.CLASS_PRIORITY
 
 func _init(
-	patron_id: int = ActorIds.NO_ACTOR,
+	patron_id: int,
 	registry = null,
 	initial_state: StringName = &"not_arrived"
 ) -> void:

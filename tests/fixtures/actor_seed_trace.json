@@ -1,0 +1,969 @@
+[
+  {
+    "seed": 707,
+    "at": 11.1,
+    "patrons": [
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 707,
+    "at": 46.1000000000002,
+    "patrons": [
+      {
+        "activity": "seated_bathroom_use",
+        "bathroom_probability": 45.5,
+        "bathroom_use_seconds": 8.0,
+        "bladder": 75.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 707,
+    "at": 136.099999999996,
+    "patrons": [
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 8.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 30.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Content",
+        "satisfaction_value": 60.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 30.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 707,
+    "at": 316.100000000003,
+    "patrons": [
+      {
+        "activity": "awaiting_drink",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 8.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 45.50000000001,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 5.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 707,
+    "at": 616.100000000071,
+    "patrons": [
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 8.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 43.6161193847656
+          }
+        ],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 5.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 45.50000000001,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 5.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 19,
+    "at": 11.1,
+    "patrons": [
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 5,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 19,
+    "at": 46.1000000000002,
+    "patrons": [
+      {
+        "activity": "mirror_check",
+        "bathroom_probability": 45.5,
+        "bathroom_use_seconds": 14.0,
+        "bladder": 75.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 5,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 99.3076248168945
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 30.679759979248
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 19,
+    "at": 136.099999999996,
+    "patrons": [
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 14.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 5,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 99.3076248168945
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 30.679759979248
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 30.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Content",
+        "satisfaction_value": 60.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 55.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 19,
+    "at": 316.100000000003,
+    "patrons": [
+      {
+        "activity": "awaiting_drink",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 14.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 5,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 99.3076248168945
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 30.679759979248
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 55.6000000000101,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 50.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 19,
+    "at": 616.100000000071,
+    "patrons": [
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 14.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 1,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 5,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 99.3076248168945
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 30.679759979248
+          }
+        ],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 5.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 55.6000000000101,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 50.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 4301,
+    "at": 11.1,
+    "patrons": [
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "drinking",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": -1.0,
+        "intoxication_level": 0,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 4301,
+    "at": 46.1000000000002,
+    "patrons": [
+      {
+        "activity": "mirror_check",
+        "bathroom_probability": 45.5,
+        "bathroom_use_seconds": 15.0,
+        "bladder": 75.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 48.6958236694336
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 8.34885787963867
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 225.000000000001,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 0.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 4301,
+    "at": 136.099999999996,
+    "patrons": [
+      {
+        "activity": "awaiting_drink",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 15.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 48.6958236694336
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 8.34885787963867
+          }
+        ],
+        "satisfaction_band": "Happy",
+        "satisfaction_value": 80.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 30.0
+      },
+      {
+        "activity": "socializing",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 135.000000000006,
+        "intoxication_level": 1,
+        "lifecycle": "active",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Content",
+        "satisfaction_value": 60.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 55.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 4301,
+    "at": 316.100000000003,
+    "patrons": [
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 15.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 5.40000000000959,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 48.6958236694336
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 8.34885787963867
+          }
+        ],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 20.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 61.1000000000102,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 50.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  },
+  {
+    "seed": 4301,
+    "at": 616.100000000071,
+    "patrons": [
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 15.0,
+        "bladder": 0.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 3,
+        "intoxication_decay_in": 5.40000000000959,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 4,
+        "recent_bathroom_rolls": [
+          {
+            "at": 36.1000000000002,
+            "probability": 45.5,
+            "roll": 48.6958236694336
+          },
+          {
+            "at": 41.1000000000002,
+            "probability": 45.5,
+            "roll": 8.34885787963867
+          }
+        ],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 20.0
+      },
+      {
+        "activity": "exited",
+        "bathroom_probability": 0.0,
+        "bathroom_use_seconds": 0.0,
+        "bladder": 45.0,
+        "dosed_pending": false,
+        "drug_countdown": -1.0,
+        "escape_after_bathroom": false,
+        "escape_remaining": 6.0,
+        "excess_drinks": 0,
+        "ideal_intoxication_level": 2,
+        "intoxication_decay_in": 61.1000000000102,
+        "intoxication_level": 1,
+        "lifecycle": "exited",
+        "next_bathroom_check_in": -1.0,
+        "overdrink_limit": 3,
+        "recent_bathroom_rolls": [],
+        "satisfaction_band": "Unhappy",
+        "satisfaction_value": 40.0,
+        "stay_rolled": false,
+        "stayed_behind": false,
+        "suspicion": 50.0
+      }
+    ],
+    "orders": {
+      "revenue": 10,
+      "tips": 6
+    },
+    "captures": 0
+  }
+]

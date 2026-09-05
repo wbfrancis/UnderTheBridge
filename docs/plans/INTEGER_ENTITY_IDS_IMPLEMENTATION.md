@@ -1,157 +1,63 @@
-# Integer entity ids
+# Integer entity IDs
 
-Status: **Plan — awaiting approval, nothing implemented**
-Branch: `integer-entity-ids`, stacked on the unmerged `mood-satisfaction-model`.
+Status: implemented on `integer-entity-ids`. No push is authorized.
 
-## Why
+## Contract
 
-Patron and Cultist identity is currently an authored name: `&"patron_june"`,
-`&"cultist_01"`. A name is not identity, and code that binds to one says nothing
-about why it wants that entity. A test asking about the Grime penalty should ask
-for the Slob, not for June. Identity becomes an integer; the name becomes what it
-always was, display data in the content layer.
+Patrons and Cultists use fixed, authored positive integer IDs in one shared
+namespace. `ActorIds.NO_ACTOR` is zero and never identifies an actor. The roster
+uses one sequence; a number does not encode actor kind or roster position.
+`ActorRoster` owns display names, group membership, companion references and
+seed keys. Reordering the roster does not renumber anyone.
 
-## Settled decisions
+Arrival Groups, Smart Objects, Orders, Prepared Drinks and Action names retain
+their existing IDs. A command target can refer to an actor or an authored object,
+so its ID stays a Variant paired with its target kind. Event sources can likewise
+refer to actors or locations. Actor-only APIs, snapshots, ownership tables,
+perception recipients and navigation signals use integers.
 
-- **Patrons and Cultists only.** Arrival Groups, Smart Objects, bar work
-  positions, and the Trapdoor keep their StringName ids. Those name a kind of
-  authored fixture, not an instance, and `&"trapdoor_control"` reads better than
-  a number.
-- **Ids are authored constants, not spawn order.** A Patron's id is fixed in the
-  roster, so a debug snapshot or a failing test names the same Patron across runs
-  and reordering the arrival table renumbers nothing.
-- **Tests select by role, never by literal.** A bare `1` is worse than
-  `patron_june`: equally uninformative and no longer searchable. Tests ask for
-  the state they need and get whichever Patron has it.
+Each Patron has a required authored `seed_key`. RNG seeds derive from this key,
+never from identity. The retained string keys are content, not actor identifiers.
+Both the opening-pair mode and full Night read the same roster.
 
-## Three hazards found while surveying
+## Tests and review tools
 
-These are the parts that will break quietly if the change is done mechanically.
+`ScenarioActors` selects explicit fixtures through relationships and service
+rank, with assertions for cardinality and ambiguity. Tests that depend on an
+existing seeded outcome use those fixtures; synthetic unit-test actors use named
+local constants. Display names are never selectors.
 
-**1. Every seeded roll is derived from the id string.** `_new_patron` seeds each
-Patron's RNG with `hash("%d:%s:patron" % [_seed, id])`
-(`scripts/simulation/ordinary_visit_session.gd:1119`). Changing the id changes
-that hash, which rerolls Ideal Intoxication and every seeded decision that
-follows: bathroom checks, wrong-drink acceptance, stay-behind, collapse
-reactions. Tests asserting specific seeded outcomes will fail with correct-looking
-but different numbers, which is the worst kind of failure to read.
+Review command-line arguments accept an authored numeric ID or the roles
+`opening_patron`, `opening_companion`, and `friendship_candidate`. The conversion
+occurs at this text boundary. Runtime APIs have no name-to-ID compatibility shim.
 
-*Resolution:* add an explicit `seed_key` to each roster entry, keep its current
-value (`"patron_june"` and so on), and seed from that instead of from the id. The
-key is content, sits beside the display name, and never appears in a signature or
-a dictionary key. Behaviour is then provably unchanged, and every test that
-passes today still passes. Retiring the string keys later is a separate,
-deliberate re-baselining, not a side effect of a rename.
+Order, emote and avoidance tie-breaks compare IDs numerically.
 
-**2. The order queue tie-breaks on a lexicographic id comparison.**
-`String(left["id"]) < String(right["id"])`
-(`scripts/simulation/ordinary_visit_session.gd:1833`) breaks the tie when two
-Orders were requested at the same instant. With integers, `"10" < "9"` is true,
-so Patron 10 would be served before Patron 9. Must become a numeric comparison.
+## Completed steps
 
-**3. Prototypes key lookup tables by Patron name.** `perception_greybox.gd` maps
-ids to colours and scales (`:135`, `:141`) and holds `PATRON_IDS` arrays. These
-are dictionary literals that a signature change will not catch, because they are
-data, not calls.
+1. Decoupled RNG streams from identity before changing any IDs (`83b0cd1`).
+2. Migrated the integer core and its snapshot consumers together (`0fa156b`).
+   An input-only shim could not keep snapshot consumers compatible, so the
+   dependency-wide change replaced the proposed staged string shim.
+3. Added explicit test fixtures and selection-preservation tests (`0a1c0d9`).
+4. Migrated review selectors, visual tables and command-line inputs (`29e126d`).
+5. Removed duplicated roster content and added identity and preservation checks.
 
-## Revision after Stage 1: three more hazards
+The checks cover positive unique IDs, relationship resolution, zero ownership,
+renumbered RNG streams, numeric ordering, actor/location sources, and fifteen
+pre-migration gameplay checkpoints across three seeds. The trace fixture is
+`tests/fixtures/actor_seed_trace.json`; its expected values came from the original
+working tree before the integer conversion.
 
-Found while starting Stage 2. The original survey missed these, and together
-they make the change materially larger than estimated above.
+## Working-tree scope and manual review
 
-**4. An empty StringName means "no entity" in 77 places.** `patron_id.is_empty()`,
-`not cultist_id.is_empty()` and friends are a null-object idiom across
-`order_system.gd`, `character_action_system.gd`, and `cultist_command_system.gd`.
-Integers have no `is_empty()`. Every one needs a sentinel, and choosing it is a
-domain decision: what *is* "no Patron"? Proposed: `0`, never a valid entity id,
-with a named constant `NO_ACTOR` so the intent survives at each call site.
+Validation applies to the full working tree. Earlier tracked changes that the
+conversion depends on are described in the stage-2 commit. Pre-existing untracked
+modules, including their necessary integer updates, remain uncommitted at the
+user's instruction. These commits alone are not a standalone checkout of the
+complete current game.
 
-**5. Patron and Cultist ids share one namespace.** The emote view is keyed by
-`actor_id` and carries both kinds (`ordinary_visit_session.gd:740` builds patron
-rows, `game_session.gd:438` cultist rows, and `emote_director.gd` holds them in
-one `_actors` dictionary). Sequential per-kind ids would collide. Proposed:
-disjoint blocks, Cultists `1-3` and Patrons `101-108`, so an actor id says what
-kind it is on sight and the blocks have room to grow.
-
-**6. There are three lexicographic id sorts, not one.** Besides the order queue
-at `ordinary_visit_session.gd:1833`, the emote director orders bubbles with
-`String(left["actor_id"]) < String(right["actor_id"])` (`emote_director.gd:120`),
-and there is a third deferred sort. All invert once ids are numbers.
-
-**Staging correction.** Changing the id type is atomic across callers: the moment
-a session signature takes an `int`, every slice and prototype calling it with a
-StringName breaks. Stage 4 cannot trail Stage 2. Revised approach: the session
-keeps a resolution shim at its public boundary that accepts either form and
-resolves a StringName through `seed_key`. Internals move to `int` behind it,
-tests and slices migrate at their own pace, and the shim is deleted in Stage 5
-when the signatures tighten to `int`. Each stage stays green.
-
-## Surface
-
-24 scripts and 21 test files. 514 typed id parameters. About 930 named-id
-literals: 461 `patron_june`, 208 `patron_mara`, 201 `patron_elias`, and 61 across
-the other five. The simulation holds roughly 20 dictionaries keyed by entity id.
-
-## Stages
-
-Each stage ends with the full headless suite green and its own commit. No stage
-depends on a later one, so the work can stop between any two.
-
-**Stage 1 — Roster and seed key.** Add `id` as an integer and `seed_key` as a
-StringName to `FULL_NIGHT_PATRON_DEFINITIONS` and the two-Patron default roster,
-alongside the existing name ids. Switch `_new_patron` to seed from `seed_key`.
-Nothing else changes yet; the string ids stay authoritative. This stage exists to
-prove the seeding is decoupled before anything moves, and the suite must pass
-untouched. If a single test moves here, the decoupling is wrong.
-
-**Stage 2 — Flip the roster to integer identity.** Make the integer the id the
-session stores and keys by. Update `FULL_NIGHT_GROUP_DEFINITIONS` patron lists,
-the `companions` arrays, `CULTIST_IDS`, and the ~20 id-keyed dictionaries in
-`ordinary_visit_session.gd`. Fix the lexicographic tie-break at `:1833`. Change
-the typed signatures from `StringName` to `int` across the session and
-`game_session.gd` (203 of the 514 signatures live in these two files). Tests
-still refer to Patrons by name at this point through a temporary lookup, so the
-suite proves the simulation is intact before the tests are rewritten.
-
-**Stage 3 — Test role helpers.** Add helpers to a shared test utility:
-`any_arrived_patron(session)`, `patron_with_trait(session, trait)`,
-`patron_in_group(session, group_id)`, `companion_of(session, patron)`, and
-`friendship_capturable_patron(session)`. Replace every named literal in the 21
-test files with the helper that says why the test wants that Patron. Delete the
-temporary lookup from Stage 2. This is the stage that pays off the original
-complaint, and it is the largest by line count.
-
-**Stage 4 — Slices, prototypes, and the review harness.** The 12 slice scripts,
-`perception_greybox.gd`, `bathroom_danger_scenario.gd`, and
-`production_review_harness.gd`. Rebuild the name-keyed colour and scale tables as
-id-keyed. These are demo and diagnostic surfaces, so they come last: a break here
-is visible immediately and costs nothing in the shipping path.
-
-**Stage 5 — Retire the display-name coupling.** Confirm no signature, dictionary
-key, or comparison outside the roster mentions a Patron name. `seed_key` stays,
-documented as content. Update `CONTEXT.md` if the glossary needs a line saying
-identity is an integer and the name is display data.
-
-## What this does not do
-
-It does not renumber or rename the authored cast. June, Mara, Elias and the rest
-keep their names where names belong — in the roster, on the Patron Profile, and
-in the HUD. It does not touch Arrival Group, Smart Object, or Action ids. It
-changes no gameplay rule, and Stage 1 exists specifically so it changes no seeded
-outcome either.
-
-## Rollback
-
-Every stage is one commit on a branch that nothing else builds on yet. Stage 1 is
-independently valuable and safe to keep even if the rest is abandoned, because
-decoupling the RNG from identity is correct regardless. Stages 2 through 4 revert
-cleanly as a block.
-
-## Open question for approval
-
-Stage 1 keeps the current seeded behaviour by preserving the string as a
-`seed_key`. The alternative is to seed from the integer, accept that every
-Patron rerolls, and re-baseline whichever tests assert seeded outcomes. That is
-cleaner in the end — no vestigial strings — but it mixes a behaviour change into
-a rename, and the re-baselined numbers would have to be taken on trust. The plan
-above assumes the conservative option.
+The user performs manual Godot review. Check selection of both Cultists, Patron
+inspection, Prepare/Serve Drink, Generated Move cancellation, and offscreen
+indicator targeting. Compare labels, colours and actor positions with the current
+approved scene. Automated scene tests also cover the complete drink-service cycle.
