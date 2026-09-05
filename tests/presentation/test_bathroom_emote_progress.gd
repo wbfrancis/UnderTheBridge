@@ -14,14 +14,14 @@ func _forced_bathroom_session():
 	var session = SESSION.new()
 	session.start(707)
 	session.advance(1.1)
-	session.debug_force_bathroom(4)  # headless: arrives instantly
+	session.debug_force_bathroom(ScenarioActors.opening_patron())  # headless: arrives instantly
 	return session
 
 
 func _bubble(session, director) -> Dictionary:
-	director.update({4: session.patron_emote_row(4)}, 0.0, false)
+	director.update({ScenarioActors.opening_patron(): session.patron_emote_row(ScenarioActors.opening_patron())}, 0.0, false)
 	for entry: Dictionary in director.bubbles():
-		if entry["actor_id"] == 4:
+		if entry["actor_id"] == ScenarioActors.opening_patron():
 			return entry
 	return {}
 
@@ -42,7 +42,7 @@ func test_each_timed_phase_shows_a_distinct_icon_and_a_rising_fill() -> void:
 	session.advance(5.0)  # cumulative 9.55s: ~0.5s into Seated Bathroom Use
 	icons.append(String(_bubble(session, director)["icon"]))
 	# Handwashing: finish Seated Use and the walk to the sink (2s).
-	var use_seconds: float = session.debug_patron_view(4).get("bathroom_use_seconds", 12.0)
+	var use_seconds: float = session.debug_patron_view(ScenarioActors.opening_patron()).get("bathroom_use_seconds", 12.0)
 	session.advance(use_seconds + 3.0)
 	icons.append(String(_bubble(session, director)["icon"]))
 	assert_eq(icons, ["M", "T", "H"], "Mirror, toilet, and handwashing icons are distinct.")
@@ -74,8 +74,8 @@ func test_no_progress_is_invented_while_walking_between_stations() -> void:
 func test_a_locked_policy_row_stays_a_generic_bathroom_emote_with_no_fill() -> void:
 	var director = DIRECTOR.new()
 	# A row with no progress field models the future locked information policy.
-	director.update({4: {
-		"id": 4, "kind": &"patron", "present": true, "state": &"bathroom",
+	director.update({ScenarioActors.opening_patron(): {
+		"id": ScenarioActors.opening_patron(), "kind": &"patron", "present": true, "state": &"bathroom",
 		"changes": [], "public": {"activity": "Using bathroom"},
 	}}, 0.0, false)
 	var bubble := director.bubbles()[0]
@@ -86,7 +86,7 @@ func test_a_locked_policy_row_stays_a_generic_bathroom_emote_with_no_fill() -> v
 func test_prototype_progress_leaks_no_forbidden_debug_fields() -> void:
 	var session = _forced_bathroom_session()
 	session.advance(2.05)  # Mirror Check
-	var row := session.patron_emote_row(4)
+	var row := session.patron_emote_row(ScenarioActors.opening_patron())
 	assert_true(row.has("progress"))
 	var forbidden := ["bladder", "suspicion", "overdrink_limit", "excess_drinks", "next_bathroom_check_in"]
 	for key in forbidden:
@@ -105,17 +105,17 @@ func test_the_ratio_tracks_simulated_time_regardless_of_chunking() -> void:
 	for _step in range(25):
 		chunked.advance(0.1)
 	assert_almost_eq(
-		float(one_shot.patron_emote_row(4)["progress"]["ratio"]),
-		float(chunked.patron_emote_row(4)["progress"]["ratio"]),
+		float(one_shot.patron_emote_row(ScenarioActors.opening_patron())["progress"]["ratio"]),
+		float(chunked.patron_emote_row(ScenarioActors.opening_patron())["progress"]["ratio"]),
 		0.02, "The fill follows simulated time, not real time or step size.")
 
 
 func test_pause_freezes_the_fill_because_the_simulation_is_paused() -> void:
 	var session = _forced_bathroom_session()
 	session.advance(2.05 + 2.5)
-	var before: float = session.patron_emote_row(4)["progress"]["ratio"]
+	var before: float = session.patron_emote_row(ScenarioActors.opening_patron())["progress"]["ratio"]
 	# A Plain Pause simply stops advancing the session; the ratio cannot drift.
-	var after: float = session.patron_emote_row(4)["progress"]["ratio"]
+	var after: float = session.patron_emote_row(ScenarioActors.opening_patron())["progress"]["ratio"]
 	assert_eq(after, before, "With the simulation paused, the fill holds steady.")
 
 
@@ -132,14 +132,14 @@ func test_overlay_renders_one_bottom_to_top_fill_for_the_active_phase() -> void:
 	await get_tree().process_frame
 
 	var bubble := {
-		"actor_id": 4, "emote": &"bathroom", "category": &"persistent",
+		"actor_id": ScenarioActors.opening_patron(), "emote": &"bathroom", "category": &"persistent",
 		"priority": 60, "icon": "T", "shape": &"square", "color": "7fc7c4",
 		"label": "Toilet", "progress_phase": &"toilet", "progress_ratio": 0.6,
 	}
-	overlay.refresh([bubble], {4: Vector3.ZERO})
-	assert_almost_eq(overlay.fill_ratio(4), 0.6, 0.001,
+	overlay.refresh([bubble], {ScenarioActors.opening_patron(): Vector3.ZERO})
+	assert_almost_eq(overlay.fill_ratio(ScenarioActors.opening_patron()), 0.6, 0.001,
 		"The overlay fills to the phase ratio.")
-	var rect: Rect2 = overlay.placements()[4]
+	var rect: Rect2 = overlay.placements()[ScenarioActors.opening_patron()]
 	var slot := overlay.get_child(0)
 	var fill := slot.get_node("Panel/Fill") as ColorRect
 	assert_true(fill.visible)

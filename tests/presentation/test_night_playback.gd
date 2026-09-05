@@ -22,10 +22,10 @@ func _trigger_escape() -> void:
 	_session.set_time_scale(1.0)
 	if float(_session.snapshot()["simulated_seconds"]) < 3.0:
 		_session.advance(3.1)
-		assert_true(_session.begin_admit_group(1))
+		assert_true(_session.begin_admit_group(ActorIds.CULTIST_IDS[0]))
 		_session.advance(4.1)
 	_session.set_time_scale(4.0)
-	assert_true(_session.report_patron_stimulus(4, &"drink_dosed_seen"))
+	assert_true(_session.report_patron_stimulus(ScenarioActors.opening_patron(), &"drink_dosed_seen"))
 	_session.advance(0.2)
 
 

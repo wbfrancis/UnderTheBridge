@@ -40,12 +40,12 @@ func _await_activity(presentation, patron_id: int, activity: StringName, budget:
 func test_standing_capture_opens_panels_sinks_occluded_then_removes_after_closure() -> void:
 	var presentation = await _stage()
 	var session = presentation.get("_session")
-	assert_true(session.debug_force_bathroom(5))
-	assert_true(await _await_activity(presentation, 5, &"mirror_check", 4_000),
+	assert_true(session.debug_force_bathroom(ScenarioActors.opening_companion()))
+	assert_true(await _await_activity(presentation, ScenarioActors.opening_companion(), &"mirror_check", 4_000),
 		"Mara reaches a standing bathroom phase.")
 	assert_true(session.activate_trapdoor())
 
-	var node = presentation.get("_patron_nodes").get(5)
+	var node = presentation.get("_patron_nodes").get(ScenarioActors.opening_companion())
 	var saw_falling_visible := false
 	var saw_open_panels := false
 	var saw_locked := false
@@ -85,10 +85,10 @@ func test_standing_capture_opens_panels_sinks_occluded_then_removes_after_closur
 func test_seated_misfire_animates_the_panels_but_never_moves_the_patron() -> void:
 	var presentation = await _stage()
 	var session = presentation.get("_session")
-	assert_true(session.debug_force_bathroom(5))
-	assert_true(await _await_activity(presentation, 5, &"seated_bathroom_use", 6_000),
+	assert_true(session.debug_force_bathroom(ScenarioActors.opening_companion()))
+	assert_true(await _await_activity(presentation, ScenarioActors.opening_companion(), &"seated_bathroom_use", 6_000),
 		"Mara reaches the seated toilet phase.")
-	var node = presentation.get("_patron_nodes").get(5)
+	var node = presentation.get("_patron_nodes").get(ScenarioActors.opening_companion())
 	var y_before: float = node.global_position.y
 	assert_true(session.activate_trapdoor())
 

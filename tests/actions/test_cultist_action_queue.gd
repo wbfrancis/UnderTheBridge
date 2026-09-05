@@ -1,5 +1,8 @@
 extends GutTest
 
+const SUBJECT_ACTOR_ID: int = 1001
+const OTHER_ACTOR_ID: int = 1002
+
 const ACTION_QUEUE_PATH := "res://scripts/actions/cultist_action_queue.gd"
 
 
@@ -10,7 +13,7 @@ func _queue():
 func _chain(names: Array) -> Array:
 	var specs: Array = []
 	for entry in names:
-		specs.append({"name": StringName(entry), "target_id": 1001})
+		specs.append({"name": StringName(entry), "target_id": SUBJECT_ACTOR_ID})
 	return specs
 
 
@@ -39,8 +42,8 @@ func test_the_full_queue_keeps_fifo_order() -> void:
 
 func test_replace_with_chain_clears_an_uncommitted_active_action() -> void:
 	var queue = _queue()
-	var interrupted: int = queue.append(&"talk", 1001, 10.0, 3.0)
-	queue.append(&"serve", 1002)
+	var interrupted: int = queue.append(&"talk", SUBJECT_ACTOR_ID, 10.0, 3.0)
+	queue.append(&"serve", OTHER_ACTOR_ID)
 	var result: Dictionary = queue.replace_with_chain(_chain([&"move"]))
 
 	var state: Dictionary = queue.snapshot()
@@ -54,7 +57,7 @@ func test_replace_with_chain_clears_an_uncommitted_active_action() -> void:
 
 func test_replace_with_chain_waits_behind_a_committed_active_action() -> void:
 	var queue = _queue()
-	var committed: int = queue.append(&"drug_drink", 1002, 10.0, 1.0)
+	var committed: int = queue.append(&"drug_drink", OTHER_ACTOR_ID, 10.0, 1.0)
 	queue.advance(1.0)
 	queue.append(&"clean", &"table_b")
 	var result: Dictionary = queue.replace_with_chain(_chain([&"move", &"talk"]))
@@ -68,7 +71,7 @@ func test_replace_with_chain_waits_behind_a_committed_active_action() -> void:
 
 func test_shift_append_adds_a_chain_after_a_committed_action() -> void:
 	var queue = _queue()
-	queue.append(&"drug_drink", 1002, 10.0, 1.0)
+	queue.append(&"drug_drink", OTHER_ACTOR_ID, 10.0, 1.0)
 	queue.advance(1.0)
 	var result: Dictionary = queue.append_chain(_chain([&"generated_move", &"talk"]))
 	var pending_ids: Array = queue.snapshot()["pending"].map(
@@ -151,11 +154,11 @@ func test_a_completed_link_never_returns_to_the_queue() -> void:
 
 func test_inserting_a_prerequisite_keeps_one_chain_identity() -> void:
 	var queue = _queue()
-	var standalone: int = queue.append(&"talk", 1001)
+	var standalone: int = queue.append(&"talk", SUBJECT_ACTOR_ID)
 	assert_eq(int(queue.snapshot()["active"]["chain_id"]), -1)
 
 	var inserted: Dictionary = queue.insert_prerequisite_for_active({
-		"name": &"generated_move", "target_id": 1001, "generated": true,
+		"name": &"generated_move", "target_id": SUBJECT_ACTOR_ID, "generated": true,
 	})
 	var state: Dictionary = queue.snapshot()
 	assert_eq(int(state["active"]["id"]), int(inserted["action_id"]),
@@ -182,7 +185,7 @@ func test_a_new_queue_carries_no_chain_or_id_state() -> void:
 
 func test_precommit_do_now_interrupts_but_a_committed_action_waits() -> void:
 	var precommit = _queue()
-	var interrupted: int = precommit.append(&"serve", 1001, 10.0, 3.0)
+	var interrupted: int = precommit.append(&"serve", SUBJECT_ACTOR_ID, 10.0, 3.0)
 	precommit.append(&"clean", &"table_a")
 	var urgent: int = precommit.do_now(&"hide_evidence", &"trapdoor")
 	assert_eq(int(precommit.snapshot()["active"]["id"]), urgent)
@@ -193,7 +196,7 @@ func test_precommit_do_now_interrupts_but_a_committed_action_waits() -> void:
 	))
 
 	var committed = _queue()
-	var committed_id: int = committed.append(&"drug_drink", 1002, 10.0, 1.0)
+	var committed_id: int = committed.append(&"drug_drink", OTHER_ACTOR_ID, 10.0, 1.0)
 	committed.advance(1.0)
 	committed.append(&"clean", &"table_b")
 	var waiting: int = committed.do_now(&"hide_evidence", &"trapdoor")

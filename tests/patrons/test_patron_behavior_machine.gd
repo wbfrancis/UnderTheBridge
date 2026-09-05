@@ -1,11 +1,13 @@
 extends GutTest
 
+const SUBJECT_ACTOR_ID: int = 1001
+
 const MACHINE_SCRIPT := preload("res://scripts/patrons/patron_behavior_machine.gd")
 const REGISTRY_SCRIPT := preload("res://scripts/interactions/interaction_registry.gd")
 
 
 func _machine(initial_state: StringName = &"socializing"):
-	return MACHINE_SCRIPT.new(1001, REGISTRY_SCRIPT.new(), initial_state)
+	return MACHINE_SCRIPT.new(SUBJECT_ACTOR_ID, REGISTRY_SCRIPT.new(), initial_state)
 
 
 func test_step_aside_resumes_original_action_and_cancel_does_not_repeat_incident() -> void:
@@ -64,14 +66,14 @@ func test_transition_releases_old_reservation_before_acquiring_new_one() -> void
 	var registry = REGISTRY_SCRIPT.new()
 	registry.register_slot(&"bar_wait", &"bar")
 	registry.register_slot(&"bathroom_line", &"bathroom")
-	var machine = MACHINE_SCRIPT.new(1001, registry, &"socializing")
+	var machine = MACHINE_SCRIPT.new(SUBJECT_ACTOR_ID, registry, &"socializing")
 	machine.submit(&"awaiting_drink", &"bar", &"bar_wait")
 	machine.drain_events()
 	machine.submit(&"entering_bathroom", &"bathroom", &"bathroom_line")
 	var events: Array[Dictionary] = machine.drain_events()
 	assert_eq(events[1], {"event": &"reservation_released", "slot": &"bar_wait"})
 	assert_eq(events[2], {"event": &"reservation_acquired", "slot": &"bathroom_line"})
-	assert_eq(registry.actor_slot(1001), &"bathroom_line")
+	assert_eq(registry.actor_slot(SUBJECT_ACTOR_ID), &"bathroom_line")
 
 
 func test_terminal_transition_clears_deferred_work_and_rejects_later_intents() -> void:

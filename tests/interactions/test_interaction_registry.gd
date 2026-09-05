@@ -1,5 +1,8 @@
 extends GutTest
 
+const SUBJECT_ACTOR_ID: int = 1001
+const OTHER_ACTOR_ID: int = 1002
+
 const REGISTRY_PATH := "res://scripts/interactions/interaction_registry.gd"
 
 
@@ -13,14 +16,14 @@ func test_exclusive_reservations_and_cleanup_use_one_authority() -> void:
 	assert_true(registry.register_slot(&"seat_01", &"seat"))
 	assert_true(registry.register_slot(&"bar_01", &"bar_position"))
 
-	assert_true(registry.request_slot(1001, &"seat_01"))
-	assert_false(registry.request_slot(1002, &"seat_01"), "A slot cannot have two owners.")
-	assert_false(registry.request_slot(1001, &"bar_01"), "An actor cannot reserve two destinations.")
+	assert_true(registry.request_slot(SUBJECT_ACTOR_ID, &"seat_01"))
+	assert_false(registry.request_slot(OTHER_ACTOR_ID, &"seat_01"), "A slot cannot have two owners.")
+	assert_false(registry.request_slot(SUBJECT_ACTOR_ID, &"bar_01"), "An actor cannot reserve two destinations.")
 
-	assert_eq(registry.release_actor(1001), &"seat_01")
-	assert_true(registry.request_slot(1002, &"seat_01"))
-	assert_eq(registry.release_actor(1002), &"seat_01", "Cancellation releases ownership.")
+	assert_eq(registry.release_actor(SUBJECT_ACTOR_ID), &"seat_01")
+	assert_true(registry.request_slot(OTHER_ACTOR_ID, &"seat_01"))
+	assert_eq(registry.release_actor(OTHER_ACTOR_ID), &"seat_01", "Cancellation releases ownership.")
 
-	assert_true(registry.request_slot(1, &"bar_01"))
-	assert_eq(registry.release_actor(1), &"bar_01", "Terminal state changes release ownership.")
+	assert_true(registry.request_slot(ActorIds.CULTIST_IDS[0], &"bar_01"))
+	assert_eq(registry.release_actor(ActorIds.CULTIST_IDS[0]), &"bar_01", "Terminal state changes release ownership.")
 	assert_true(registry.snapshot()["invariant_violations"].is_empty())

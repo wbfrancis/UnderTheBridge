@@ -6,7 +6,7 @@ const ORDER_SYSTEM_PATH := "res://scripts/orders/order_system.gd"
 func test_served_order_reaches_one_terminal_state_and_pays_once() -> void:
 	var order_system_script := load(ORDER_SYSTEM_PATH)
 	var orders = order_system_script.new()
-	var order_id: StringName = orders.create_order(4, 0.0)
+	var order_id: StringName = orders.create_order(ScenarioActors.opening_patron(), 0.0)
 
 	assert_true(orders.serve_order(order_id, 9.0))
 	assert_false(orders.serve_order(order_id, 10.0), "A served Order cannot pay twice.")
@@ -22,7 +22,7 @@ func test_served_order_reaches_one_terminal_state_and_pays_once() -> void:
 func test_cancelled_order_is_terminal_and_pays_nothing() -> void:
 	var order_system_script := load(ORDER_SYSTEM_PATH)
 	var orders = order_system_script.new()
-	var order_id: StringName = orders.create_order(4, 0.0)
+	var order_id: StringName = orders.create_order(ScenarioActors.opening_patron(), 0.0)
 
 	assert_true(orders.cancel_order(order_id, 4.0, &"patron_left"))
 	assert_false(orders.serve_order(order_id, 9.0))
@@ -36,9 +36,9 @@ func test_cancelled_order_is_terminal_and_pays_nothing() -> void:
 func test_tip_uses_the_mood_multiplier_at_delivery() -> void:
 	var order_system_script := load(ORDER_SYSTEM_PATH)
 	var orders = order_system_script.new()
-	var happy_order: StringName = orders.create_order(4, 0.0)
+	var happy_order: StringName = orders.create_order(ScenarioActors.opening_patron(), 0.0)
 	assert_true(orders.serve_order(happy_order, 9.0, 1.5))
 	assert_eq(orders.order_snapshot(happy_order)["tip"], 3)
-	var miserable_order: StringName = orders.create_order(5, 10.0)
+	var miserable_order: StringName = orders.create_order(ScenarioActors.opening_companion(), 10.0)
 	assert_true(orders.serve_order(miserable_order, 12.0, 0.0))
 	assert_eq(orders.order_snapshot(miserable_order)["tip"], 0)

@@ -121,10 +121,10 @@ func test_escape_lock_reaches_disabled_hud_buttons_and_plain_pause_stays_availab
 	await _render_authoritative_state()
 	_session.set_time_scale(1.0)
 	_session.advance(3.1)
-	assert_true(_session.begin_admit_group(1))
+	assert_true(_session.begin_admit_group(ActorIds.CULTIST_IDS[0]))
 	_session.advance(4.1)
 	_session.set_time_scale(4.0)
-	assert_true(_session.report_patron_stimulus(4, &"drink_dosed_seen"))
+	assert_true(_session.report_patron_stimulus(ScenarioActors.opening_patron(), &"drink_dosed_seen"))
 	_session.advance(0.2)
 	await _render_authoritative_state()
 

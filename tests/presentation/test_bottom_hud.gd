@@ -32,7 +32,7 @@ func _render(view: Dictionary) -> void:
 
 func _cultist(status: String = "") -> Dictionary:
 	return {
-		"id": 1,
+		"id": ActorIds.CULTIST_IDS[0],
 		"name": "Vera",
 		"portrait": null,
 		"tint": Color.WHITE,
@@ -43,7 +43,7 @@ func _cultist(status: String = "") -> Dictionary:
 
 func _patron() -> Dictionary:
 	return {
-		"id": 4,
+		"id": ScenarioActors.opening_patron(),
 		"name": "June",
 		"portrait": null,
 		"tint": Color.WHITE,

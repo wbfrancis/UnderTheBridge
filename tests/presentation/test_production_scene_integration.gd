@@ -28,11 +28,11 @@ func test_two_cultists_pause_resume_and_a_full_prepare_then_serve_cycle() -> voi
 	var session = _presentation.get("_session")
 	var cultists: Dictionary = _presentation.get("_cultist_nodes")
 	assert_eq(cultists.size(), 2, "Vera and Iris are playable Cultists.")
-	assert_true(cultists.has(1))
-	assert_true(cultists.has(2))
-	_presentation._select_cultist(2)
-	assert_eq(_presentation.get("_selected_cultist_id"), 2)
-	_presentation._select_cultist(1)
+	assert_true(cultists.has(ActorIds.CULTIST_IDS[0]))
+	assert_true(cultists.has(ActorIds.CULTIST_IDS[1]))
+	_presentation._select_cultist(ActorIds.CULTIST_IDS[1])
+	assert_eq(_presentation.get("_selected_cultist_id"), ActorIds.CULTIST_IDS[1])
+	_presentation._select_cultist(ActorIds.CULTIST_IDS[0])
 
 	# The explicit drink-cycle stage opens on one unserved Order.
 	var patron_id := _open_order_patron(session)
@@ -46,7 +46,7 @@ func test_two_cultists_pause_resume_and_a_full_prepare_then_serve_cycle() -> voi
 	assert_gt(float(session.snapshot()["time_scale"]), 0.0, "Resume restarts the Night.")
 
 	# Make the requested drink at the bar, then run pickup, travel, and handoff.
-	var drink_type: StringName = session.patron_view(patron_id, 1)["ordered_drink"]
+	var drink_type: StringName = session.patron_view(patron_id, ActorIds.CULTIST_IDS[0])["ordered_drink"]
 	assert_true(await _issue_and_settle(
 		StringName("make_%s" % drink_type), _presentation._smart_target(&"bar_work_position")
 	))
@@ -55,29 +55,29 @@ func test_two_cultists_pause_resume_and_a_full_prepare_then_serve_cycle() -> voi
 	var patron_target: Dictionary = _presentation._actor_target(patron_id)
 	patron_target["bar_position"] = _presentation._smart_target(&"bar_work_position")["position"]
 	var service: Dictionary = _presentation._commands.issue_drink_service(
-		1, StringName(drinks[0]["id"]), patron_target, false
+		ActorIds.CULTIST_IDS[0], StringName(drinks[0]["id"]), patron_target, false
 	)
 	assert_true(bool(service["accepted"]))
 	assert_true(await _settle_cultist())
 	assert_gt(int(session.snapshot()["orders"]["served_count"]), 0, "The Order completes.")
 
 	# No Cultist is left stranded mid-command and no reservation leaks.
-	assert_true(_presentation._commands.active_request(1).is_empty(),
+	assert_true(_presentation._commands.active_request(ActorIds.CULTIST_IDS[0]).is_empty(),
 		"Vera is idle after the cycle.")
-	assert_false(_presentation._commands.snapshot()["reserved_slots"].has(1),
+	assert_false(_presentation._commands.snapshot()["reserved_slots"].has(ActorIds.CULTIST_IDS[0]),
 		"The bar and Patron reservations released.")
 
 	# A passed-out body has no collision and trails the Cultist instead of using
 	# its former Patron navigation.
-	assert_true(session.begin_knockout(1, patron_id))
+	assert_true(session.begin_knockout(ActorIds.CULTIST_IDS[0], patron_id))
 	session.advance(2.05)
 	var body = _presentation._actor_pivot(patron_id) as CharacterBody3D
 	assert_eq(body.collision_layer, 0)
 	assert_eq(body.collision_mask, 0)
-	assert_true(session.pick_up_body(1, patron_id))
+	assert_true(session.pick_up_body(ActorIds.CULTIST_IDS[0], patron_id))
 	session.advance(1.05)
 	assert_eq(session.snapshot()["debug_patron_views"][patron_id]["activity"], &"being_dragged")
-	var cultist = _presentation.get("_cultist_nodes")[1] as CharacterBody3D
+	var cultist = _presentation.get("_cultist_nodes")[ActorIds.CULTIST_IDS[0]] as CharacterBody3D
 	var separation := Vector2(body.global_position.x, body.global_position.z).distance_to(
 		Vector2(cultist.global_position.x, cultist.global_position.z)
 	)
@@ -89,12 +89,12 @@ func test_a_patron_walks_the_mirror_toilet_sink_exit_route_to_completion() -> vo
 	var session = _presentation.get("_session")
 	# Send Mara on a Bathroom Visit; the scene must walk her between distinct
 	# stations and let each timed phase complete on a real navigation arrival.
-	assert_true(session.debug_force_bathroom(5))
+	assert_true(session.debug_force_bathroom(ScenarioActors.opening_companion()))
 	var seen: Dictionary = {}
 	var completed := false
 	var frames := 0
 	while frames < 6_000:
-		var activity: StringName = session.snapshot()["debug_patron_views"][5]["activity"]
+		var activity: StringName = session.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]["activity"]
 		seen[activity] = true
 		# The visit is over once Mara has passed every phase and left the bathroom.
 		if seen.has(&"handwashing") and activity in [&"socializing", &"awaiting_drink", &"normal_departure"]:
@@ -113,8 +113,8 @@ func test_a_patron_walks_the_mirror_toilet_sink_exit_route_to_completion() -> vo
 func test_patrons_use_capsules_while_cultists_keep_their_character_sprites() -> void:
 	var patrons: Dictionary = _presentation.get("_patron_nodes")
 	var cultists: Dictionary = _presentation.get("_cultist_nodes")
-	var patron = patrons[4] as Node3D
-	var cultist = cultists[1] as Node3D
+	var patron = patrons[ScenarioActors.opening_patron()] as Node3D
+	var cultist = cultists[ActorIds.CULTIST_IDS[0]] as Node3D
 
 	assert_true(_has_capsule_mesh(patron), "A Patron uses a visible 3D capsule.")
 	assert_true(patron.find_children("*", "Sprite3D", true, false).is_empty(),
@@ -125,11 +125,11 @@ func test_patrons_use_capsules_while_cultists_keep_their_character_sprites() -> 
 
 func test_an_idle_cultist_yields_when_they_block_another_cultists_move_target() -> void:
 	var cultists: Dictionary = _presentation.get("_cultist_nodes")
-	var vera = cultists[1] as CharacterBody3D
-	var iris = cultists[2] as CharacterBody3D
+	var vera = cultists[ActorIds.CULTIST_IDS[0]] as CharacterBody3D
+	var iris = cultists[ActorIds.CULTIST_IDS[1]] as CharacterBody3D
 	var target: Vector3 = iris.global_position
 	var iris_start: Vector3 = iris.global_position
-	_presentation._select_cultist(1)
+	_presentation._select_cultist(ActorIds.CULTIST_IDS[0])
 	_presentation._issue_command(&"move", {
 		"kind": COMMAND_SYSTEM.TARGET_FLOOR,
 		"id": &"floor",
@@ -168,9 +168,9 @@ func _issue_and_settle(command: StringName, target: Dictionary) -> bool:
 
 func _settle_cultist() -> bool:
 	var frames := 0
-	var actor = _presentation.get("_cultist_nodes").get(1)
+	var actor = _presentation.get("_cultist_nodes").get(ActorIds.CULTIST_IDS[0])
 	while frames < 3_600:
-		var idle: bool = _presentation._commands.snapshot()["cultists"][1]["active"].is_empty()
+		var idle: bool = _presentation._commands.snapshot()["cultists"][ActorIds.CULTIST_IDS[0]]["active"].is_empty()
 		var still: bool = actor == null or not actor.is_navigating()
 		if idle and still:
 			return true

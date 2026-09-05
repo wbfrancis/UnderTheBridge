@@ -1,5 +1,8 @@
 extends GutTest
 
+const SUBJECT_ACTOR_ID: int = 1001
+const OTHER_ACTOR_ID: int = 1002
+
 const TRACKER_PATH := "res://scripts/navigation/navigation_progress_tracker.gd"
 const ACTOR_PATH := "res://scripts/navigation/navigable_actor_3d.gd"
 
@@ -28,8 +31,8 @@ func test_progress_resets_repath_and_stuck_timers() -> void:
 func test_cultists_move_faster_than_patrons_and_fleeing_patrons() -> void:
 	var cultist = load(ACTOR_PATH).new()
 	var patron = load(ACTOR_PATH).new()
-	cultist.configure(1002, true)
-	patron.configure(1001, false)
+	cultist.configure(OTHER_ACTOR_ID, true)
+	patron.configure(SUBJECT_ACTOR_ID, false)
 	assert_almost_eq(cultist.base_speed, 2.25, 0.001)
 	assert_almost_eq(patron.base_speed, 1.3, 0.001)
 	assert_gt(cultist.base_speed, patron.base_speed * 1.4)
