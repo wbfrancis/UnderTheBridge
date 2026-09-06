@@ -685,6 +685,12 @@ func patron_emote_row(patron_id: int) -> Dictionary:
 	# the bathroom simulation never branches on it.
 	if state == &"bathroom":
 		row["progress"] = _bathroom_emote_progress(patron)
+	elif state == &"ordering" and _order_system.is_open(patron["order_id"]):
+		var requested_at := float(_order_system.order_snapshot(patron["order_id"])["requested_at"])
+		row["progress"] = {
+			"phase": &"order_patience",
+			"ratio": clampf((_simulated_seconds - requested_at) / ORDER_FAILURE_SECONDS, 0.0, 1.0),
+		}
 	return row
 
 

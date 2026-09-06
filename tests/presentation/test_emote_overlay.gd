@@ -171,3 +171,16 @@ func test_a_returning_actor_drops_their_indicator() -> void:
 	)
 	assert_true(_overlay.offscreen_indicators().is_empty(),
 		"Walking back into view removes the marker.")
+
+
+func test_labels_preserve_icon_anchor_at_each_ui_scale() -> void:
+	for scale in [0.75, 1.0, 1.5]:
+		_overlay.set_ui_scale(scale)
+		_overlay.set_accessible_labels(false)
+		await _refresh([_bubble(ScenarioActors.opening_patron(), &"ordering")], {ScenarioActors.opening_patron(): ONSCREEN})
+		var plain: Rect2 = _overlay.placements()[ScenarioActors.opening_patron()]
+		_overlay.set_accessible_labels(true)
+		await _refresh([_bubble(ScenarioActors.opening_patron(), &"ordering")], {ScenarioActors.opening_patron(): ONSCREEN})
+		var labelled: Rect2 = _overlay.placements()[ScenarioActors.opening_patron()]
+		assert_almost_eq(labelled.position.x, plain.position.x, 0.01,
+			"The label extends right while the icon stays above the actor.")

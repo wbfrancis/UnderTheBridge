@@ -321,6 +321,8 @@ func _solve_placement(
 			order.append(index)
 	for index: int in order:
 		var offset := OFFSETS[index] * _ui_scale
+		if _accessible_labels:
+			offset.x += LABEL_WIDTH * _ui_scale * 0.5
 		var rect := Rect2(screen + offset - Vector2(size.x * 0.5, size.y), size)
 		if not _is_legal(rect, bounds, taken):
 			continue
@@ -358,7 +360,7 @@ func _paint(index: int, bubble: Dictionary, rect: Rect2) -> void:
 		_fill_ratios[bubble["actor_id"]] = ratio
 		var fill_height := rect.size.y * ratio
 		fill.visible = true
-		fill.color = Color(color, 0.34)
+		fill.color = Color(Color(bubble.get("progress_color", bubble["color"])), 0.34)
 		fill.position = Vector2(0.0, rect.size.y - fill_height)
 		fill.size = Vector2(rect.size.x, fill_height)
 	else:

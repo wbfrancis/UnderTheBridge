@@ -320,8 +320,14 @@ func _bubble_for(actor_id: int) -> Dictionary:
 				bubble["label"] = BATHROOM_PHASES[phase]["label"]
 				bubble["progress_phase"] = phase
 				bubble["progress_ratio"] = clampf(float(progress.get("ratio", 0.0)), 0.0, 1.0)
-	elif chosen == &"ordering" and not String(actor.get("ordered_drink", "")).is_empty():
-		bubble["label"] = "Wants %s" % String(actor["ordered_drink"]).capitalize()
+	elif chosen == &"ordering":
+		if not String(actor.get("ordered_drink", "")).is_empty():
+			bubble["label"] = "Wants %s" % String(actor["ordered_drink"]).capitalize()
+		var progress: Dictionary = actor.get("progress", {})
+		if progress.get("phase", &"") == &"order_patience":
+			bubble["progress_phase"] = &"order_patience"
+			bubble["progress_ratio"] = clampf(float(progress.get("ratio", 0.0)), 0.0, 1.0)
+			bubble["progress_color"] = "e65c70"
 	return bubble
 
 

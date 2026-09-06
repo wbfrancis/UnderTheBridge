@@ -475,8 +475,12 @@ func _pick_at(screen_position: Vector2) -> Dictionary:
 	var ray_origin := _camera.project_ray_origin(screen_position)
 	var ray_end := ray_origin + _camera.project_ray_normal(screen_position) * 250.0
 	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_end, 2)
-	query.collide_with_areas = true
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	# Smart-object areas can enclose a character at its work position. Let the
+	# visible character win before considering those larger command targets.
+	if hit.is_empty() or not hit["collider"].has_meta("actor_id"):
+		query.collide_with_areas = true
+		hit = get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return {}
 	var collider: Object = hit["collider"]
@@ -699,7 +703,7 @@ func _open_context_menu(screen_position: Vector2, target: Dictionary, append_to_
 
 func _on_context_option_pressed(command: StringName) -> void:
 	var target := _context_target
-	var append := _context_append
+	var append := _context_append or Input.is_key_pressed(KEY_SHIFT)
 	_close_context_menu()
 	if target.is_empty():
 		return
@@ -718,7 +722,7 @@ func _on_context_option_pressed(command: StringName) -> void:
 			return
 		_serve_target_drink_id = drink_id
 		_serve_target_cultist_id = cultist_id
-		_serve_target_append = Input.is_key_pressed(KEY_SHIFT)
+		_serve_target_append = append
 		_movement_feedback = "Choose a Patron. Right-click or press Escape to cancel."
 		_refresh_hud(_session.snapshot())
 		return
