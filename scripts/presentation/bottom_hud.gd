@@ -738,6 +738,7 @@ func _render_patron_debug_queue() -> void:
 	if not _patron_queue_panel.visible:
 		return
 	var signature := "%s:%s" % [patron.get("id", &""), patron.get("debug_planner_paused", false)]
+	signature += str(patron.get("debug_goal_planner", {}))
 	for entry: Dictionary in [queue.get("active", {})] + queue.get("paused", []) + queue.get("pending", []):
 		signature += ":%s:%s" % [entry.get("id", -1), entry.get("name", &"")]
 	if signature == _patron_queue_signature:
@@ -747,6 +748,14 @@ func _render_patron_debug_queue() -> void:
 		_patron_queue_rows.remove_child(child)
 		child.queue_free()
 	_patron_queue_rows.add_child(_ink_label("PATRON ACTION QUEUE", 12))
+	var goal: Dictionary = patron.get("debug_goal_planner", {})
+	if not String(goal.get("goal", "")).is_empty():
+		var details := "Goal: %s (%s)\nPlan: %s\nReason: %s\nKnown: %s" % [
+			goal["goal"], goal["status"], str(goal["plan"]), goal["reason"], str(goal["facts"])]
+		var label := _ink_label(details, 11)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.custom_minimum_size.x = 240
+		_patron_queue_rows.add_child(label)
 	var actions: Array[Dictionary] = []
 	if not queue.get("active", {}).is_empty():
 		actions.append(queue["active"])

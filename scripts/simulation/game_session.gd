@@ -909,3 +909,11 @@ func _record(event_name: StringName, details: Dictionary = {}) -> void:
 
 func _emit_snapshot() -> void:
 	snapshot_changed.emit(snapshot())
+
+
+func patron_navigation_failed(patron_id: int, action_id: int) -> bool:
+	return _ordinary_visits.patron_navigation_failed(patron_id, action_id)
+
+
+func navigation_changed() -> void:
+	_ordinary_visits.navigation_changed()

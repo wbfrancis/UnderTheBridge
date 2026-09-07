@@ -2501,7 +2501,9 @@ func _entrance_knock_stream() -> AudioStreamWAV:
 func _sync_patron_navigation(patron_id: int, debug: Dictionary) -> void:
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
 	var action: Dictionary = debug.get("behavior", {}).get("action_queue", {}).get("active", {})
-	if action.is_empty():
+	var goal_active := not StringName(debug.get("goal_planner", {}).get("goal", &"")).is_empty()
+	var movement_complete := bool(action.get("payload", {}).get("navigation_arrived", true))
+	if action.is_empty() or (goal_active and movement_complete):
 		actor.cancel_navigation()
 		_patron_visual_targets.erase(patron_id)
 		return
@@ -2528,6 +2530,8 @@ func _seat_approach_route(target: Vector3) -> Array[Vector3]:
 
 func _patron_target(debug: Dictionary) -> Vector3:
 	var destination: StringName = debug["navigation_destination"]
+	if destination == &"goal_hold" and _patron_nodes.has(int(debug["id"])):
+		return _patron_nodes[int(debug["id"])].global_position
 	if destination == &"step_aside":
 		return debug["behavior"]["action_queue"]["active"]["payload"]["target"]["position"]
 	if destination == &"step_aside_hold":
@@ -2583,6 +2587,8 @@ func _on_patron_destination_reached(patron_id: int, action_id: int) -> void:
 
 
 func _on_patron_navigation_stuck(patron_id: int, action_id: int) -> void:
+	if _session.patron_navigation_failed(patron_id, action_id):
+		return
 	if not _patron_visual_targets.has(patron_id):
 		return
 	var actor := _patron_nodes[patron_id] as NavigableActor3D
@@ -3233,6 +3239,7 @@ func _inspected_patron_view(state: Dictionary) -> Dictionary:
 	if _debug_visible:
 		var debug: Dictionary = state["debug_patron_views"][_inspected_patron_id]
 		result["debug_action_queue"] = debug["behavior"]["action_queue"]
+		result["debug_goal_planner"] = debug["goal_planner"]
 		result["debug_planner_paused"] = debug["behavior"]["planner_paused"]
 	return result
 
