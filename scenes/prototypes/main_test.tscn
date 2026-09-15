@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/prototypes/perception_greybox.gd" id="1_script"]
 
-[node name="Ticket16PresentationReview" type="Node3D"]
+[node name="main_test" type="Node3D"]
 script = ExtResource("1_script")
 review_presentation = true
-review_stage = "drink_cycle"
+review_stage = "night_start"
 review_debug_visible = false

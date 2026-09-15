@@ -168,6 +168,52 @@ func begin_intercept(patron_id: int, cultist_id: int) -> bool:
 	return started
 
 
+func begin_reason_with(cultist_id: int, patron_id: int) -> bool:
+	if _phase == &"results":
+		return false
+	return _ordinary_visits.begin_reason_with(cultist_id, patron_id)
+
+
+func cancel_reason_with(cultist_id: int) -> bool:
+	return _ordinary_visits.cancel_reason_with(cultist_id)
+
+
+func chance_breakdown(kind: StringName, patron_id: int) -> Dictionary:
+	return _ordinary_visits.chance_breakdown(kind, patron_id)
+
+
+func grime_patches_view() -> Array[Dictionary]:
+	return _ordinary_visits.grime_patches_view()
+
+
+func sighted_grime_ids(patron_id: int) -> Array[StringName]:
+	return _ordinary_visits.sighted_grime_ids(patron_id)
+
+
+func grime_target(patch_id: StringName) -> Dictionary:
+	return _ordinary_visits.grime_target(patch_id)
+
+
+func debug_add_grime(slot: Dictionary, amount: float, fresh: bool = false) -> StringName:
+	return _ordinary_visits.debug_add_grime(slot, amount, fresh)
+
+
+func begin_clean(patch_id: StringName, cultist_id: int) -> bool:
+	return _ordinary_visits.begin_clean(patch_id, cultist_id)
+
+
+func clean_duration(patch_id: StringName) -> float:
+	return _ordinary_visits.clean_duration(patch_id)
+
+
+func complete_clean(patch_id: StringName, cultist_id: int, amount: float) -> bool:
+	return _ordinary_visits.complete_clean(patch_id, cultist_id, amount)
+
+
+func cancel_clean(patch_id: StringName, cultist_id: int) -> bool:
+	return _ordinary_visits.cancel_clean(patch_id, cultist_id)
+
+
 func debug_force_bathroom(patron_id: int) -> bool:
 	var forced: bool = _ordinary_visits.debug_force_bathroom(patron_id)
 	if forced:
@@ -178,6 +224,14 @@ func debug_force_bathroom(patron_id: int) -> bool:
 
 func character_actions():
 	return _ordinary_visits.character_actions()
+
+
+func patron_navigation_failed(patron_id: int, action_id: int) -> bool:
+	return _ordinary_visits.patron_navigation_failed(patron_id, action_id)
+
+
+func navigation_changed() -> void:
+	_ordinary_visits.navigation_changed()
 
 
 func request_patron_step_aside(
@@ -237,6 +291,14 @@ func debug_set_patron_drink_state(
 
 func debug_change_patron_satisfaction(patron_id: int, amount: float) -> bool:
 	return _ordinary_visits.debug_change_patron_satisfaction(patron_id, amount)
+
+
+func debug_set_patron_traits(patron_id: int, traits: Array, known: Array = []) -> bool:
+	return _ordinary_visits.debug_set_patron_traits(patron_id, traits, known)
+
+
+func debug_set_patron_suspicion(patron_id: int, score: float, cause: StringName = &"soft") -> bool:
+	return _ordinary_visits.debug_set_patron_suspicion(patron_id, score, cause)
 
 
 func debug_force_finish_drink(patron_id: int) -> bool:
@@ -909,11 +971,3 @@ func _record(event_name: StringName, details: Dictionary = {}) -> void:
 
 func _emit_snapshot() -> void:
 	snapshot_changed.emit(snapshot())
-
-
-func patron_navigation_failed(patron_id: int, action_id: int) -> bool:
-	return _ordinary_visits.patron_navigation_failed(patron_id, action_id)
-
-
-func navigation_changed() -> void:
-	_ordinary_visits.navigation_changed()

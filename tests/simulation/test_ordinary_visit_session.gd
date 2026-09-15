@@ -12,7 +12,7 @@ func test_group_gets_exclusive_seats_and_completes_service() -> void:
 	assert_eq(state["seat_owners"].size(), 2)
 	assert_ne(state["seat_owners"][&"seat_01"], state["seat_owners"][&"seat_02"])
 	assert_eq(state["orders"]["revenue"], 10)
-	assert_eq(state["orders"]["tips"], 6)
+	assert_eq(state["orders"]["tips"], 4)
 	assert_eq(state["normal_views"][ScenarioActors.opening_patron()]["order_state"], &"served")
 	assert_eq(state["normal_views"][ScenarioActors.opening_companion()]["order_state"], &"served")
 
@@ -32,15 +32,16 @@ func test_seeded_bathroom_checks_are_five_seconds_apart_and_use_empties_bladder(
 	assert_true(_has_event(state["events"], &"bathroom_visit_completed", ScenarioActors.opening_patron()))
 
 
-func test_intoxication_rises_then_decays_after_four_drink_free_minutes() -> void:
+func test_intoxication_progress_loses_one_point_each_forty_drink_free_seconds() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)
 	_serve_opening_orders(session)
 	session.advance(43.9)
 	assert_eq(session.debug_patron_view(ScenarioActors.opening_patron())["intoxication_level"], 1)
-	session.advance(225.0)
+	var decay_in := float(session.debug_patron_view(ScenarioActors.opening_patron())["intoxication_decay_in"])
+	session.advance(decay_in - 0.1)
 	assert_eq(session.debug_patron_view(ScenarioActors.opening_patron())["intoxication_level"], 1)
-	session.advance(2.0)
+	session.advance(0.2)
 	assert_eq(session.debug_patron_view(ScenarioActors.opening_patron())["intoxication_level"], 0)
 
 
@@ -202,6 +203,7 @@ func test_ideal_intoxication_and_overdrink_limits_are_seeded_and_bounded() -> vo
 func test_failed_orders_change_mood_and_suspicion_then_second_failure_leaves() -> void:
 	var session = SESSION_SCRIPT.new()
 	session.start(707)
+	_set_neutral_opening_traits(session)
 	session.advance(1.1)
 	assert_true(session.debug_set_patron_drink_state(ScenarioActors.opening_patron(), 0, 5, 0, 3))
 	assert_true(session.debug_set_patron_drink_state(ScenarioActors.opening_companion(), 0, 5, 0, 0))
@@ -210,7 +212,11 @@ func test_failed_orders_change_mood_and_suspicion_then_second_failure_leaves() -
 	assert_eq(session.normal_patron_view(ScenarioActors.opening_patron())["order_state"], &"open")
 	session.advance(60.1)
 	var first: Dictionary = session.debug_patron_view(ScenarioActors.opening_patron())
-	assert_eq(first["satisfaction_value"], 55.0)
+	assert_true(_has_event_with_detail(
+		session.snapshot()["events"], &"order_failed",
+		ScenarioActors.opening_patron(), "failed_orders", 1
+	), "The Order failure remains explicit while Grime pressure also changes mood.")
+	assert_lt(float(first["satisfaction_value"]), 55.0)
 	assert_eq(first["suspicion"], 5.0)
 	session.advance(40.1)
 	session.advance(60.1)
@@ -637,9 +643,15 @@ func _has_event(events: Array, event_name: StringName, actor_id: int) -> bool:
 
 
 func _serve_opening_orders(session) -> void:
+	_set_neutral_opening_traits(session)
 	session.advance(1.1)
 	assert_true(session.serve_patron_order(ScenarioActors.opening_patron()))
 	assert_true(session.serve_patron_order(ScenarioActors.opening_companion()))
+
+
+func _set_neutral_opening_traits(session) -> void:
+	assert_true(session.debug_set_patron_traits(ScenarioActors.opening_patron(), [&"wine_drinker"]))
+	assert_true(session.debug_set_patron_traits(ScenarioActors.opening_companion(), [&"beer_drinker"]))
 
 
 func _count_events(events: Array, event_name: StringName) -> int:
@@ -648,3 +660,16 @@ func _count_events(events: Array, event_name: StringName) -> int:
 		if event["event"] == event_name:
 			count += 1
 	return count
+
+
+func _has_event_with_detail(
+		events: Array, event_name: StringName, actor_id: int, key: String, value: Variant
+) -> bool:
+	for event: Dictionary in events:
+		if (
+			event["event"] == event_name
+			and event["actor_id"] == actor_id
+			and event.get("details", {}).get(key) == value
+		):
+			return true
+	return false

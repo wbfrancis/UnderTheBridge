@@ -89,6 +89,12 @@ Bladder level, bathroom probability, exact patience, exact Suspicion, hidden cau
 
 The Patron Info Panel stays open until the player closes it, inspects another Patron, or the Patron leaves play. Its Talk and Ask to Leave commands use the Selected Cultist.
 
+### Traits and learned profile facts
+
+Each Patron starts a Night with one Drink Preference and two independent 50% chances for an additional Trait, for one, two, or three valid Traits. Trait assignment uses the Night seed and authored Patron seed key. Effects apply while hidden. Identification reveals the full loadout; a Non-Smoker refusal or Oblivious confusion can reveal only that Trait sooner. The Profile lists learned Trait names and shows `Unknown` while none are known.
+
+Knock Out and Reason With rows show a shared Modifier Tooltip. It lists the base, each known signed Trait modifier, and the total. An unknown modifier uses neutral grey `???` for its name, value, and total, so it leaks neither direction nor result.
+
 ### Debug mode
 
 Debug mode may expose exact Bladder and bathroom probability, Intoxication and decay time, Ideal Intoxication, Overdrink Limit, Excess Drink count, Satisfaction and patience, Suspicion value/cause/recovery, the complete Friendship matrix, lifecycle/activity state, drug timer, current target and reservation, navigation destination, Action progress, Night seed, and recent random rolls. Debug presentation exists for development and evaluation diagnosis, not as the intended player experience.
@@ -192,13 +198,19 @@ no Investigator claims the room until the panels close.
   panels close even while the control remains on cooldown. Every activation creates a
   nearby +10 sound event.
 
+### Grime and cleaning
+
+Finished drinks, completed Bathroom Visits, prolonged full-Bladder soiling, and a seeded Max Drunk bathroom accident create Grime on authored floor, table, or bar slots. A patch stores seconds-to-clean, with a two-second minimum only when created and a thirty-second cap. Patches do not spread. A Cultist can reserve one patch through the proximity Clean Action; contact snapshots the duration, completion removes that amount, and cancellation removes none. New Grime during Clean remains, including a remainder below two seconds.
+
+A Patron sees a patch when its center is in the same room, within five horizontal metres, and within sixty degrees of its facing direction. Boundaries count. At 15 total visible seconds, Grime drains Satisfaction at about two points per second and later repays only that source loss. A Germaphobe starts at six seconds, drains twice as fast, and can reach zero; a Slob is immune. Patron inspection marks all Sighted Grime with a slight brass pulse, including patches below the penalty threshold, but adds no Grime panel or clean-time value.
+
 ## 9. Intoxication
 
-Intoxication has four levels: sober (0), buzzed (1), drunk (2), and Max Drunk (3). Finishing an ordinary or Drugged Drink raises Intoxication by one, capped at 3, and resets its decay timer. After four simulated minutes without finishing another drink, Intoxication falls by one level; it continues falling by one level every four minutes until sober.
+Intoxication uses hidden progress from 0 through 18, with six points per visible level: Sober at 0–5, Tipsy at 6–11, Drunk at 12–17, and Max Drunk at 18. A completed drink adds six points, Hollow Leg adds four, and Lightweight adds nine. One point leaves every 40 gameplay seconds while progress is positive; another drink does not reset this clock.
 
 Ideal Intoxication uses the same four-level scale. At the start of each Night, sample a normal distribution with mean 2 and standard deviation 0.6, round it, and clamp it to 0-3. This makes Sober possible but rare.
 
-Each Patron also receives a seeded uniform Overdrink Limit from one through five. A drink finished while the Patron is already Max Drunk adds one to the cumulative Excess Drink count. The drink that first raises the Patron to Max Drunk does not count. The count does not reset after Intoxication decays. Reaching the Overdrink Limit causes immediate Overdrink Collapse and the same unconscious state used by a Drugged Drink. If that drink was drugged, immediate collapse makes its later countdown irrelevant.
+Each Patron also receives a seeded base Overdrink Limit from one through three; Traits can move it as low as one or as high as five. A drink finished while the Patron is already Max Drunk adds one to the cumulative Excess Drink count. The drink that first raises the Patron to Max Drunk does not count. The count does not reset after Intoxication decays. Reaching the Overdrink Limit causes immediate Overdrink Collapse and the same unconscious state used by a Drugged Drink. If that drink was drugged, immediate collapse makes its later countdown irrelevant.
 
 While Max Drunk, every Hard Evidence event is downgraded to +25 soft Suspicion instead of setting Suspicion to 100 permanently. The downgrade is evaluated when the event is witnessed and is not upgraded retroactively when the Patron sobers. Separate Hard Evidence events may accumulate, and reaching 100 through those soft increases still causes the normal maximum-Suspicion behavior. Non-Hard-Evidence stimuli retain their listed values.
 
@@ -327,6 +339,10 @@ A maximum-suspicion Patron worried about a missing Companion enters Investigatio
 Maximum Suspicion caused by Hard Evidence or general danger skips Investigation. After a 2-second shock reaction, the Patron runs toward the front exit at 140% speed.
 
 Each escaping Patron permits one Intercept Action. A Cultist who reaches them stalls them for 5 seconds but cannot reduce Suspicion and remains occupied. This gives another Cultist time to use an existing capture route. If the Patron resumes and crosses the front exit, the player loses immediately.
+
+At 95–100 Suspicion, Reason With is a five-second proximity Action with a 60% base chance and a 5–95% clamp. Hard Evidence permits it only for an Oblivious Patron. Contact pauses the Patron and any Intercept without releasing its holder. Only completion consumes the attempt. Success lowers Suspicion to 50 and ends both Actions; failure or cancellation resumes the prior state and exact Intercept remainder. The same Cultist can switch directly from Intercept and later resume that same Action identity.
+
+Smoking is idle character work. A Patron's sixty-second Smoking modifier fades to +10 Satisfaction over ten seconds, holds for forty, then fades out for ten. Idle Patrons make a low-rate self-start roll, and Offer Cigarette starts it immediately with the existing Friendship reward. A Non-Smoker refuses, loses five Satisfaction, and reveals the Trait. Cultist Smoking is cosmetic.
 
 ## 14. Cultist commands and autonomy
 

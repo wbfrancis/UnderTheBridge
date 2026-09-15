@@ -32,12 +32,33 @@ func change(amount: float, cause: StringName) -> float:
 	return applied
 
 
-func complete_talk(cultist_id: int) -> bool:
+func complete_talk(cultist_id: int, reward: float = 5.0) -> bool:
 	if cultist_id == ActorIds.NO_ACTOR or _rewarded_talk_partners.has(cultist_id):
 		return false
 	_rewarded_talk_partners[cultist_id] = true
-	change(5.0, &"first_talk")
+	change(reward, &"first_talk")
 	return true
+
+
+## Changes one standing negative modifier without changing the base meter. The
+## source can recover only the loss that it applied.
+func advance_pressure(source: StringName, delta: float, rate: float, floor_value: float, exposed: bool) -> float:
+	var current := modifier_contribution(source)
+	if exposed:
+		var other_value := _base + modifier_total() - current
+		var floor_limit := minf(0.0, floor_value - other_value)
+		var target := maxf(current - rate * delta, floor_limit)
+		if target < -0.0001:
+			add_modifier(source, target)
+		elif has_modifier(source):
+			remove_modifier(source)
+		return target - current
+	var target := minf(0.0, current + rate * delta)
+	if target < -0.0001:
+		add_modifier(source, target)
+	else:
+		remove_modifier(source)
+	return target - current
 
 
 ## Adds a modifier, or updates the one already held for this source. A repeat

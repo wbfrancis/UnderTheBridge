@@ -14,7 +14,7 @@ if ([string]::IsNullOrWhiteSpace($GodotBin)) {
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $GodotBin --headless --fixed-fps=60 --path $ProjectRoot `
-    "res://scenes/prototypes/ticket16_presentation_review.tscn" -- `
+    "res://scenes/prototypes/main_test.tscn" -- `
     "--stage=full_cast" `
     "--emote-report=res://artifacts/emote_bubbles/validation.json"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

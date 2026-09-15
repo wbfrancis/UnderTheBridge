@@ -24,12 +24,14 @@ const TARGET_PATRON := &"patron"
 const TARGET_CULTIST := &"cultist"
 const TARGET_OBJECT := &"smart_object"
 const TARGET_DRINK := &"prepared_drink"
+const TARGET_GRIME := &"grime"
 
 ## The internal command used for a Generated Move. It renders as Move, targets a
 ## Patron, never appears in a Context Menu, and has no gameplay effect.
 const GENERATED_MOVE := &"generated_move"
 const PICK_UP_DRINK := &"pick_up_drink"
 const STEP_ASIDE := &"step_aside"
+const SMOKING := &"smoking"
 
 ## One centralized catalog. Menu order follows the per-kind command lists below,
 ## so the same target always produces the same option order. Patron commands are
@@ -52,6 +54,10 @@ const CATALOG := {
 		"requires_proximity": false, "duration_seconds": 1.0, "commitment_seconds": 1.0,
 	},
 	&"offer_cigarette": {"label": "Offer Cigarette", "kinds": [TARGET_PATRON], "reserves": true, "requires_proximity": true},
+	&"reason_with": {
+		"label": "Reason With", "kinds": [TARGET_PATRON], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"session_precommit",
+	},
 	&"knock_out": {
 		"label": "Knock Out", "kinds": [TARGET_PATRON], "reserves": true,
 		"requires_proximity": true, "execution_mode": &"session_precommit",
@@ -67,6 +73,10 @@ const CATALOG := {
 	STEP_ASIDE: {
 		"label": "Step Aside", "kinds": [], "reserves": false,
 		"requires_proximity": false,
+	},
+	SMOKING: {
+		"label": "Smoking", "kinds": [], "reserves": false,
+		"requires_proximity": false, "duration_seconds": 60.0, "commitment_seconds": 60.0,
 	},
 	&"pick_up_body": {
 		"label": "Pick Up Body", "kinds": [TARGET_PATRON], "reserves": true,
@@ -105,6 +115,10 @@ const CATALOG := {
 		"requires_proximity": false, "execution_mode": &"session_precommit",
 	},
 	&"activate_trapdoor": {"label": "Activate Trapdoor", "kinds": [TARGET_OBJECT], "reserves": true, "requires_proximity": false},
+	&"clean": {
+		"label": "Clean", "kinds": [TARGET_GRIME], "reserves": true,
+		"requires_proximity": true, "execution_mode": &"clean",
+	},
 	GENERATED_MOVE: {"label": "Move", "kinds": [], "reserves": true, "requires_proximity": false},
 }
 
@@ -112,6 +126,7 @@ const PATRON_COMMANDS: Array[StringName] = [
 	&"talk",
 	&"ask_to_leave",
 	&"offer_cigarette",
+	&"reason_with",
 	&"knock_out",
 	&"pick_up_body",
 	&"intercept",
@@ -128,6 +143,7 @@ const OBJECT_COMMANDS := {
 	&"tunnel_intake": [&"move", &"drop_body"],
 }
 const DRINK_COMMANDS: Array[StringName] = [&"drug_drink"]
+const GRIME_COMMANDS: Array[StringName] = [&"clean"]
 const BAR_WORK_SLOT_IDS: Array[StringName] = [
 	&"bar_work_position_01", &"bar_work_position_02", &"bar_work_position_03",
 ]
@@ -144,6 +160,7 @@ const REASON_LABELS := {
 	&"chain_cancelled": "Cancelled with its Action Chain",
 	&"cultist_busy": "Cultist is occupied",
 	&"cultist_incapacitated": "Cultist is knocked out",
+	&"hard_evidence": "Hard Evidence blocks this Action",
 	&"already_helping": "Another Cultist is already helping",
 	&"dependency_failed": "A prerequisite failed",
 	&"drug_prep_running": "A dose is already being prepared",
@@ -231,7 +248,7 @@ func resolve_options(cultist_id: int, target: Dictionary) -> Array[Dictionary]:
 		var state := _availability(command, cultist_id, target)
 		if not bool(state["visible"]):
 			continue
-		options.append({
+		var option := {
 			"command": command,
 			"label": _option_label(command, state),
 			"available": bool(state["available"]),
@@ -240,7 +257,10 @@ func resolve_options(cultist_id: int, target: Dictionary) -> Array[Dictionary]:
 			"target_kind": target["kind"],
 			"target_id": target["id"],
 			"target_label": _target_label(cultist_id, target),
-		})
+		}
+		if state.has("chance"):
+			option["chance"] = state["chance"].duplicate(true)
+		options.append(option)
 	return options
 
 
@@ -290,6 +310,19 @@ func issue_step_aside(
 	)
 	_sync_active(cultist_id)
 	return {"accepted": true, "action_id": action_id, "reason": &""}
+
+
+func debug_start_cultist_smoking(cultist_id: int) -> int:
+	if not _actions.has_actor(cultist_id) or _cultist_is_incapacitated(cultist_id):
+		return -1
+	var target := {"kind": TARGET_CULTIST, "id": cultist_id, "position": Vector3.ZERO}
+	var action_id: int = _actions.queue_for_coordinator(cultist_id).append(
+		SMOKING, cultist_id, 60.0, 60.0, true,
+		{"command": SMOKING, "target": target, "committed": false, "reserved": false,
+		"engagement_cleared": true, "stage": &"executing"}
+	)
+	_sync_active(cultist_id)
+	return action_id
 
 
 func issue_drink_service(
@@ -387,6 +420,8 @@ func issue(
 		return _reject(cultist_id, command, state["reason"])
 
 	var normalized := _normalized_target(target)
+	if command == &"reason_with":
+		normalized["approach_slot"] = StringName("reason_with_%s" % normalized["id"])
 	var is_adjacent := bool(context.get("is_adjacent", false))
 	var needs_move := _requires_proximity(command) and not is_adjacent
 	var specs: Array[Dictionary] = []
@@ -399,11 +434,28 @@ func issue(
 	if append:
 		result = queue.append_chain(specs)
 	else:
-		_complete_replaceable_hold(cultist_id)
-		var precommit_command: StringName = _precommit_execution_command(cultist_id)
-		_release(cultist_id)
-		result = queue.replace_with_chain(specs)
-		_cancel_session_execution(cultist_id, precommit_command)
+		var active_before := _active_action(cultist_id)
+		var direct_intercept_handoff: bool = (
+			command == &"reason_with"
+			and not active_before.is_empty()
+			and StringName(active_before["payload"].get("command", &"")) == &"intercept"
+			and active_before["payload"]["target"].get("id") == normalized.get("id")
+		)
+		if direct_intercept_handoff:
+			# Keep the committed Intercept tile, its ID, and its remaining time. The
+			# Reason With tile temporarily interrupts it and cancellation or failure
+			# activates that exact tile again without releasing the Patron-side hold.
+			_release(cultist_id)
+			var interrupt_id: int = queue.interrupt_with(specs[-1])
+			result = {
+				"action_ids": [interrupt_id], "chain_id": -1, "removed": [],
+			}
+		else:
+			_complete_replaceable_hold(cultist_id)
+			var precommit_command: StringName = _precommit_execution_command(cultist_id)
+			_release(cultist_id)
+			result = queue.replace_with_chain(specs)
+			_cancel_session_execution(cultist_id, precommit_command)
 	_record_removed(cultist_id, result.get("removed", []), &"replace")
 	_sync_active(cultist_id)
 
@@ -483,6 +535,8 @@ func _cancel_action(cultist_id: int, action_id: int) -> Dictionary:
 	)
 
 	var result: Dictionary = _actions.queue_for_coordinator(cultist_id).cancel_chain(action_id)
+	if command == &"clean" and _session != null and _session.has_method("cancel_clean"):
+		_session.cancel_clean(target["payload"]["target"]["id"], cultist_id)
 	if command == STEP_ASIDE:
 		var incident_id := StringName(target["payload"].get("incident_id", &""))
 		if not incident_id.is_empty():
@@ -582,6 +636,16 @@ func _start_or_commit_active(
 ) -> Dictionary:
 	var duration := float(CATALOG[command].get("duration_seconds", 0.0))
 	var execution_mode := StringName(CATALOG[command].get("execution_mode", &"immediate"))
+	if execution_mode == &"clean":
+		if not _session.begin_clean(target["id"], cultist_id):
+			_fail_active(cultist_id, &"approach_reserved")
+			return {"committed": false, "reason": &"approach_reserved"}
+		duration = float(_session.clean_duration(target["id"]))
+		_actions.queue_for_coordinator(cultist_id).configure_active_timing(duration, duration)
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "clean_snapshot", duration)
+		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "stage", &"executing")
+		_sync_active(cultist_id)
+		return {"committed": false, "reason": &"", "started": true}
 	if execution_mode == &"session_precommit":
 		_actions.queue_for_coordinator(cultist_id).set_payload_value(action_id, "stage", &"executing")
 		var outcome := _execute(command, cultist_id, target)
@@ -640,7 +704,12 @@ func advance(simulated_delta: float) -> void:
 				continue
 			_actions.queue_for_coordinator(cultist_id).set_payload_value(int(action["id"]), "committed", true)
 			_actions.queue_for_coordinator(cultist_id).mark_active_committed(int(action["id"]))
-			var outcome := _execute(command, cultist_id, target)
+			var outcome := (
+				_outcome(_session.complete_clean(
+					target["id"], cultist_id, float(payload.get("clean_snapshot", 0.0))
+				), &"invalid_target")
+				if command == &"clean" else _execute(command, cultist_id, target)
+			)
 			if not bool(outcome["ok"]):
 				_fail_active(cultist_id, outcome["reason"])
 				continue
@@ -949,6 +1018,12 @@ func _cancel_session_execution(cultist_id: int, command: StringName) -> void:
 		_session.cancel_ask_to_leave(cultist_id)
 	elif command == &"stir" and _session.has_method("cancel_stir"):
 		_session.cancel_stir(cultist_id)
+	elif command == &"reason_with" and _session.has_method("cancel_reason_with"):
+		_session.cancel_reason_with(cultist_id)
+	elif command == &"clean" and _session.has_method("cancel_clean"):
+		var action := _active_action(cultist_id)
+		if not action.is_empty():
+			_session.cancel_clean(action["payload"]["target"]["id"], cultist_id)
 
 
 func _fail_active(cultist_id: int, reason: StringName) -> void:
@@ -957,6 +1032,8 @@ func _fail_active(cultist_id: int, reason: StringName) -> void:
 		return
 	var command: StringName = action["payload"]["command"]
 	var active_id := int(action["id"])
+	if command == &"clean" and _session != null and _session.has_method("cancel_clean"):
+		_session.cancel_clean(action["payload"]["target"]["id"], cultist_id)
 	_cancel_session_execution(cultist_id, command)
 	_release(cultist_id)
 	var result: Dictionary = _actions.queue_for_coordinator(cultist_id).fail_active_chain(reason)
@@ -1059,7 +1136,7 @@ func _availability(
 	if command == GENERATED_MOVE:
 		var effective := chain_command if not chain_command.is_empty() else &"move"
 		return _availability(effective, cultist_id, target)
-	if command in [&"move", STEP_ASIDE]:
+	if command in [&"move", STEP_ASIDE, SMOKING]:
 		var reachable: bool = (
 			target["kind"] != TARGET_OBJECT or _objects.has(target["id"])
 		)
@@ -1074,19 +1151,22 @@ func _availability(
 	var state: Dictionary = _session.command_availability(
 		command, cultist_id, target["id"]
 	)
-	return {
+	var projected := {
 		"visible": bool(state.get("visible", false)),
 		"available": bool(state.get("available", false)),
 		"reason": StringName(state.get("reason", &"")),
 		"detail": String(state.get("detail", "")),
 	}
+	if state.has("chance"):
+		projected["chance"] = state["chance"].duplicate(true)
+	return projected
 
 
 ## Fires the gameplay operation. Called once, at the Commitment Point.
 func _execute(command: StringName, cultist_id: int, target: Dictionary) -> Dictionary:
 	var target_id: Variant = target["id"]
 	match command:
-		GENERATED_MOVE, STEP_ASIDE, &"move":
+		GENERATED_MOVE, STEP_ASIDE, SMOKING, &"move":
 			return {"ok": true, "reason": &""}
 		&"drop_body":
 			return _outcome(_session.drop_body(cultist_id), &"not_carrying_body")
@@ -1106,6 +1186,8 @@ func _execute(command: StringName, cultist_id: int, target: Dictionary) -> Dicti
 			return {"ok": StringName(service.get("reason", &"")) != &"drink_unavailable", "reason": service.get("reason", &"")}
 		&"offer_cigarette":
 			return _outcome(_session.offer_cigarette(cultist_id, target_id), &"rejected")
+		&"reason_with":
+			return _outcome(_session.begin_reason_with(cultist_id, target_id), &"rejected")
 		&"knock_out":
 			return _outcome(_session.begin_knockout(cultist_id, target_id), &"cultist_busy")
 		&"stir":
@@ -1131,6 +1213,8 @@ func _execute(command: StringName, cultist_id: int, target: Dictionary) -> Dicti
 			return _outcome(_session.begin_admit_group(cultist_id), &"no_group_waiting")
 		&"activate_trapdoor":
 			return _outcome(_session.activate_trapdoor(), &"trapdoor_busy")
+		&"clean":
+			return _outcome(_session.begin_clean(target_id, cultist_id), &"approach_reserved")
 	return {"ok": false, "reason": &"unknown_command"}
 
 
@@ -1196,6 +1280,8 @@ func _commands_for_target(target: Dictionary) -> Array:
 			return OBJECT_COMMANDS.get(target["id"], [])
 		TARGET_DRINK:
 			return DRINK_COMMANDS
+		TARGET_GRIME:
+			return GRIME_COMMANDS
 	return []
 
 
@@ -1207,7 +1293,7 @@ func _normalized_target(target: Dictionary) -> Dictionary:
 	var position: Vector3 = target.get("position", Vector3.ZERO)
 	if kind == TARGET_OBJECT and _objects.has(id):
 		position = _objects[id]["approach_position"]
-	var approach_slot := _slot_for({"kind": kind, "id": id})
+	var approach_slot := _slot_for(target)
 	if (kind == TARGET_OBJECT and id == &"bar_work_position") or kind == TARGET_DRINK:
 		# When all three are occupied, contention must fail on a real work
 		# position rather than creating an unbounded fallback reservation.
@@ -1230,6 +1316,8 @@ func _normalized_target(target: Dictionary) -> Dictionary:
 		normalized["drink_id"] = StringName(target["drink_id"])
 	if target.has("bar_position"):
 		normalized["bar_position"] = target["bar_position"]
+	if target.has("surface_id"):
+		normalized["surface_id"] = target["surface_id"]
 	return normalized
 
 
@@ -1255,11 +1343,15 @@ func _target_label(cultist_id: int, target: Dictionary) -> String:
 		TARGET_OBJECT:
 			var id: Variant = target["id"]
 			return _objects[id]["label"] if _objects.has(id) else _humanize(id)
+		TARGET_GRIME:
+			return "Grime"
 	return "Floor"
 
 
 func _option_label(command: StringName, state: Dictionary) -> String:
 	var label: String = CATALOG[command]["label"]
+	if state.has("chance"):
+		return label
 	var detail: String = state["detail"]
 	return label if detail.is_empty() else "%s — %s" % [label, detail]
 

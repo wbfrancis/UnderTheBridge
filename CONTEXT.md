@@ -93,7 +93,7 @@ A Patron's state of mind as one word, derived on demand and never stored. Mood r
 _Avoid_: Happiness, morale, patience, Mood meter, Mood value
 
 **Satisfaction**:
-A Patron's hidden 0-100 measure of how well the Night is treating them, starting at 75 before Traits shift it. Prompt service, a correct drink, a clean room, conversation, and a cigarette raise it; a failed Order, a wrong drink, Sighted Grime, and a witnessed collapse lower it. Satisfaction decays slowly while nothing sustains it, stopping at the Unhappy band; only a service failure carries it below that floor. Satisfaction sets the tip multiplier, and a Patron at zero makes a Normal Departure.
+A Patron's hidden 0-100 measure of how well the Night is treating them, starting at 75 before Traits shift it. Prompt service, a correct drink, a clean room, conversation, and a cigarette raise it; a failed Order, a wrong drink, Sighted Grime, and a witnessed collapse lower it. Satisfaction decays slowly while nothing sustains it, stopping at the Unhappy band; only a service failure or a Germaphobe's response to Sighted Grime carries it below that floor. Satisfaction sets the tip multiplier, and a Patron at zero makes a Normal Departure.
 _Avoid_: Mood, Fun, happiness, morale
 
 **Satisfaction Modifier**:
@@ -149,7 +149,7 @@ A drink finished while a Patron is already Max Drunk. Excess Drinks accumulate f
 _Avoid_: Extra Order, overflow drink
 
 **Overdrink Limit**:
-A hidden per-Patron threshold of one through five Excess Drinks. Reaching it causes Overdrink Collapse.
+A hidden per-Patron threshold that starts from one through three Excess Drinks and can reach five through Traits. Reaching it causes Overdrink Collapse.
 _Avoid_: Alcohol tolerance, knockout roll
 
 **Overdrink Collapse**:
@@ -159,11 +159,15 @@ _Avoid_: Drugged collapse, passing out roll
 ## Cleanliness
 
 **Grime**:
-A patch of dirt on any Cultist-reachable surface — floor, table, or bar — left by Patron use. Each patch has a size that grows with use and sets its clean time, from a two-second minimum to a thirty-second maximum. Patches near one another in a room read as a cluster that scales one Satisfaction Modifier rather than applying several. Players judge size through modest footprint growth and denser, darker residue; clean-time numbers are not shown. The Trapdoor neither makes nor clears Grime.
+A patch of dirt on any Cultist-reachable surface — floor, table, or bar — left by Patron use. Each patch has a size that grows with use and sets its clean time, from a two-second minimum on creation to a thirty-second maximum; a remainder after Clean can be smaller than two seconds. Patches near one another in a room read as a cluster that scales one Satisfaction Modifier rather than applying several. Players judge size through modest footprint growth and denser, darker residue; clean-time numbers are not shown. The Trapdoor neither makes nor clears Grime.
 _Avoid_: Dirt, mess, stain
 
 **Grime Inspection**:
 A view associated with an Inspected Patron that marks every patch of Sighted Grime with slightly pulsing brass outlines, regardless of its Satisfaction effect or the Patron's Traits. It has no separate panel, severity bar, threshold labels, or clean-time numbers.
+
+**Clean Action**:
+A proximity Action against one Grime patch. Contact reserves the patch and snapshots its current clean time. Completion removes only that amount, cancellation removes none, and Grime added during the Action remains.
+_Avoid_: Cleaning task, wipe
 _Avoid_: Global cleanliness meter, room dirt score
 
 **Sighted Grime**:
@@ -177,7 +181,7 @@ _Avoid_: Broken bathroom, clogged toilet
 ## Traits
 
 **Trait**:
-A named, per-Night characteristic of a Patron that shifts a gameplay value or behavior. A Patron holds one Drink Preference plus one or two other Traits, with no contradictory pair. Traits are Patron Profile facts, hidden until the Patron is Identified, but their effects stay active while hidden. A single Trait can also become known before full identification when the Patron reveals it through behavior, such as refusing a Cigarette.
+A named, per-Night characteristic of a Patron that shifts a gameplay value or behavior. A Patron holds one Drink Preference and can hold up to two additional Traits, with no incompatible pair. Traits are Patron Profile facts, hidden until the Patron is Identified, but their effects stay active while hidden. A single Trait can also become known before full identification when the Patron reveals it through behavior, such as refusing a Cigarette or reacting to Hard Evidence with confusion.
 _Avoid_: Perk, tag, personality
 
 **Drink Preference**:
@@ -186,15 +190,15 @@ _Avoid_: Favorite drink, taste
 
 Catalog (values settled separately):
 - **Weak** / **Strong**: easier / harder Knock Out (mutually exclusive).
-- **Hollow Leg**: high Overdrink Limit, slow Intoxication.
+- **Hollow Leg**: high Overdrink Limit and slow Intoxication; incompatible with Lightweight.
 - **Lush** / **Lightweight**: high vs low Ideal Intoxication and drink capacity (mutually exclusive).
 - **Nurser**: finishes drinks slowly.
 - **Wine Drinker** / **Beer Drinker** / **Whiskey Drinker**: the three Drink Preferences.
 - **Paranoid** / **Trusting**: faster vs slower Suspicion, and harder vs easier Friendship Capture (mutually exclusive).
-- **Nosy**: more likely to Investigate; notices Knock Out attempts more.
-- **Oblivious**: notices less; reacts slowly to Hard Evidence.
-- **Germaphobe**: extra Grime Satisfaction penalty; reacts to small patches.
-- **Slob**: makes more Grime; immune to Grime Satisfaction penalty.
+- **Nosy**: Investigates a missing Companion sooner, notices Knock Out attempts more, and is harder to Reason With; incompatible with Oblivious.
+- **Oblivious**: notices heard Knock Out attempts less, reveals confusion before reacting to Hard Evidence, and is easier to Reason With; incompatible with Nosy.
+- **Germaphobe**: extra Grime Satisfaction penalty and reacts to small patches; incompatible with Slob.
+- **Slob**: makes more Grime and is immune to Grime Satisfaction penalties; incompatible with Germaphobe.
 - **Big Tipper** / **Tightwad**: higher vs lower tips (mutually exclusive).
 - **Sociable** / **Grouch**: higher vs lower starting Satisfaction; a Grouch gains no Satisfaction from Talk unless already Happy (mutually exclusive).
 - **Non-Smoker**: refuses a Cigarette and takes a minor Satisfaction penalty when offered one; the refusal reveals this Trait.
@@ -210,7 +214,7 @@ Suspicion that can recover after its source resolves and the patron experiences 
 _Avoid_: Temporary suspicion
 
 **Hard Evidence**:
-Directly witnessed criminal evidence that normally fixes a Patron at maximum Suspicion. A Max Drunk Patron instead interprets each Hard Evidence event as recoverable Suspicion.
+Directly witnessed criminal evidence that normally fixes a Patron at maximum Suspicion. A Max Drunk Patron instead interprets each Hard Evidence event as recoverable Suspicion, while an Oblivious Patron can lose the Hard Evidence response through a successful Reason With Action.
 _Avoid_: Proof meter
 
 **Unattended Body**:
@@ -342,6 +346,10 @@ _Avoid_: Eject, force out
 **Stir Action**:
 A proximity Action in which one active Cultist restores an Incapacitated Cultist before natural recovery.
 _Avoid_: Revive, rescue
+
+**Reason With Action**:
+A chance-based proximity Action that tries to lower a Patron's Suspicion before or during Investigation or Escape. It is available near maximum Suspicion; Hard Evidence permits it only when the Patron is Oblivious.
+_Avoid_: Calm Down Action, persuasion
 
 **Commitment Point**:
 The moment after which cancelling an Action cannot undo its gameplay consequence.

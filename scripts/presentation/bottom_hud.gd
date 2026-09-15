@@ -142,6 +142,7 @@ var _patron_detail: VBoxContainer
 var _patron_zone: PanelContainer
 var _patron_activity: Label
 var _patron_mood: Label
+var _patron_traits: Label
 var _patron_meters: Dictionary = {}
 var _patron_close: Button
 var _patron_queue_panel: PanelContainer
@@ -715,13 +716,14 @@ func _render_patron() -> void:
 	_patron_activity.text = String(patron.get("visible_activity", ""))
 	if not String(patron.get("ordered_drink", "")).is_empty():
 		_patron_activity.text += " · %s" % String(patron["ordered_drink"])
+	var traits: Array = patron.get("traits", [])
+	_patron_traits.text = "Traits  %s" % (
+		", ".join(PackedStringArray(traits)) if not traits.is_empty() else "Unknown"
+	)
 	_render_patron_mood(String(patron.get("mood", "")))
 	_render_meter(
 		&"mood", MOOD_BANDS, String(patron.get("satisfaction_band", "")), Color("4B986D"),
 		"Satisfaction"
-	)
-	_render_meter(
-		&"suspicion", SUSPICION_BANDS, String(patron.get("suspicion_band", "")), DANGER
 	)
 	_render_meter(
 		&"intoxication", INTOXICATION_BANDS, String(patron.get("intoxication", "")),
@@ -1207,8 +1209,11 @@ func _build_patron_zone() -> Control:
 	_patron_close.expand_icon = false
 	_patron_close.pressed.connect(func() -> void: activate(&"close_patron"))
 	header.add_child(_patron_close)
+	_patron_traits = _ink_label("", 11)
+	_patron_traits.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_patron_detail.add_child(_patron_traits)
 
-	for key: StringName in [&"mood", &"suspicion", &"intoxication"]:
+	for key: StringName in [&"mood", &"intoxication"]:
 		_patron_detail.add_child(_build_meter(key))
 	return panel
 

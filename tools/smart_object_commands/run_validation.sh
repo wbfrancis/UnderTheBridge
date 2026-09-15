@@ -23,7 +23,7 @@ isolate_profile "$PROJECT_ROOT/.godot/headless_profile"
 for SCALE in 1 4; do
   REPORT="validation_${SCALE}x.json"
   "$GODOT_BIN" --headless --fixed-fps=60 --path "$PROJECT_ROOT" \
-    res://scenes/prototypes/ticket16_presentation_review.tscn -- \
+    res://scenes/prototypes/main_test.tscn -- \
     --stage=full_cast \
     "--movement-scale=$SCALE" \
     "--command-report=res://artifacts/smart_object_commands/$REPORT"

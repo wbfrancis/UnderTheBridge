@@ -1,0 +1,19 @@
+{
+  "check_count": 3,
+  "checks": [
+    {
+      "check": "reached_mirror",
+      "passed": true
+    },
+    {
+      "check": "reached_toilet",
+      "passed": true
+    },
+    {
+      "check": "reached_handwashing",
+      "passed": true
+    }
+  ],
+  "mode": "visit",
+  "passed": true
+}

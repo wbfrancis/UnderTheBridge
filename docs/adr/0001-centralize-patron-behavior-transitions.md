@@ -1,6 +1,8 @@
 # Centralize Patron behavior transitions
 
-Patron routines, urgent behavior, and committed activities use one table-driven hierarchical state machine behind the `PatronBehaviorMachine` interface. The module accepts intents, advances simulated time, and returns events and snapshots; it owns transition priority, preemption, deferral, state entry and exit, and reservation cleanup. This keeps transition rules local and testable instead of spreading conditional branches across routines, while Cultist Actions continue to use the existing Command pattern.
+Every character uses an Action Queue owned by `CharacterActionSystem`. `PatronIntentPlanner` selects and defers Patron intents through the transition table; `PatronActionCoordinator` applies those decisions to the shared queue and releases obsolete reservations. The simulation owns gameplay effects, while the queue owns Action identity and elapsed time. This replaces separate Patron state-machine timing and Cultist queue ownership, so interruption and debug controls use the same lifecycle.
+
+Step Aside pauses the current Action without changing its identity or elapsed time. Completion resumes that Action at the new position; terminal transitions clear active, paused, and pending work together. Patron queues remain hidden from players, but debug mode permits cancellation, forced completion, clearing, and planner pause without reversing effects already applied.
 
 ## Considered Options
 

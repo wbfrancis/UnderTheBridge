@@ -5,7 +5,7 @@
 - Four implementation weeks
 - One evaluation/revision week
 - Windows desktop, Godot 4.7.1, typed GDScript, Blender 5.2
-- Three Cultists, eight authored Patrons, one 18-minute Night
+- The playable Cultists, eight authored Patrons, one 18-minute Night
 - No gameplay implementation begins until this planning baseline is approved and committed
 
 ## 2. Global definition of done

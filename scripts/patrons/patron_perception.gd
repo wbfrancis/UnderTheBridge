@@ -54,6 +54,27 @@ func visual_recipients(
 	return recipients
 
 
+func grime_recipients(source_room: StringName, source_position: Vector2, perceivers: Array) -> Array:
+	return visual_recipients_in_range(source_room, source_position, perceivers, 5.0)
+
+
+func visual_recipients_in_range(
+		source_room: StringName, source_position: Vector2, perceivers: Array, range_metres: float
+) -> Array:
+	var cone_limit := cos(deg_to_rad(VIEW_CONE_HALF_ANGLE_DEGREES))
+	var recipients: Array[int] = []
+	for perceiver: Dictionary in perceivers:
+		if perceiver["room"] != source_room:
+			continue
+		var offset: Vector2 = source_position - perceiver["position"]
+		var distance := offset.length()
+		if distance > range_metres + 0.0001:
+			continue
+		if distance <= 0.0001 or Vector2(perceiver["facing"]).dot(offset) / distance >= cone_limit - 0.0001:
+			recipients.append(perceiver["id"])
+	return recipients
+
+
 # perceivers: Array of {id, room, position, facing}. Returns the ids that hear a
 # sound emitted in source_room through the room-hearing relationship.
 func auditory_recipients(source_room: StringName, perceivers: Array) -> Array:

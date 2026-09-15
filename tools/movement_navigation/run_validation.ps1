@@ -14,14 +14,14 @@ if ([string]::IsNullOrWhiteSpace($GodotBin)) {
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $GodotBin --headless --fixed-fps=60 --path $ProjectRoot `
-    "res://scenes/prototypes/ticket16_presentation_review.tscn" -- `
+    "res://scenes/prototypes/main_test.tscn" -- `
     "--stage=full_cast" `
     "--movement-scale=1" `
     "--movement-report=res://artifacts/movement_navigation/validation_1x.json"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $GodotBin --headless --fixed-fps=60 --path $ProjectRoot `
-    "res://scenes/prototypes/ticket16_presentation_review.tscn" -- `
+    "res://scenes/prototypes/main_test.tscn" -- `
     "--stage=full_cast" `
     "--movement-scale=4" `
     "--movement-report=res://artifacts/movement_navigation/validation.json"

@@ -77,13 +77,23 @@ func test_danger_source_can_be_an_actor_or_an_authored_location() -> void:
 	assert_gt(session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", &"bar_work_position").size(), 0)
 	assert_gt(session.report_danger_event(&"knockout_heard", &"auditory", &"main_hall", ScenarioActors.opening_companion()).size(), 0)
 
-func test_three_seeded_visits_match_the_pre_migration_gameplay_trace() -> void:
+func test_pre_feature_trace_keeps_unaffected_seeded_fields_stable() -> void:
+	# Traits, typed drink choice, 1-3 overdrink limits, progress-based Intoxication,
+	# Grime pressure, and their downstream activity are intentional replacements.
+	# Keep the fixture unchanged and compare each field outside that changed rule set.
+	const UNAFFECTED_PATRON_FIELDS: Array[String] = [
+		"bathroom_probability", "bladder", "dosed_pending", "drug_countdown",
+		"escape_after_bathroom", "escape_remaining", "excess_drinks",
+		"next_bathroom_check_in", "recent_bathroom_rolls", "stay_rolled", "stayed_behind",
+	]
 	var expected: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/actor_seed_trace.json"))
 	assert_eq(expected.size(), 15)
 	var frame := 0
 	for seed_value in [707, 19, 4301]:
 		var session := OrdinaryVisitSession.new()
 		session.start(seed_value)
+		for patron_id: int in session.snapshot()["debug_views"]:
+			assert_true(session.debug_set_patron_traits(patron_id, [&"wine_drinker"]))
 		session.advance(1.1)
 		var patrons := [ScenarioActors.opening_patron(), ScenarioActors.opening_companion()]
 		for patron_id in patrons:
@@ -95,10 +105,9 @@ func test_three_seeded_visits_match_the_pre_migration_gameplay_trace() -> void:
 			assert_almost_eq(float(state["simulated_seconds"]), float(reference["at"]), 0.000001)
 			for index in patrons.size():
 				var view: Dictionary = state["debug_views"][patrons[index]]
-				for key in reference["patrons"][index]:
+				for key: String in UNAFFECTED_PATRON_FIELDS:
 					_assert_trace_value(view[key], reference["patrons"][index][key], "%d/%d/%s" % [frame, index, key])
 			_assert_trace_value(state["orders"]["revenue"], reference["orders"]["revenue"], "revenue")
-			_assert_trace_value(state["orders"]["tips"], reference["orders"]["tips"], "tips")
 			_assert_trace_value(state["captures"].size(), reference["captures"], "captures")
 			frame += 1
 

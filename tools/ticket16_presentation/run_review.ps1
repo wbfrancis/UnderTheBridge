@@ -8,7 +8,7 @@ param(
 # focused PNGs and a report. Use -Validate to run the lean suite first.
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$Scene = "res://scenes/prototypes/ticket16_presentation_review.tscn"
+$Scene = "res://scenes/prototypes/main_test.tscn"
 
 if ($Capture -or $Validate) {
     $ArtifactDir = Join-Path $ProjectRoot "artifacts\ticket16_presentation"

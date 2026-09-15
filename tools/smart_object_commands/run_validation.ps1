@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 foreach ($Scale in @(1, 4)) {
     $Report = "validation_${Scale}x.json"
     & $GodotBin --headless --fixed-fps=60 --path $ProjectRoot `
-        "res://scenes/prototypes/ticket16_presentation_review.tscn" -- `
+        "res://scenes/prototypes/main_test.tscn" -- `
         "--stage=full_cast" `
         "--movement-scale=$Scale" `
         "--command-report=res://artifacts/smart_object_commands/$Report"

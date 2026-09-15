@@ -7,7 +7,7 @@ param(
 # and the empty room after removal. Frames land at 1280x720, 1024x576, and 1920x1080.
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$Scene = "res://scenes/prototypes/ticket16_presentation_review.tscn"
+$Scene = "res://scenes/prototypes/main_test.tscn"
 $ArtifactDir = Join-Path $ProjectRoot "artifacts\bathroom_review"
 New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null
 

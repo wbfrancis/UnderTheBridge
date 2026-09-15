@@ -38,6 +38,10 @@ func _seated_night(seed: int = 707) -> Array:
 	assert_true(session.begin_admit_group(ActorIds.CULTIST_IDS[0]))
 	session.advance(4.1)
 	assert_eq(session.command_action_state(&"admit_group", ActorIds.CULTIST_IDS[0], &"front_entrance"), &"completed")
+	# These command-lifecycle tests predate Traits. Use explicit receptive Traits
+	# so Cigarette coverage does not depend on a seeded Non-Smoker roll.
+	assert_true(session.debug_set_patron_traits(ScenarioActors.opening_patron(), [&"wine_drinker"]))
+	assert_true(session.debug_set_patron_traits(ScenarioActors.opening_companion(), [&"beer_drinker"]))
 	return [session, _commands_for(session)]
 
 
@@ -130,7 +134,9 @@ func test_a_large_queue_is_never_rejected_for_its_length() -> void:
 
 func test_mixed_move_and_context_commands_keep_the_order_they_were_queued() -> void:
 	var pair := _seated_night()
+	var session = pair[0]
 	var commands = pair[1]
+	assert_true(session.debug_set_patron_drink_state(ScenarioActors.opening_companion(), 0, 3))
 
 	var adjacent := {"is_adjacent": true}
 	commands.issue(ActorIds.CULTIST_IDS[0], &"move", _floor_target(-6.0, 4.0), false)
@@ -421,7 +427,9 @@ func test_nonadjacent_talk_creates_a_visible_move_then_talk_chain() -> void:
 
 func test_nonadjacent_offer_cigarette_creates_a_visible_move_chain() -> void:
 	var pair := _seated_night()
+	var session = pair[0]
 	var commands = pair[1]
+	assert_true(session.debug_set_patron_drink_state(ScenarioActors.opening_patron(), 0, 3))
 
 	commands.issue(ActorIds.CULTIST_IDS[0], &"offer_cigarette", _patron_target(ScenarioActors.opening_patron()), false)
 	var queue := _queue(commands, ActorIds.CULTIST_IDS[0])
@@ -665,6 +673,7 @@ func test_offer_cigarette_commits_and_needs_a_conscious_patron() -> void:
 	var pair := _seated_night()
 	var session = pair[0]
 	var commands = pair[1]
+	assert_true(session.debug_set_patron_drink_state(ScenarioActors.opening_patron(), 0, 3))
 
 	var before: float = session.friendship_value(ScenarioActors.opening_patron(), ActorIds.CULTIST_IDS[0])
 	assert_true(bool(_run(commands, ActorIds.CULTIST_IDS[0], &"offer_cigarette", _patron_target(ScenarioActors.opening_patron()))["committed"]))

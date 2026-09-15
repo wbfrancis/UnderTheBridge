@@ -1,0 +1,27 @@
+{
+  "check_count": 5,
+  "checks": [
+    {
+      "check": "standing_capture_reached",
+      "passed": true
+    },
+    {
+      "check": "panels_opened_falling",
+      "passed": true
+    },
+    {
+      "check": "avatar_sank_below_floor",
+      "passed": true
+    },
+    {
+      "check": "panels_closed",
+      "passed": true
+    },
+    {
+      "check": "patron_removed_after_close",
+      "passed": true
+    }
+  ],
+  "mode": "capture",
+  "passed": true
+}

@@ -18,7 +18,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$SCRIPT_DIR/../_godot_lib.sh"
 
 GODOT_BIN="$(require_godot)"
-SCENE="res://scenes/prototypes/ticket16_presentation_review.tscn"
+SCENE="res://scenes/prototypes/main_test.tscn"
 ARTIFACT_DIR="$PROJECT_ROOT/artifacts/emote_bubbles"
 mkdir -p "$ARTIFACT_DIR"
 

@@ -3,40 +3,21 @@
   "passed": true,
   "reserved_slots": [],
   "simulation_scale": 1.0,
-  "step_count": 7,
+  "step_count": 6,
   "steps": [
     {
       "actor_position": [
-        -7.69917774200439,
-        3.82565999031067
+        7.65473127365112,
+        3.92410016059875
       ],
       "detail": "Move done.",
       "passed": true,
       "step": "floor_move"
     },
     {
-      "detail": "Prepare Drink failed: Another Cultist holds that position.",
-      "passed": true,
-      "step": "contention"
-    },
-    {
-      "detail": "prepare_drink",
-      "passed": true,
-      "step": "bar_command"
-    },
-    {
       "actor_position": [
-        -11.9782066345215,
-        4.31187057495117
-      ],
-      "detail": "Talk done.",
-      "passed": true,
-      "step": "patron_command"
-    },
-    {
-      "actor_position": [
-        17.6670207977295,
-        4.52716064453125
+        17.6489410400391,
+        4.577064037323
       ],
       "detail": "Activate Trapdoor done.",
       "passed": true,
@@ -44,8 +25,31 @@
     },
     {
       "actor_position": [
-        -0.61815482378006,
-        6.45481729507446
+        0.351013094186783,
+        1.6788113117218
+      ],
+      "detail": "Make Wine done.",
+      "passed": true,
+      "step": "bar_command"
+    },
+    {
+      "chain_id": 1,
+      "chain_visible": true,
+      "detail": "Generated Move -> Talk completed after a live target move",
+      "effect": true,
+      "generated_action_id": 4,
+      "passed": true,
+      "requested_action_id": 5,
+      "reservation_held": true,
+      "reservation_released": true,
+      "settled": true,
+      "step": "patron_action_chain",
+      "tracked_live_position": true
+    },
+    {
+      "actor_position": [
+        -0.95872700214386,
+        6.61858129501343
       ],
       "detail": "Pick Up Body done.",
       "passed": true,
@@ -53,8 +57,8 @@
     },
     {
       "actor_position": [
-        -1.87418055534363,
-        3.31456613540649
+        -1.90038681030273,
+        3.34616899490356
       ],
       "detail": "Drop Body Here done.",
       "passed": true,

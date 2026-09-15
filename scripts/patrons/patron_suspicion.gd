@@ -19,6 +19,21 @@ var _quiet_seconds: float = 0.0
 var _recovery_ticks_applied: int = 0
 var _maximum_response: StringName = &"none"
 var _hard_evidence_downgrade_count: int = 0
+var _gain_multiplier: float = 1.0
+
+
+func set_gain_multiplier(value: float) -> void:
+	_gain_multiplier = maxf(0.0, value)
+
+
+func debug_set(score: float, cause: StringName = &"soft") -> void:
+	_score = clampf(score, 0.0, 100.0)
+	_cause = cause if _score > 0.0 else &"none"
+	_latest_stimulus = &"debug_setup"
+	_recoverable = _score > 0.0 and _score < 100.0 and cause != &"hard_evidence"
+	_quiet_seconds = 0.0
+	_recovery_ticks_applied = 0
+	_maximum_response = (&"escape" if _score >= 100.0 else &"none")
 
 
 func apply_stimulus(stimulus: StringName, observer_is_max_drunk: bool = false) -> bool:
@@ -54,7 +69,7 @@ func apply_stimulus(stimulus: StringName, observer_is_max_drunk: bool = false) -
 	var effect := _stimulus_effect(stimulus)
 	if effect.is_empty() or _score >= 100.0:
 		return false
-	_score = minf(100.0, _score + float(effect["amount"]))
+	_score = minf(100.0, _score + float(effect["amount"]) * _gain_multiplier)
 	_cause = effect["cause"]
 	_latest_stimulus = stimulus
 	_recoverable = bool(effect["recoverable"])
@@ -72,7 +87,8 @@ func apply_stimulus(stimulus: StringName, observer_is_max_drunk: bool = false) -
 func apply_companion_influence(neighbor_score: float) -> bool:
 	if _score >= 100.0 or neighbor_score <= _score:
 		return false
-	var delta := minf(RECOVERY_AMOUNT, neighbor_score - _score)
+	var delta := minf(RECOVERY_AMOUNT, neighbor_score - _score) * _gain_multiplier
+	delta = minf(delta, neighbor_score - _score)
 	_score = minf(100.0, _score + delta)
 	_cause = &"companion_influence"
 	_latest_stimulus = &"companion_influence"
@@ -103,13 +119,19 @@ func advance(simulated_seconds: float) -> float:
 
 
 func normal_band() -> String:
-	if _score >= 100.0:
+	return band_for_score(_score)
+
+
+# The public Suspicion band for a raw score. The Outcome Modal shows this band
+# for the night's peak; the exact value stays in debug and evaluation data.
+static func band_for_score(score: float) -> String:
+	if score >= 100.0:
 		return "Maximum"
-	if _score >= 75.0:
+	if score >= 75.0:
 		return "Alarmed"
-	if _score >= 50.0:
+	if score >= 50.0:
 		return "Suspicious"
-	if _score >= 25.0:
+	if score >= 25.0:
 		return "Uneasy"
 	return "Calm"
 
@@ -154,9 +176,26 @@ func next_recovery_in() -> float:
 	return maxf(0.0, next_tick_at - _quiet_seconds)
 
 
+func reason_with_success(clear_hard_evidence: bool) -> bool:
+	if _score < 95.0:
+		return false
+	if _cause == &"hard_evidence" and not clear_hard_evidence:
+		return false
+	_score = 50.0
+	_cause = &"soft"
+	_latest_stimulus = &"reason_with"
+	_recoverable = true
+	_quiet_seconds = 0.0
+	_recovery_ticks_applied = 0
+	_maximum_response = &"none"
+	return true
+
+
 func _stimulus_effect(stimulus: StringName) -> Dictionary:
 	match stimulus:
 		&"cancelled_order":
+			return {"amount": 5.0, "cause": &"soft", "recoverable": true}
+		&"asked_to_leave":
 			return {"amount": 5.0, "cause": &"soft", "recoverable": true}
 		&"overdrink_body_drag_seen_first":
 			return {"amount": 25.0, "cause": &"general_danger", "recoverable": true}
@@ -193,4 +232,5 @@ func snapshot() -> Dictionary:
 		"next_recovery_in": next_recovery_in(),
 		"maximum_response": _maximum_response,
 		"hard_evidence_downgrade_count": _hard_evidence_downgrade_count,
+		"gain_multiplier": _gain_multiplier,
 	}

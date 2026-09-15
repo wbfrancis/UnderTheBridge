@@ -9,7 +9,7 @@ Planning is complete. Foundation spikes are validating the riskiest technical as
 - Target: Windows desktop, mouse and keyboard
 - Tools: Godot 4.7.1, typed GDScript, Blender 5.2
 - Schedule: four-week vertical slice followed by one evaluation week
-- Scope: three cultists, eight authored patrons, one 18-minute night
+- Scope: the playable cultists, eight authored patrons, one 18-minute night
 
 ## Headless tests
 

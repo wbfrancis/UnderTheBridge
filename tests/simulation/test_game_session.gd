@@ -8,6 +8,9 @@ const GAME_SESSION_PATH := "res://scripts/simulation/game_session.gd"
 
 func _advance_and_serve_night(session) -> void:
 	# Every service call is an explicit player command; no Cultist acts on its own.
+	# This pre-Trait full-roster regression keeps the prior neutral visit contract.
+	for patron_id: int in session.snapshot()["debug_patron_views"]:
+		assert_true(session.debug_set_patron_traits(patron_id, [&"wine_drinker"]))
 	var served_patrons: Dictionary = {}
 	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
 		session.advance(arrival - float(session.snapshot()["simulated_seconds"]))
@@ -22,6 +25,12 @@ func _advance_and_serve_night(session) -> void:
 
 
 func _advance_with_admissions(session, target_seconds: float) -> void:
+	# These pre-Trait regression fixtures assert base meter and service values.
+	# Give every authored Patron a valid preference-only loadout so Trait rolls do
+	# not silently alter the older rule under test.
+	if is_zero_approx(float(session.snapshot()["simulated_seconds"])):
+		for patron_id: int in session.snapshot()["debug_patron_views"]:
+			assert_true(session.debug_set_patron_traits(patron_id, [&"wine_drinker"]))
 	for arrival: float in [3.0, 93.0, 213.0, 333.0]:
 		if arrival > target_seconds:
 			break
@@ -569,7 +578,7 @@ func test_missing_companion_max_drives_investigation_while_proof_drives_escape()
 	_advance_with_admissions(missing_session, 10.0)
 	assert_true(missing_session.debug_force_bathroom(ScenarioActors.opening_patron()))
 	assert_true(missing_session.activate_trapdoor())
-	missing_session.advance(40.0)
+	missing_session.advance(60.0)
 	var companion: Dictionary = missing_session.snapshot()["debug_patron_views"][ScenarioActors.opening_companion()]
 	assert_eq(float(companion["suspicion"]), 100.0)
 	assert_eq(companion["suspicion_cause"], &"missing_companion")

@@ -2,7 +2,7 @@
 
 ## 1. Goals and constraints
 
-The architecture must support one authored Night with three Cultists and eight Patrons, remain readable to a solo developer, and make the critical gameplay chains testable without building a general simulation framework.
+The architecture must support one authored Night with its Cultists and eight Patrons, remain readable to a solo developer, and make the critical gameplay chains testable without building a general simulation framework.
 
 Constraints:
 
@@ -21,9 +21,10 @@ flowchart TD
     UI["Selection, command, and HUD scenes"] --> GS["GameSession"]
     GS --> ND["NightDirector"]
     GS --> OS["OrderSystem"]
+	GS --> DS["PreparedDrinkSystem"]
     GS --> IR["InteractionRegistry"]
     GS --> PS["PerceptionSystem"]
-    GS --> CA["3 CultistAgent scenes"]
+    GS --> CA["CultistAgent scenes"]
     GS --> PA["8 PatronAgent scenes"]
     CA --> IR
     PA --> IR
@@ -47,7 +48,7 @@ flowchart TD
 **CultistCommandSystem**
 
 - Interface: reset for a new Night, register an authored smart object, resolve context options, issue a command in Replace or Append mode with an adjacency fact, cancel by stable Action id, accept navigation and proximity results, revalidate targets, report the active request, return normal/debug snapshots.
-- Hides: the command catalog, unlimited Action Queue lifecycle, Action Chain policy, Generated Move insertion, target revalidation, the Commitment Point, execution dispatch, cascade rules, and reservation transfer.
+- Hides: the command catalog, Action Chain policy, Generated Move insertion, target revalidation, the Commitment Point, execution dispatch, cascade rules, and reservation transfer. `CharacterActionSystem` owns the queues and their elapsed time.
 - Invariant: one active Action precedes any number of pending Actions; queue length never rejects a valid command; one Action Chain shares one stable identity; the gameplay effect fires exactly once at the Commitment Point.
 - Boundary: `GameSession` owns every eligibility rule and operation. The scene adapter supplies current position, live Approach Position, and adjacency, then drives navigation. The command seam decides whether to create a Generated Move and how to change a chain. Target references carry kind, id, position, and approach slot — never a scene node. See ADR 0002 and `docs/adr/0003-use-visible-action-chains.md`.
 
@@ -71,10 +72,10 @@ flowchart TD
 - Hides: needs, activity transitions, Suspicion, Friendship, companion knowledge, drug countdown, Investigation, Escape, and Capture eligibility.
 - Invariant: `Captured` and `Exited` are terminal and mutually exclusive.
 
-**PatronBehaviorMachine**
+**PatronIntentPlanner and PatronActionCoordinator**
 
 - Interface: submit typed intent, advance simulated time, return emitted events and current snapshot.
-- Hides: the hierarchical transition table, behavior priority, preemption, deferred intents, committed phases, state entry and exit, and reservation cleanup.
+- Hides: the transition table and deferred intent policy in the planner; Action creation, interruption, and reservation cleanup in the coordinator. All Patron Actions live in `CharacterActionSystem`, which also owns Cultist queues.
 - Invariant: every accepted transition exits the old state and releases its obsolete reservation before the new state acquires one; terminal states reject later intents.
 
 **InteractionRegistry**
@@ -85,9 +86,15 @@ flowchart TD
 
 **OrderSystem**
 
-- Interface: place Order, claim preparation, mark ready, assign carrier, serve, cancel.
-- Hides: ticket timing, Prepared Drink ownership, payment, tips, and failed-service consequences.
+- Interface: place a typed Order, resolve delivery, and cancel.
+- Hides: Order timing, matching rules, payment, tips, and failed-service consequences.
 - Invariant: one Order reaches exactly one terminal state: served or cancelled.
+
+**PreparedDrinkSystem**
+
+- Interface: add, reserve, collect, return, drug, dispose, and consume one typed Prepared Drink.
+- Hides: three-space capacity, oldest-unreserved removal, reservation ownership, carrier ownership, and newest order.
+- Invariant: one Prepared Drink has at most one owner; a reserved drink cannot be removed by bar overflow.
 
 **PerceptionSystem**
 
@@ -103,11 +110,13 @@ Suspicion, Rescue Persuasion, staying-behind, payment, and outcome calculations 
 
 Immutable Godot `Resource` definitions contain authored Patron profiles, timings, Action definitions, interaction types, and tunable values. Mutable per-Night state lives in its owning module or actor scene, never in shared Resources.
 
+`GrimeStore` owns stable patch identity, clean-seconds, caps, bathroom blocking, and exclusive Clean ownership. `OrdinaryVisitSession` owns source events, sight totals, Satisfaction pressure, and public target projections. `GrimePatchView` owns deterministic clipped meshes, collision, wet highlights, and the real-time inspection pulse; it never owns patch state or Clean timing.
+
 Recommended identifiers are typed `StringName` values or small value objects rather than Node paths persisted as domain identity.
 
 No state is duplicated in UI. UI reads snapshots and submits commands.
 
-Normal Patron snapshots expose Observable Status before identification. After a Talk Action identifies a Patron for the crew, they also expose name, Ideal Intoxication, Arrival Group, relevant Friendship band, and qualitative victim value/risk. They exclude Bladder, exact probability/value/timer data, hidden causes, Overdrink Limit, Excess Drink count, reservations, navigation, and random state.
+Normal Patron snapshots expose Observable Status and learned Trait labels before identification. After a Talk Action identifies a Patron for the crew, they also expose name, all Trait labels, Ideal Intoxication, Arrival Group, relevant Friendship band, and qualitative victim value/risk. They exclude Bladder, exact probability/value/timer data, hidden causes, Overdrink Limit, Excess Drink count, reservations, navigation, and random state. Percentage commands expose one sanitized breakdown: an unknown Trait modifier and its total are both `???`, while debug state keeps the numeric result.
 
 Debug snapshots may additionally expose exact Bladder and next bathroom-check probability, Intoxication decay, Ideal Intoxication, Overdrink Limit, Excess Drink count, patience/Mood, Suspicion cause and recovery, complete Friendship values, lifecycle/activity, reservations, navigation, Action progress, seed, and recent rolls.
 
@@ -119,7 +128,7 @@ A central simulation clock in `GameSession` owns pause and speed. All gameplay d
 
 `NightPlayback` owns interactive transitions and exposes the selected speed separately from the accepted current scale. Navigation and animation receive the accepted scale while UI continues during Plain Pause. A new interactive Night starts at 1x. Escape forces 1x and reduces the available scales to pause and 1x. The Pause Menu records and restores the prior state on dismissal, while Resume starts the selected speed.
 
-Each Night has one seed. Rescue Persuasion, staying-behind, bathroom choice, Ideal Intoxication, Overdrink Limit, Offer Drink acceptance, social intervals, and Companion Mood reactions draw from the injected seeded random source. Results and failures record the seed for reproduction.
+Each Night has one seed. Rescue Persuasion, staying-behind, bathroom choice, drink type, wrong-drink acceptance, free-drink acceptance, social intervals, and Companion Mood reactions draw from the injected seeded random source. Results and failures record the seed for reproduction.
 
 ## 5. World representation
 
@@ -135,18 +144,26 @@ Actor movement is constrained to the floor plane. Animation state is selected fr
 
 The navigation spike validated flat-plane `NavigationAgent3D` path following with 2D RVO avoidance and physical actor collision as a fallback. Path updates occur once per physics frame. A four-simulated-second no-progress interval requests a fresh path; fifteen simulated seconds without progress is a measured stuck failure. Production geometry should use a pre-baked static navigation mesh; runtime collision-geometry baking exists only in the spike harness.
 
-Cultists move at 1.5 meters per second and Patrons at 1.3 meters per second. Escape applies 140% Patron speed, Helper movement 60%, and dragging 50% Cultist speed. A blocked Cultist Action fails after the measured fifteen-second limit; Patron emergency movement retries from the nearest valid waiting position.
+Cultists move at 2.25 meters per second and Patrons at 1.3 meters per second. Escape applies 140% Patron speed, Helper movement 60%, and dragging 50% Cultist speed. A blocked Cultist Action fails after the measured fifteen-second limit; Patron emergency movement retries from the nearest valid waiting position.
 
 ## 6. State models
 
-Patron behavior uses the table-driven hierarchical state machine recorded in [ADR 0001](adr/0001-centralize-patron-behavior-transitions.md). Callers submit intents and consume events; they do not inspect the current state to choose a transition. The transition table classifies each state-intent pair as accept, defer, or reject and records a reason. State entry and exit handlers apply the resulting reservation and lifecycle effects in one place.
+Patron behavior uses the intent planner and shared Action Queues recorded in [ADR 0001](adr/0001-centralize-patron-behavior-transitions.md). The planner classifies each state-intent pair as accept, defer, or reject. The coordinator changes the queue and reservations; the simulation applies effects. Navigation callbacks carry the active Action ID, so a late arrival cannot complete a later Action.
+
+The bar has three exclusive work positions, separate from its three Prepared Drink storage positions. Making and drugging drinks claim a work position on activation and release it on completion, cancellation, or failure. Service releases the Cultist's operation state after handoff.
+
+`CharacterAvoidanceSystem` receives positions and next path segments. After one second within 1.2 metres of a blocked segment, it requests Step Aside from an eligible idle character. Escape and Investigation take priority over body transport, player commands, ordinary Patron travel, and idle activity. Each incident issues at most one request per moving Action. A Step Aside is cancellable and preserves the interrupted Action's ID and elapsed time.
+
+Patrons use capsule meshes; Cultists keep their character sprites. A missed admission immediately disables Patron interaction and starts travel through the front exit, with removal at crossing or after a 15-second fail-safe. Debug mode shows the inspected Patron queue above the Patron panel and permits cancel, force completion, clear, and planner pause. Normal play never shows Patron queues.
 
 ### 6.1 Patron lifecycle
 
 ```mermaid
 stateDiagram-v2
     [*] --> NotArrived
-    NotArrived --> Active: scheduled arrival
+    NotArrived --> WaitingAtEntrance: scheduled arrival
+    WaitingAtEntrance --> Active: Admit Group completes
+    WaitingAtEntrance --> Exited: 30-second wait expires
     Active --> Investigating: max suspicion from missing companion
     Active --> Escaping: max suspicion from proof or danger
     Active --> Unconscious: drug, knockout, or Overdrink Limit
@@ -180,7 +197,7 @@ Within `Active`, a Patron has one activity intent:
 - standing bathroom exit
 - supporting a collapsed Companion
 
-Needs and conditions such as Bladder, Intoxication, drug countdown, Friendship, and Suspicion are orthogonal data, not separate state machines. Bladder schedules a decision check every 5 simulated seconds only while the Patron is eligible; Intoxication stores its level and time until the next four-minute decay.
+Needs and conditions such as Bladder, Intoxication progress, Traits, drug countdown, Friendship, Suspicion, and source-scoped Satisfaction modifiers are orthogonal data, not separate state machines. Bladder schedules a decision check every 5 simulated seconds only while the Patron is eligible. Intoxication stores integer progress and a steady 40-second point clock. `PatronTraitCatalog` owns the 20 immutable definitions, reciprocal exclusions, valid-loadout generation, and seed-key assignment; `OrdinaryVisitSession` owns learned Trait state and applies catalog effects at each calculation seam.
 
 ### 6.2 Suspicion bands
 
@@ -224,27 +241,24 @@ An Action definition provides target rules, reservation needs, proximity policy,
 
 A nonadjacent Patron command creates a Generated Move and requested Action under one Action Chain id. The Generated Move reserves and tracks the Patron's live Approach Position. Its completion transfers the same reservation to the requested Action. Cancellation or failure removes all unfinished chain links and releases the reservation once, then activates the next unrelated Action. A pending Patron Action rechecks proximity when it reaches the queue head and inserts one Generated Move if the Patron moved away.
 
-Dragging is an Action mode that owns the body association until completion or drop. A drop releases navigation/interaction reservations and makes the victim Unattended after the grace period.
+Clean uses the same Action seam with a dynamic duration. The scene supplies a stable patch target, surface bounds, and Approach Position. Contact reserves the patch and copies its current clean amount into the Action timing. Completion subtracts only that amount; one cleanup path releases the reservation on completion, cancellation, target loss, incapacity, replacement, or restart.
 
-### 6.4 Order lifecycle
+Reason With is a session-precommit Action because only its completed five-second roll consumes the visit attempt. It pauses the Patron planner and active Intercept clock at contact. A second Cultist holds a separate Reason With approach slot. A direct same-Cultist switch interrupts and preserves the committed Intercept tile, including its ID and elapsed time; failure or cancellation activates it again, while success removes both tiles.
+
+Dragging is an Action mode that owns the body association until completion or drop. The body follows 0.75 metres behind its Cultist without navigation or collision. A drop releases navigation and interaction reservations and makes the victim Unattended after the grace period.
+
+### 6.4 Order and Prepared Drink lifecycle
 
 ```mermaid
 stateDiagram-v2
     [*] --> Requested
-    Requested --> Preparing: Cultist claims ticket
-    Preparing --> Requested: cancelled before drink exists
-    Preparing --> Ready: preparation completes
-    Ready --> InTransit: Cultist picks up drink
-    InTransit --> Ready: carrier drops/reassigns safely
-    InTransit --> Served: correct Patron receives drink
     Requested --> Cancelled: patience reaches 60 seconds
-    Ready --> Cancelled: Patron leaves
-    InTransit --> Cancelled: Patron leaves
+    Requested --> Served: matching or accepted wrong drink
     Served --> [*]
     Cancelled --> [*]
 ```
 
-The first prototype may simplify reassignment presentation, but ownership and terminal-state invariants remain.
+A separate Prepared Drink moves through `AtBar → Reserved → Carried → Consumed|Disposed`. Making a drink takes 5 seconds. Collection and handoff each take 1 second. Drugging takes 5 seconds and moves the drink to newest position. A failed target returns the drink to the bar. A fourth drink removes the oldest unreserved drink; three reserved drinks block preparation.
 
 ### 6.5 Bathroom occupancy
 
@@ -289,14 +303,25 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 6. Success routes Helper and victim to Tunnel Intake and captures both.
 7. Failure adds 25 Suspicion and resumes front-exit movement.
 
+### 7.3 Manual knockout failure and recovery
+
+1. A Generated Move follows the live Patron position, including an escaping Patron, until the Cultist reaches the approach radius.
+2. The simulation holds both actors during the 2-second struggle and reads the Patron's current Intoxication at impact.
+3. A seeded roll uses the 40%, 60%, 80%, or 95% chance for Sober through Max Drunk.
+4. On failure, the Patron resumes their prior state with Hard Evidence. The acting Cultist enters the 60-second incapacitated state with collision disabled.
+5. The command system removes the Cultist's unfinished queue and installs one committed `Knocked Out` Action. It rejects new commands until recovery.
+6. One helper can reserve a 3-second Stir. Stir or natural timeout clears the incapacitated state; natural timeout also completes an unfinished Stir without penalty.
+
 ## 8. Perception rules
 
 - Visual events require a configured view range, facing test, and unobstructed ray to the event.
 - Sound events target Patrons in the configured room/hearing relationship.
 - A non-Overdrink Unattended Body affects only Patrons who can see it after the body's 3-second grace period.
 - An Overdrink body causes a one-time same-room Mood reaction instead of collapse or unattended-body Suspicion; dragging it uses half the normal Suspicion values.
+- Crossing the Tunnel Intake adds 25 soft Suspicion to a visual witness; Capture then removes the body from perception.
 - Companion influence applies every 10 seconds within 5 meters and the same room, targets the highest nearby group value, and adds at most 5.
 - Perception emits domain stimuli; it does not directly choose Patron states.
+- Grime sight reuses room and horizontal facing tests with an inclusive five-metre range and 120-degree cone. It tests the patch center without furniture occlusion and returns patch IDs for the inspected-Patron outline adapter.
 
 ## 9. Core formulas and timings
 
@@ -305,16 +330,23 @@ An eligible Patron at 50% or greater Bladder performs a seeded bathroom-choice c
 | Rescue Persuasion | clamp(25 + 0.7 x (Friendship - Suspicion), 5, 95)% |
 | Stay behind | clamp(10 + 0.5 x Bartender Friendship + 15 x Intoxication - 0.6 x Suspicion, 0, 90)% |
 | Bathroom choice | every 5s when eligible: clamp(1 + 89 x ((Bladder - 50) / 50), 1, 90)% |
-| Intoxication decay | -1 level after each 4 minutes without completing a drink |
+| Intoxication | 0–18 progress; drink +6, Hollow Leg +4, Lightweight +9; -1 point each 40 gameplay seconds |
 | Hard Evidence | permanent 100 normally; +25 soft while observer is Max Drunk |
 | Soft recovery | after 20 quiet seconds, -5 per 10 seconds |
 | Unattended Body | after 3 seconds, +5 per visible non-Overdrink body every 5 seconds |
 | Companion influence | every 10 seconds, +up to 5 toward highest nearby group member |
 | Trapdoor | non-capture open 2s; capture fall ~0.6s then close ~0.4s; cooldown 3s; door locked while open/falling/closing |
 | Bathroom | Mirror Check 5s, Seated Bathroom Use seeded 8–15s, Handwashing 5s, standing travel between stations |
-| Missing Companion | +25 at 20s, +25 at 30s, maximum at 40s |
+| Missing Companion | +25 at 20s, +25 at 30s, maximum at 60s; Nosy reaches maximum at 30s |
+| Admit Group | 3s to open; group waits outside for 30s |
+| Make Drink / Drug Drink | 5s / 5s |
+| Drink Service | collect 1s; handoff 1s; wrong drink -10 Mood and 50% acceptance |
+| Ask to Leave | 10s; +5 soft Suspicion; blocked at 75+ or with an unconscious member |
 | Drugged Drink | drowsy at 10s, unconscious at 20s |
 | Escape | 2s shock, 140% movement, one 5s Intercept |
+| Reason With | 5s; clamp(60 + Trait points, 5, 95)%; completion alone consumes the attempt |
+| Grime | creation min 2s, cap 30s; pressure starts at 15s, or 6s for Germaphobe; about -2 Satisfaction/s |
+| Smoking | Satisfaction +10 with 10s fade-in, 40s hold, 10s fade-out |
 
 ## 10. Persistence and restart
 
@@ -390,3 +422,5 @@ The following are deliberately not fixed before measurement:
 - exact line-of-sight range and cone angle
 
 These variations stay behind existing module interfaces; spike outcomes must not widen caller knowledge.
+
+Avatar motion uses `AvatarMotionController` on each actor's `VisualPivot` in `main_test.tscn`. Idle, Doing, Walking, Running, and passive body motion affect the visible body only; navigation, collision, labels, and shadows stay on the actor root. Motion follows Simulation Speed and freezes on pause. See ADR 0005.

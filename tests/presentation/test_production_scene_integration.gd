@@ -143,6 +143,91 @@ func test_an_idle_cultist_yields_when_they_block_another_cultists_move_target() 
 		"Idle Iris moves aside instead of holding the path.")
 
 
+func test_real_scene_picks_and_cleans_dynamic_grime_on_every_surface() -> void:
+	var session = _presentation.get("_session")
+	_presentation._select_cultist(ActorIds.CULTIST_IDS[0])
+	var actor_count: int = _presentation.get("_patron_nodes").size()
+	var fixtures := [
+		[&"floor", Vector2(-2.0, 3.0), &"main_floor"],
+		[&"table", Vector2(2.0, 5.0), &"table_01"],
+		[&"bar", Vector2(0.0, 1.0), &"bar_top"],
+	]
+	for fixture: Array in fixtures:
+		var surface: StringName = fixture[0]
+		var center: Vector2 = fixture[1]
+		var patch_id: StringName = session.debug_add_grime({
+			"slot_id": StringName("production_%s_patch" % surface), "room": &"main_hall",
+			"center": center, "surface_id": fixture[2], "surface_type": surface,
+			"surface_bounds": Rect2(center - Vector2.ONE, Vector2.ONE * 2.0),
+			"approach_position": center + Vector2(0.0, 1.0),
+		}, 2.5)
+		await get_tree().physics_frame
+		var patch = _presentation.get("_grime_nodes")[patch_id] as Area3D
+		assert_not_null(patch)
+		var screen: Vector2 = _presentation.get("_camera").unproject_position(patch.global_position)
+		var picked: Dictionary = _presentation._pick_at(screen)
+		assert_eq(picked["kind"], &"grime", "%s Grime is the top pick target." % surface)
+		assert_eq(picked["id"], patch_id)
+		_presentation._open_context_menu(screen, picked, false)
+		var clean := _presentation.get("_context_menu_rows").get_node("Context_clean") as Button
+		assert_not_null(clean)
+		assert_true(clean.text.begins_with("Clean"))
+		_presentation._issue_command(&"clean", picked, false)
+		assert_true(await _settle_cultist())
+		assert_true(session.grime_target(patch_id).is_empty())
+		assert_false(_presentation.get("_grime_nodes").has(patch_id))
+		assert_eq(_presentation.get("_patron_nodes").size(), actor_count,
+			"Cleaning %s Grime preserves every nearby Patron." % surface)
+	assert_false(_presentation._commands.snapshot()["reserved_slots"].has(ActorIds.CULTIST_IDS[0]))
+
+
+func test_live_context_row_and_tooltip_refresh_after_identification() -> void:
+	var session = _presentation.get("_session")
+	var cultist_id := ActorIds.CULTIST_IDS[1]
+	_presentation._select_cultist(cultist_id)
+	assert_true(await _settle_cultist(), "The selected Cultist is idle before opening the chance menu.")
+	var patron_id := ScenarioActors.opening_patron()
+	assert_true(session.debug_set_patron_traits(patron_id, [&"wine_drinker", &"weak"]))
+	assert_false(session.is_cultist_busy(cultist_id),
+		"Fixture Cultist should be free: %s" % session.snapshot()["cultists"])
+	var target: Dictionary = _presentation._actor_target(patron_id)
+	_presentation._open_context_menu(Vector2(760.0, 180.0), target, false)
+	var row := _presentation.get("_context_menu_rows").get_node("Context_knock_out") as Button
+	assert_true(row.text.ends_with("???"), "Unknown chance row was: %s" % row.text)
+	row.mouse_entered.emit()
+	var tooltip = _presentation.get("_modifier_tooltip")
+	assert_true(tooltip.visible)
+	assert_eq(tooltip.display_rows()[-1]["value"], "???")
+	assert_true(session.begin_conversation(cultist_id, patron_id))
+	assert_true(session.end_conversation(cultist_id))
+	await get_tree().process_frame
+	row = _presentation.get("_context_menu_rows").get_node("Context_knock_out") as Button
+	assert_true(row.text.ends_with("55%"), "Known chance row was: %s" % row.text)
+	assert_true(tooltip.visible)
+	assert_eq(tooltip.display_rows()[-1]["value"], "55%")
+
+
+func test_inspected_patron_updates_below_threshold_grime_outlines_immediately() -> void:
+	var session = _presentation.get("_session")
+	var patron_id := ScenarioActors.opening_patron()
+	var debug: Dictionary = session.snapshot()["debug_patron_views"][patron_id]
+	var center: Vector2 = debug["position"]
+	var patch_id: StringName = session.debug_add_grime({
+		"slot_id": &"inspection_light_patch", "room": debug["room"], "center": center,
+		"surface_id": &"main_floor", "surface_type": &"floor",
+		"surface_bounds": Rect2(center - Vector2.ONE, Vector2.ONE * 2.0),
+		"approach_position": center + Vector2(0.0, 1.0),
+	}, 2.0)
+	_presentation._refresh_grime(session.snapshot())
+	var patch = _presentation.get("_grime_nodes")[patch_id]
+	_presentation.set("_inspected_patron_id", patron_id)
+	_presentation._refresh_grime(session.snapshot())
+	assert_true(patch.outline_visible(), "Inspection outlines a Sighted patch below the mood threshold.")
+	_presentation.set("_inspected_patron_id", ActorIds.NO_ACTOR)
+	_presentation._refresh_grime(session.snapshot())
+	assert_false(patch.outline_visible(), "Closing inspection removes the outline at once.")
+
+
 # --- Drivers -------------------------------------------------------------------
 
 func _has_event(events: Array, event_name: StringName, actor_id: int) -> bool:

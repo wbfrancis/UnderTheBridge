@@ -21,7 +21,7 @@ isolate_profile "$PROJECT_ROOT/.godot/headless_profile"
 "$PROJECT_ROOT/tools/test_headless.sh" --godot-bin "$GODOT_BIN"
 
 "$GODOT_BIN" --headless --fixed-fps=60 --path "$PROJECT_ROOT" \
-  res://scenes/prototypes/ticket16_presentation_review.tscn -- \
+  res://scenes/prototypes/main_test.tscn -- \
   --stage=full_cast \
   --emote-report=res://artifacts/emote_bubbles/validation.json
 

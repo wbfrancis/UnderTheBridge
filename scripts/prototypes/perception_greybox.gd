@@ -16,6 +16,7 @@ const NIGHT_PLAYBACK_SCRIPT := preload("res://scripts/presentation/night_playbac
 const EMOTE_DIRECTOR_SCRIPT := preload("res://scripts/presentation/emote_director.gd")
 const EMOTE_OVERLAY_SCRIPT := preload("res://scripts/presentation/emote_overlay.gd")
 const REVIEW_HARNESS_SCRIPT := preload("res://scripts/review/production_review_harness.gd")
+const GRIME_PATCH_VIEW_SCRIPT := preload("res://scripts/presentation/grime_patch_view.gd")
 const BOTTOM_HUD_SCENE: PackedScene = preload("res://scenes/ui/bottom_hud.tscn")
 const NAVIGATION_MESH: NavigationMesh = preload(
 	"res://assets/navigation/speakeasy_navigation.tres"
@@ -36,6 +37,7 @@ const CAMERA_FOCUS_SECONDS := 0.4
 const SCENARIOS := {
 	"night_start": "NIGHT START",
 	"drink_cycle": "DRINK CYCLE",
+	"grime_traits": "GRIME & TRAITS",
 	"full_cast": "FULL CAST",
 	"service_wing": "SERVICE WING",
 	"front_exit": "FRONT EXIT",
@@ -214,6 +216,8 @@ var _smart_object_root: Node3D
 var _smart_object_plates: Dictionary = {}
 var _drink_root: Node3D
 var _drink_nodes: Dictionary = {}
+var _grime_root: Node3D
+var _grime_nodes: Dictionary = {}
 var _serve_target_drink_id: StringName = &""
 var _serve_target_cultist_id: int = ActorIds.NO_ACTOR
 var _serve_target_append := false
@@ -224,6 +228,8 @@ var _trapdoor_open_amount: float = 0.0
 var _context_menu: PanelContainer
 var _context_menu_rows: VBoxContainer
 var _context_menu_header: Label
+var _modifier_tooltip: ModifierTooltip
+var _hovered_context_command: StringName = &""
 var _entrance_indicator: Button
 var _entrance_knock_player: AudioStreamPlayer
 var _last_knock_group_id: StringName = &""
@@ -375,6 +381,8 @@ func _process(delta: float) -> void:
 		# captured frame is a live one, not a frozen setup.
 		_session.advance(delta * _emote_play_scale)
 	_advance_emotes(delta)
+	for patch_id: StringName in _grime_nodes:
+		_grime_nodes[patch_id].advance_pulse(delta)
 	if _presentation_prototype and not _capture_mode:
 		_advance_camera_focus(delta)
 		_update_camera_pan(delta)
@@ -499,6 +507,11 @@ func _pick_at(screen_position: Vector2) -> Dictionary:
 			"is_cultist": false,
 			"position": (collider as Node3D).global_position,
 		}
+	if collider.has_meta("grime_id"):
+		var target: Dictionary = _session.grime_target(StringName(collider.get_meta("grime_id")))
+		if not target.is_empty():
+			target["is_cultist"] = false
+		return target
 	if not collider.has_meta("actor_id") or not collider.has_meta("is_cultist"):
 		return {}
 	var actor_id := int(collider.get_meta("actor_id"))
@@ -669,36 +682,90 @@ func _floor_target(destination: Vector3) -> Dictionary:
 # --- Context menu ------------------------------------------------------------
 
 func _open_context_menu(screen_position: Vector2, target: Dictionary, append_to_queue: bool) -> void:
-	var is_drink := StringName(target.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_DRINK
+	_context_target = target
+	_context_append = append_to_queue
+	_context_menu.position = screen_position + Vector2(8.0, 8.0)
+	_refresh_context_menu()
+
+
+func _refresh_context_menu() -> void:
+	if _context_target.is_empty():
+		return
+	var is_drink := StringName(_context_target.get("kind", &"")) == COMMAND_SYSTEM_SCRIPT.TARGET_DRINK
 	var options: Array[Dictionary] = (
-		_commands.resolve_drink_options(target["id"], _selected_cultist_id)
-		if is_drink else _commands.resolve_options(_selected_cultist_id, target)
+		_commands.resolve_drink_options(_context_target["id"], _selected_cultist_id)
+		if is_drink else _commands.resolve_options(_selected_cultist_id, _context_target)
 	)
 	if options.is_empty():
 		_close_context_menu()
-		_movement_feedback = "No command applies to that target."
-		_refresh_hud(_session.snapshot())
 		return
-	_context_target = target
-	_context_append = append_to_queue
 	for child in _context_menu_rows.get_children():
+		_context_menu_rows.remove_child(child)
 		child.queue_free()
 	_context_menu_header.text = (
-		"PREPARED DRINK"
-		if is_drink else "%s  ·  %s" % [options[0]["target_label"], "APPEND" if append_to_queue else "REPLACE"]
+		"PREPARED DRINK" if is_drink else "%s  ·  %s" % [
+			options[0]["target_label"], "APPEND" if _context_append else "REPLACE",
+		]
 	)
 	for option: Dictionary in options:
 		var button := Button.new()
-		button.text = option["label"] if bool(option["available"]) else "%s  (%s)" % [
+		var chance_text := ""
+		if option.has("chance"):
+			chance_text = "  %s" % String(option["chance"].get("public_total", "???"))
+		button.text = (option["label"] + chance_text) if bool(option["available"]) else "%s  (%s)" % [
 			option["label"], option["reason_label"],
 		]
+		button.name = "Context_%s" % String(option["command"])
 		button.disabled = not bool(option["available"])
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.custom_minimum_size = Vector2(228.0, 28.0)
 		button.pressed.connect(_on_context_option_pressed.bind(StringName(option["command"])))
+		button.mouse_entered.connect(_on_context_option_hovered.bind(
+			StringName(option["command"]), option.get("chance", {})
+		))
+		button.mouse_exited.connect(_on_context_option_unhovered.bind(StringName(option["command"])))
 		_context_menu_rows.add_child(button)
-	_context_menu.position = screen_position + Vector2(8.0, 8.0)
 	_context_menu.visible = true
+	_context_menu.reset_size()
+	_clamp_popup_to_viewport(_context_menu)
+	if not _hovered_context_command.is_empty():
+		for option: Dictionary in options:
+			if StringName(option["command"]) == _hovered_context_command and option.has("chance"):
+				_show_modifier_tooltip(option["chance"])
+				return
+		_hide_modifier_tooltip()
+
+
+func _on_context_option_hovered(command: StringName, chance: Dictionary) -> void:
+	_hovered_context_command = command
+	if chance.is_empty():
+		_hide_modifier_tooltip()
+	else:
+		_show_modifier_tooltip(chance)
+
+
+func _on_context_option_unhovered(command: StringName) -> void:
+	if _hovered_context_command == command:
+		_hovered_context_command = &""
+		_hide_modifier_tooltip()
+
+
+func _show_modifier_tooltip(chance: Dictionary) -> void:
+	_modifier_tooltip.set_breakdown(chance)
+	_modifier_tooltip.visible = true
+	_modifier_tooltip.position = _context_menu.position + Vector2(_context_menu.size.x + 6.0, 0.0)
+	_modifier_tooltip.reset_size()
+	_clamp_popup_to_viewport(_modifier_tooltip)
+
+
+func _hide_modifier_tooltip() -> void:
+	if _modifier_tooltip != null:
+		_modifier_tooltip.visible = false
+
+
+func _clamp_popup_to_viewport(control: Control) -> void:
+	var viewport_size := get_viewport().get_visible_rect().size
+	control.position = ModifierTooltip.clamped_position(control.position, control.size, viewport_size)
 
 
 func _on_context_option_pressed(command: StringName) -> void:
@@ -801,6 +868,8 @@ func _close_context_menu() -> void:
 		return
 	_context_menu.visible = false
 	_context_target = {}
+	_hovered_context_command = &""
+	_hide_modifier_tooltip()
 
 
 # --- Navigation plumbing -----------------------------------------------------
@@ -1168,6 +1237,9 @@ func _build_environment() -> void:
 	_drink_root = Node3D.new()
 	_drink_root.name = "PreparedDrinks"
 	add_child(_drink_root)
+	_grime_root = Node3D.new()
+	_grime_root.name = "GrimePatches"
+	add_child(_grime_root)
 	if _presentation_prototype:
 		_build_trapdoor()
 	_body_root = Node3D.new()
@@ -1268,6 +1340,33 @@ func _refresh_prepared_drinks(state: Dictionary) -> void:
 			continue
 		(_drink_nodes[drink_id] as Node).queue_free()
 		_drink_nodes.erase(drink_id)
+
+
+func _refresh_grime(_state: Dictionary) -> void:
+	if _grime_root == null:
+		return
+	var live := {}
+	for patch: Dictionary in _session.grime_patches_view():
+		var patch_id: StringName = patch["id"]
+		live[patch_id] = true
+		var node = _grime_nodes.get(patch_id)
+		if node == null:
+			node = GRIME_PATCH_VIEW_SCRIPT.new()
+			node.name = String(patch_id)
+			_grime_root.add_child(node)
+			_grime_nodes[patch_id] = node
+		node.configure(patch)
+		node.set_inspected(
+			_inspected_patron_id != ActorIds.NO_ACTOR
+			and patch_id in _session.sighted_grime_ids(_inspected_patron_id)
+		)
+	for patch_id: StringName in _grime_nodes.keys():
+		if live.has(patch_id):
+			continue
+		if StringName(_context_target.get("id", &"")) == patch_id:
+			_close_context_menu()
+		(_grime_nodes[patch_id] as Node).queue_free()
+		_grime_nodes.erase(patch_id)
 
 
 func _build_prepared_drink_node(drink: Dictionary) -> Area3D:
@@ -2312,6 +2411,8 @@ func _refresh_scene(state: Dictionary) -> void:
 	_synchronize_actor_playback()
 	# Revalidation on every session change: a stale target fails and releases.
 	_commands.refresh()
+	if _context_menu != null and _context_menu.visible:
+		_refresh_context_menu()
 	var visible_patron_ids: Array[int] = ALL_PATRON_IDS if _presentation_prototype else PATRON_IDS
 	for patron_id: int in visible_patron_ids:
 		var pivot := _actor_pivot(patron_id)
@@ -2392,6 +2493,7 @@ func _refresh_scene(state: Dictionary) -> void:
 	_refresh_trapdoor(state)
 	_refresh_entrance(state)
 	_refresh_prepared_drinks(state)
+	_refresh_grime(state)
 	_refresh_bodies()
 	_refresh_events(state)
 	_refresh_cultists(state)
@@ -2727,6 +2829,40 @@ func _room_center(room_id: StringName) -> Vector2:
 	return Vector2((rect[0] + rect[2]) * 0.5, (rect[1] + rect[3]) * 0.5)
 
 
+func _stage_grime_traits_review() -> void:
+	var june := ScenarioActors.opening_patron()
+	var mara := ScenarioActors.opening_companion()
+	var eli := ScenarioActors.friendship_candidate()
+	_session.debug_set_patron_traits(june, [&"wine_drinker"])
+	_session.debug_set_patron_traits(mara, [&"beer_drinker", &"germaphobe"])
+	_session.debug_set_patron_traits(eli, [&"whiskey_drinker", &"slob"])
+	var patches := [
+		[&"review_floor_light", Vector2(-8.0, 4.8), &"floor", &"main_floor", 4.0],
+		[&"review_floor_moderate", Vector2(-6.8, 5.0), &"floor", &"main_floor", 14.0],
+		[&"review_floor_heavy", Vector2(-5.4, 4.7), &"floor", &"main_floor", 27.0],
+		[&"review_cluster_a", Vector2(-2.0, 5.3), &"floor", &"main_floor", 8.0],
+		[&"review_cluster_b", Vector2(-1.1, 5.0), &"floor", &"main_floor", 18.0],
+		[&"review_table", Vector2(5.2, 6.0), &"table", &"table_05", 12.0],
+		[&"review_bar", Vector2(0.0, 0.15), &"bar", &"bar_counter", 24.0],
+		[&"review_edge", Vector2(-10.5, 2.0), &"floor", &"main_floor", 5.5],
+	]
+	for row: Array in patches:
+		var center: Vector2 = row[1]
+		_session.debug_add_grime({
+			"slot_id": row[0], "room": &"main_hall", "center": center,
+			"surface_type": row[2], "surface_id": row[3],
+			"surface_bounds": Rect2(center - Vector2(0.8, 0.8), Vector2(1.6, 1.6)),
+			"approach_position": center + Vector2(0.0, 1.0),
+		}, row[4])
+	_session.debug_add_grime({
+		"slot_id": &"review_ruined_bathroom", "room": &"bathroom",
+		"center": Vector2(18.2, 6.2), "surface_type": &"floor",
+		"surface_id": &"bathroom_floor", "surface_bounds": Rect2(17.0, 3.0, 4.0, 6.0),
+		"approach_position": Vector2(17.0, 6.2), "blocking_bathroom": true,
+	}, 28.0)
+	_inspected_patron_id = june
+
+
 # --- Scenario staging (mirrors the perception_danger slice) -------------------
 
 func _set_scenario(scenario_id: String) -> void:
@@ -2742,6 +2878,9 @@ func _set_scenario(scenario_id: String) -> void:
 		pass
 	elif scenario_id == "full_cast":
 		_stage_full_cast()
+	elif scenario_id == "grime_traits":
+		_stage_full_cast()
+		_stage_grime_traits_review()
 	elif scenario_id == "drink_cycle":
 		# This explicit checkpoint admits the first group so it opens with a real
 		# Order, while the normal Night still requires the player to answer every knock.
@@ -2764,6 +2903,8 @@ func _set_scenario(scenario_id: String) -> void:
 			_scenario_trace = "The first group is inside with an open Order. Prepare a Drink at the bar, then serve it to complete the core service cycle."
 		"full_cast":
 			_scenario_trace = "Both playable Cultists and all eight authored Patrons share the full-scale room. Distinct palettes, names, visible activities, and Suspicion bands come from one GameSession snapshot."
+		"grime_traits":
+			_scenario_trace = "Review light, moderate, heavy, clustered, table, bar, and Ruined Bathroom stains. Inspect June, Mara, and Eli to compare normal, Germaphobe, Slob, edge, and out-of-sight outlines."
 		"service_wing":
 			_session.debug_force_bathroom(ScenarioActors.opening_patron())
 			_session.advance(2.1)
@@ -2989,6 +3130,10 @@ func _build_hud() -> void:
 	_context_menu_rows = VBoxContainer.new()
 	_context_menu_rows.add_theme_constant_override("separation", 2)
 	menu_column.add_child(_context_menu_rows)
+	_modifier_tooltip = ModifierTooltip.new()
+	_modifier_tooltip.name = "ModifierTooltip"
+	_modifier_tooltip.visible = false
+	canvas.add_child(_modifier_tooltip)
 
 	# The debug trace is a developer overlay now, not a permanent panel. It is
 	# hidden until the Developer menu asks for it.
@@ -3231,8 +3376,8 @@ func _inspected_patron_view(state: Dictionary) -> Dictionary:
 		"tint": PATRON_COLORS.get(_inspected_patron_id, Color.WHITE),
 		"visible_activity": view["visible_activity"],
 		"mood": view["mood"],
-		"suspicion_band": view["suspicion_band"],
 		"intoxication": view["intoxication"],
+		"traits": view.get("traits", []),
 		"order_state": _humanize(view["order_state"]),
 		"ordered_drink": String(view["ordered_drink"]).capitalize(),
 	}

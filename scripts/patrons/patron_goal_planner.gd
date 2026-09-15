@@ -30,10 +30,12 @@ var _world_signature := ""
 var _planning_count := 0
 
 
-func observe(missing: bool, danger: bool) -> void:
+func observe(missing: bool, danger: bool, skip_shock: bool = false) -> void:
 	_facts["missing"] = missing
 	# Escape remains committed once selected. Capture ends this planner explicitly.
 	_facts["danger"] = danger or bool(_facts["danger"])
+	if danger and skip_shock:
+		_facts["shock_over"] = true
 	var selected: StringName = &"escape" if _facts["danger"] else (&"investigate" if missing else &"")
 	if selected == _goal:
 		return
